@@ -278,12 +278,12 @@ NEXT_PUBLIC_APP_URL=
 
 ## SPRINT 4 — Marketplace & paiements (Stripe Connect)
 
-- [ ] Onboarding **Stripe Connect Express** depuis `/dashboard/payouts` → ligne `stripe_accounts`
-- [ ] Checkout : route `api/stripe/checkout` (PaymentIntent avec `application_fee_amount` = commission 20 %)
-- [ ] Webhook `api/webhooks/stripe` : sur `payment_intent.succeeded` → créer `purchase` + `download`
-- [ ] Empêcher l'achat d'un listing dont le créateur n'a pas `charges_enabled`
-- [ ] Gérer les remboursements / litiges (statut `purchase`)
-- [ ] Page builder « Revenus » : ventes, commissions, payouts
+- [x] Onboarding **Stripe Connect Express** depuis `/dashboard/payouts` → ligne `stripe_accounts`
+- [x] Checkout : route `api/stripe/checkout` (PaymentIntent avec `application_fee_amount` = commission 20 %)
+- [x] Webhook `api/webhooks/stripe` : sur `payment_intent.succeeded` → créer `purchase` + `download`
+- [x] Empêcher l'achat d'un listing dont le créateur n'a pas `charges_enabled`
+- [x] Gérer les remboursements / litiges (statut `purchase`)
+- [x] Page builder « Revenus » : ventes, commissions, payouts
 - [ ] ⚠️ Vérifier KYC créateur, TVA (Stripe Tax), reçus par email (Resend)
 
 **Définition de terminé :** un acheteur paie un prompt, le builder voit la vente et sa part nette.
@@ -292,10 +292,10 @@ NEXT_PUBLIC_APP_URL=
 
 ## SPRINT 5 — Téléchargement & bundle
 
-- [ ] Route `api/download/[versionId]` : vérifie `purchase` OU prix = 0, génère une **URL signée** Storage
-- [ ] Enregistrer chaque téléchargement dans `downloads` (compteurs)
-- [ ] Écran post-achat : contenu du bundle + bouton de téléchargement `.zip`
-- [ ] Débloquer le `prompt_body` complet uniquement après achat (rendu côté serveur)
+- [x] Route `api/download/[versionId]` : vérifie `purchase` OU prix = 0, génère une **URL signée** Storage
+- [x] Enregistrer chaque téléchargement dans `downloads` (compteurs)
+- [x] Écran post-achat : contenu du bundle + bouton de téléchargement `.zip`
+- [x] Débloquer le `prompt_body` complet uniquement après achat (rendu côté serveur)
 
 **Définition de terminé :** après paiement, l'utilisateur télécharge le bundle complet et voit le prompt entier.
 
@@ -303,11 +303,11 @@ NEXT_PUBLIC_APP_URL=
 
 ## SPRINT 6 — Réseau léger (follow, avis, badges, réputation)
 
-- [ ] Bouton **Suivre** un builder (`follows`) ; compteur d'abonnés
-- [ ] Avis : note + commentaire, **autorisé seulement si achat/téléchargement** vérifié
-- [ ] Note moyenne agrégée par listing et par builder (vue SQL ou champ recalculé)
+- [x] Bouton **Suivre** un builder (`follows`) ; compteur d'abonnés
+- [x] Avis : note + commentaire, **autorisé seulement si achat/téléchargement** vérifié
+- [x] Note moyenne agrégée par listing et par builder (vue SQL ou champ recalculé)
 - [ ] Badges automatiques : « Builder vérifié », « Top 1% [catégorie] », paliers de téléchargements
-- [ ] Stats publiques sur `/u/[username]` : téléchargements, note, prompts, abonnés
+- [x] Stats publiques sur `/u/[username]` : téléchargements, note, prompts, abonnés
 - [ ] Bouton **« Ajouter ma certification sur LinkedIn »** (lien de partage pré-rempli)
 
 **Définition de terminé :** un builder a une vraie réputation publique exportable sur LinkedIn.
@@ -316,9 +316,9 @@ NEXT_PUBLIC_APP_URL=
 
 ## SPRINT 7 — Hybride : exécution via partenaires
 
-- [ ] Table `partner_integrations` + admin pour gérer les partenaires
-- [ ] Sur une fiche : bouton **« Exécuter dans [outil] »** construit depuis `run_url_template`
-- [ ] Ajout des paramètres d'**affiliation/referral** dans l'URL sortante
+- [x] Table `partner_integrations` + admin pour gérer les partenaires
+- [x] Sur une fiche : bouton **« Exécuter dans [outil] »** construit depuis `run_url_template`
+- [x] Ajout des paramètres d'**affiliation/referral** dans l'URL sortante
 - [ ] Tracking des clics sortants (PostHog) pour mesurer le revshare
 - [ ] (Optionnel V1.1) Exécution sandboxée d'agents simples — **à isoler totalement**, voir Sprint 8
 
@@ -329,10 +329,10 @@ NEXT_PUBLIC_APP_URL=
 ## SPRINT 8 — Sécurité & modération ⚠️
 
 - [ ] File de validation `under_review` → un admin approuve/refuse avant `published`
-- [ ] Scan automatique des bundles déposés : détection de **clés/secrets**, de code suspect, de liens d'exfiltration
-- [ ] Bouton « Signaler » → `moderation_flags` + back-office de traitement
+- [x] Scan automatique des bundles déposés : détection de **clés/secrets**, de code suspect, de liens d'exfiltration
+- [x] Bouton « Signaler » → `moderation_flags` + back-office de traitement
 - [ ] Filtres de contenu : jailbreaks, NSFW, désinformation, illégal
-- [ ] Anti-fraude : avis vérifiés uniquement, anti-bot sur compteurs de téléchargement
+- [x] Anti-fraude : avis vérifiés uniquement, anti-bot sur compteurs de téléchargement
 - [ ] CGU / CGV / politique de contenu / propriété intellectuelle ; process de takedown
 - [ ] Rate limiting sur les routes API sensibles
 

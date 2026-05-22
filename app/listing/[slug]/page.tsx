@@ -12,6 +12,10 @@ import {
   Key,
   BadgeCheck,
 } from "lucide-react";
+import { BuyButton } from "@/components/BuyButton";
+import { ReviewForm } from "@/components/ReviewForm";
+import { ReportButton } from "@/components/ReportButton";
+import { RunPartnerButton } from "@/components/RunPartnerButton";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +57,23 @@ export default async function ListingPage({ params }: Props) {
 
   if (!listing) notFound();
 
+  // Utilisateur courant
+  const { data: { user } } = await supabase.auth.getUser();
+  const isOwner = user?.id === listing.creator_id;
+
+  // Achat existant ?
+  let alreadyPurchased = false;
+  if (user && !isOwner && listing.price_cents > 0) {
+    const { data: purchase } = await supabase
+      .from("purchases")
+      .select("id")
+      .eq("buyer_id", user.id)
+      .eq("listing_id", listing.id)
+      .eq("status", "completed")
+      .maybeSingle();
+    alreadyPurchased = !!purchase;
+  }
+
   // Version courante
   const { data: version } = listing.current_version_id
     ? await supabase
@@ -81,16 +102,22 @@ export default async function ListingPage({ params }: Props) {
     ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
     : null;
 
+  // Partenaires actifs
+  const { data: partners } = await supabase
+    .from("partner_integrations")
+    .select("id, name, run_url_template, affiliate_param")
+    .eq("active", true);
+
   // Compteurs
   const { count: downloadCount } = await supabase
     .from("downloads")
     .select("*", { count: "exact", head: true })
     .eq("listing_id", listing.id);
 
-  // Contenu tronqué si payant
   const isFree = listing.price_cents === 0;
+  const canSeeFullPrompt = isFree || alreadyPurchased || isOwner;
   const promptPreview = version?.prompt_body
-    ? isFree
+    ? canSeeFullPrompt
       ? version.prompt_body
       : version.prompt_body.substring(0, 200) + "…"
     : null;
@@ -135,7 +162,7 @@ export default async function ListingPage({ params }: Props) {
               <h2 className="text-lg font-semibold">Aperçu du prompt</h2>
               <div className="mt-3 rounded-xl border border-border bg-gray-50 p-5 font-mono text-sm leading-relaxed whitespace-pre-wrap">
                 {promptPreview}
-                {!isFree && (
+                {!canSeeFullPrompt && (
                   <p className="mt-4 text-center text-sm font-sans font-medium text-accent">
                     Achète pour voir le prompt complet
                   </p>
@@ -239,6 +266,11 @@ export default async function ListingPage({ params }: Props) {
                 ))}
               </div>
             )}
+
+            <ReviewForm
+              listingId={listing.id}
+              canReview={!isOwner && (alreadyPurchased || isFree) && !!user}
+            />
           </div>
         </div>
 
@@ -253,9 +285,14 @@ export default async function ListingPage({ params }: Props) {
                   : `${(listing.price_cents / 100).toFixed(2)} €`}
               </p>
 
-              <button className="mt-4 flex h-12 w-full items-center justify-center rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent-hover">
-                {listing.price_cents === 0 ? "Télécharger" : "Acheter maintenant"}
-              </button>
+              <BuyButton
+                listingId={listing.id}
+                versionId={listing.current_version_id}
+                priceCents={listing.price_cents}
+                isFree={isFree}
+                alreadyPurchased={alreadyPurchased}
+                isOwner={isOwner}
+              />
 
               <div className="mt-4 flex items-center justify-between text-sm text-muted">
                 <span className="flex items-center gap-1">
@@ -308,6 +345,29 @@ export default async function ListingPage({ params }: Props) {
               </div>
             )}
 
+            {/* Partenaires — Exécuter dans */}
+            {partners && partners.length > 0 && (
+              <div className="rounded-xl border border-border p-4">
+                <h3 className="text-sm font-medium">Exécuter dans</h3>
+                <div className="mt-3 space-y-2">
+                  {partners.map((p) => {
+                    if (!p.run_url_template || !p.name) return null;
+                    const url = p.run_url_template
+                      .replace("{slug}", listing.slug)
+                      .replace("{title}", encodeURIComponent(listing.title))
+                      + (p.affiliate_param ? `&${p.affiliate_param}` : "");
+                    return (
+                      <RunPartnerButton
+                        key={p.id}
+                        partnerName={p.name}
+                        runUrl={url}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Créateur */}
             {creator && (
               <Link
@@ -327,6 +387,11 @@ export default async function ListingPage({ params }: Props) {
                   <p className="text-xs text-muted">@{creator.username}</p>
                 </div>
               </Link>
+            )}
+
+            {/* Signaler */}
+            {!isOwner && (
+              <ReportButton listingId={listing.id} />
             )}
           </div>
         </div>

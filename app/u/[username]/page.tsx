@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Image from "next/image";
 import { MapPin, Calendar, BadgeCheck } from "lucide-react";
+import { FollowButton } from "@/components/FollowButton";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,20 @@ export default async function ProfilePage({ params }: Props) {
     .single();
 
   if (!profile) notFound();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const isOwnProfile = user?.id === profile.id;
+
+  let isFollowing = false;
+  if (user && !isOwnProfile) {
+    const { data: follow } = await supabase
+      .from("follows")
+      .select("follower_id")
+      .eq("follower_id", user.id)
+      .eq("creator_id", profile.id)
+      .maybeSingle();
+    isFollowing = !!follow;
+  }
 
   const { count: followersCount } = await supabase
     .from("follows")
@@ -81,6 +96,9 @@ export default async function ProfilePage({ params }: Props) {
             <h1 className="text-2xl font-bold">{profile.display_name}</h1>
             {profile.is_verified && (
               <BadgeCheck className="h-5 w-5 text-accent" />
+            )}
+            {!isOwnProfile && (
+              <FollowButton creatorId={profile.id} initialFollowing={isFollowing} />
             )}
           </div>
           <p className="text-sm text-muted">@{profile.username}</p>
