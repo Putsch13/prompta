@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FAFAFA;
+  --foreground: #191919;
+  --accent: #0A66C2;
+  --accent-hover: #004182;
+  --accent-light: #E8F0FE;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0F0F0F;
+    --foreground: #EDEDED;
+    --accent: #70B5F9;
+    --accent-hover: #9CCBFC;
+    --accent-light: #1B2838;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+@layer base {
+  * {
+    border-color: theme("colors.border");
+  }
+}
