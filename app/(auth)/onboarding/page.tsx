@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { Zap, Loader2, Check, X } from "lucide-react";
+import { Loader2, Check, X } from "lucide-react";
 
 export default function OnboardingPage() {
   const supabase = createClient();
@@ -15,14 +15,18 @@ export default function OnboardingPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(
+    null
+  );
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadUser() {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         router.push("/login");
         return;
@@ -58,7 +62,9 @@ export default function OnboardingPage() {
         .eq("username", username)
         .maybeSingle();
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       setUsernameAvailable(data === null || data.id === user?.id);
       setCheckingUsername(false);
     }, 400);
@@ -84,7 +90,9 @@ export default function OnboardingPage() {
 
     setSaving(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     let avatarUrl: string | undefined;
@@ -126,21 +134,24 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
-      <div className="w-full max-w-md">
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-bg px-4 py-12">
+      <div className="w-full max-w-[420px] rounded-xl border border-line bg-card p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <Zap className="mx-auto h-10 w-10 text-accent" strokeWidth={2.5} />
-          <h1 className="mt-4 text-2xl font-bold">Complète ton profil</h1>
-          <p className="mt-2 text-sm text-muted">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent">
+            <span className="font-display text-xl font-bold text-white">P</span>
+          </div>
+          <h1 className="mt-4 font-display text-2xl font-bold text-ink">
+            Complète ton profil
+          </h1>
+          <p className="mt-2 text-sm text-ink-soft">
             Ces infos seront visibles sur ton profil public
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Avatar */}
           <div className="flex justify-center">
             <label className="group relative cursor-pointer">
-              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-border bg-accent-light transition-colors group-hover:border-accent">
+              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-line bg-card transition-colors group-hover:border-accent">
                 {avatarPreview ? (
                   <img // eslint-disable-line @next/next/no-img-element
                     src={avatarPreview}
@@ -148,7 +159,7 @@ export default function OnboardingPage() {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <span className="text-2xl text-muted">+</span>
+                  <span className="text-2xl text-ink-faint">+</span>
                 )}
               </div>
               <input
@@ -160,13 +171,15 @@ export default function OnboardingPage() {
             </label>
           </div>
 
-          {/* Username */}
           <div>
-            <label htmlFor="username" className="block text-sm font-medium">
+            <label
+              htmlFor="username"
+              className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft"
+            >
               Nom d&apos;utilisateur
             </label>
-            <div className="relative mt-1">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">
+            <div className="relative mt-1.5">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-faint">
                 prompta.io/u/
               </span>
               <input
@@ -178,13 +191,15 @@ export default function OnboardingPage() {
                 pattern="[a-z0-9_]+"
                 value={username}
                 onChange={(e) =>
-                  setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))
+                  setUsername(
+                    e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
+                  )
                 }
-                className="h-11 w-full rounded-lg border border-border bg-card pl-[7.5rem] pr-10 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="h-10 w-full rounded-lg border border-line bg-card pl-[7.5rem] pr-10 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
                 {checkingUsername && (
-                  <Loader2 className="h-4 w-4 animate-spin text-muted" />
+                  <Loader2 className="h-4 w-4 animate-spin text-ink-faint" />
                 )}
                 {!checkingUsername && usernameAvailable === true && (
                   <Check className="h-4 w-4 text-success" />
@@ -194,14 +209,16 @@ export default function OnboardingPage() {
                 )}
               </div>
             </div>
-            <p className="mt-1 text-xs text-muted">
+            <p className="mt-1 text-xs text-ink-faint">
               Lettres minuscules, chiffres et underscores uniquement
             </p>
           </div>
 
-          {/* Display name */}
           <div>
-            <label htmlFor="displayName" className="block text-sm font-medium">
+            <label
+              htmlFor="displayName"
+              className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft"
+            >
               Nom affiché
             </label>
             <input
@@ -210,14 +227,16 @@ export default function OnboardingPage() {
               required
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
               placeholder="Jean Dupont"
             />
           </div>
 
-          {/* Headline */}
           <div>
-            <label htmlFor="headline" className="block text-sm font-medium">
+            <label
+              htmlFor="headline"
+              className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft"
+            >
               Titre / Spécialité
             </label>
             <input
@@ -225,7 +244,7 @@ export default function OnboardingPage() {
               type="text"
               value={headline}
               onChange={(e) => setHeadline(e.target.value)}
-              className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
               placeholder="Expert en prompts de copywriting IA"
             />
           </div>
@@ -239,7 +258,7 @@ export default function OnboardingPage() {
           <button
             type="submit"
             disabled={saving || usernameAvailable === false}
-            className="flex h-11 w-full items-center justify-center rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            className="flex h-10 w-full items-center justify-center rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />

@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, Check } from "lucide-react";
-import Link from "next/link";
+import { Loader2, Check } from "lucide-react";
 
 export default function EditProfilePage() {
   const supabase = createClient();
@@ -112,42 +111,34 @@ export default function EditProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-10 sm:px-6 lg:px-8">
-      <Link
-        href="/dashboard"
-        className="mb-6 inline-flex items-center gap-1 text-sm text-muted hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Retour au dashboard
-      </Link>
-
-      <h1 className="text-2xl font-bold">Modifier mon profil</h1>
-      <p className="mt-1 text-sm text-muted">
+    <div className="max-w-xl">
+      <h1 className="font-display text-2xl font-bold text-ink">
+        Modifier mon profil
+      </h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Ces informations sont visibles sur ton profil public
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-        {/* Avatar */}
         <div className="flex items-center gap-4">
           <label className="group relative cursor-pointer">
-            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-border bg-accent-light transition-colors group-hover:border-accent">
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-line bg-card transition-colors group-hover:border-accent">
               {avatarPreview ? (
                 <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" /> // eslint-disable-line @next/next/no-img-element
               ) : (
-                <span className="text-xl text-muted">+</span>
+                <span className="text-xl text-ink-faint">+</span>
               )}
             </div>
             <input type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
           </label>
           <div>
-            <p className="text-sm font-medium">Photo de profil</p>
-            <p className="text-xs text-muted">JPG, PNG. 1 Mo max.</p>
+            <p className="text-sm font-medium text-ink">Photo de profil</p>
+            <p className="text-xs text-ink-soft">JPG, PNG. 1 Mo max.</p>
           </div>
         </div>
 
-        {/* Username */}
         <div>
-          <label htmlFor="username" className="block text-sm font-medium">
+          <label htmlFor="username" className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft">
             Nom d&apos;utilisateur
           </label>
           <input
@@ -160,13 +151,12 @@ export default function EditProfilePage() {
             onChange={(e) =>
               setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))
             }
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>
 
-        {/* Display Name */}
         <div>
-          <label htmlFor="displayName" className="block text-sm font-medium">
+          <label htmlFor="displayName" className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft">
             Nom affiché
           </label>
           <input
@@ -175,13 +165,12 @@ export default function EditProfilePage() {
             required
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>
 
-        {/* Headline */}
         <div>
-          <label htmlFor="headline" className="block text-sm font-medium">
+          <label htmlFor="headline" className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft">
             Titre / Spécialité
           </label>
           <input
@@ -189,14 +178,13 @@ export default function EditProfilePage() {
             type="text"
             value={headline}
             onChange={(e) => setHeadline(e.target.value)}
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             placeholder="Expert en prompts de copywriting IA"
           />
         </div>
 
-        {/* Bio */}
         <div>
-          <label htmlFor="bio" className="block text-sm font-medium">
+          <label htmlFor="bio" className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft">
             Bio
           </label>
           <textarea
@@ -204,14 +192,13 @@ export default function EditProfilePage() {
             rows={4}
             value={bio}
             onChange={(e) => setBio(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-card px-4 py-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none"
+            className="mt-1.5 w-full rounded-lg border border-line bg-card px-4 py-3 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none"
             placeholder="Parle de toi, ton expertise, tes projets..."
           />
         </div>
 
-        {/* Location */}
         <div>
-          <label htmlFor="location" className="block text-sm font-medium">
+          <label htmlFor="location" className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft">
             Localisation
           </label>
           <input
@@ -219,7 +206,7 @@ export default function EditProfilePage() {
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             placeholder="Paris, France"
           />
         </div>
@@ -233,7 +220,7 @@ export default function EditProfilePage() {
         <button
           type="submit"
           disabled={saving}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
         >
           {saving ? (
             <Loader2 className="h-4 w-4 animate-spin" />

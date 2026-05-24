@@ -3,17 +3,14 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { uniqueSlug } from "@/lib/slug";
 import { scanForSecrets } from "@/lib/secrets-scanner";
 import {
-  ArrowLeft,
   Loader2,
   Upload,
   Plus,
   X,
   AlertTriangle,
 } from "lucide-react";
-import Link from "next/link";
 
 type ListingType = "prompt" | "agent" | "workflow";
 
@@ -122,113 +119,84 @@ export default function NewListingPage() {
 
     setSaving(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    try {
+      const res = await fetch("/api/listings/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          type,
+          categoryId: categoryId || null,
+          description,
+          models,
+          tags,
+          priceCents,
+          promptBody,
+          envFields,
+          dependencies,
+          setupTime,
+        }),
+      });
 
-    const slug = uniqueSlug(title);
+      const data = await res.json();
 
-    // 1. Créer le listing
-    const { data: listing, error: listingError } = await supabase
-      .from("listings")
-      .insert({
-        creator_id: user.id,
-        category_id: categoryId || null,
-        type,
-        title,
-        slug,
-        description,
-        models,
-        tags,
-        price_cents: priceCents,
-        currency: "eur",
-        status: "draft",
-      })
-      .select("id")
-      .single();
-
-    if (listingError || !listing) {
-      setError(listingError?.message || "Erreur lors de la création");
-      setSaving(false);
-      return;
-    }
-
-    // 2. Upload du bundle si présent
-    let bundlePath: string | null = null;
-    if (bundleFile) {
-      const path = `bundles/${listing.id}/v1.0/${bundleFile.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("bundles")
-        .upload(path, bundleFile);
-
-      if (uploadError) {
-        setError(`Upload échoué : ${uploadError.message}`);
+      if (!res.ok) {
+        setError(data.error || "Erreur lors de la création");
         setSaving(false);
         return;
       }
-      bundlePath = path;
-    }
 
-    // 3. Créer la version v1.0
-    const envData = JSON.parse(JSON.stringify({
-      fields: envFields,
-      dependencies: dependencies || null,
-      setup_time: setupTime || null,
-    }));
+      const listingId = data.id;
+      const versionId = data.versionId;
 
-    const { data: version, error: versionError } = await supabase
-      .from("listing_versions")
-      .insert({
-        listing_id: listing.id,
-        semver: "v1.0",
-        prompt_body: promptBody || null,
-        env: envData,
-        bundle_path: bundlePath,
-      })
-      .select("id")
-      .single();
+      if (bundleFile) {
+        const path = `bundles/${listingId}/v1.0/${bundleFile.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from("bundles")
+          .upload(path, bundleFile);
 
-    if (versionError || !version) {
-      setError(versionError?.message || "Erreur lors de la création de la version");
+        if (uploadError) {
+          setError(`Upload échoué : ${uploadError.message}`);
+          setSaving(false);
+          return;
+        }
+
+        await supabase
+          .from("listing_versions")
+          .update({ bundle_path: path })
+          .eq("id", versionId);
+      }
+
+      if (data.flagged) {
+        setError(
+          `Contenu signalé pour revue manuelle (${data.flags.join(", ")}). Il sera examiné par notre équipe.`
+        );
+      }
+
       setSaving(false);
-      return;
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setError("Une erreur est survenue");
+      setSaving(false);
     }
-
-    // 4. Mettre à jour le listing avec la version courante
-    await supabase
-      .from("listings")
-      .update({ current_version_id: version.id })
-      .eq("id", listing.id);
-
-    setSaving(false);
-    router.push("/dashboard");
-    router.refresh();
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
-      <Link
-        href="/dashboard"
-        className="mb-6 inline-flex items-center gap-1 text-sm text-muted hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Retour au dashboard
-      </Link>
-
-      <h1 className="text-2xl font-bold">Nouveau prompt / agent</h1>
-      <p className="mt-1 text-sm text-muted">
+    <div className="max-w-2xl">
+      <h1 className="font-display text-2xl font-bold text-ink">
+        Nouveau prompt / agent
+      </h1>
+      <p className="mt-1 text-sm text-ink-soft">
         Remplis les informations ci-dessous. Tu pourras publier ou sauvegarder
         en brouillon.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-        {/* Type */}
         <div>
-          <label className="block text-sm font-medium">Type</label>
+          <label className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft">
+            Type
+          </label>
           <div className="mt-2 flex gap-3">
             {(["prompt", "agent", "workflow"] as const).map((t) => (
               <button
@@ -238,7 +206,7 @@ export default function NewListingPage() {
                 className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
                   type === t
                     ? "border-accent bg-accent text-white"
-                    : "border-border hover:border-accent"
+                    : "border-line text-ink hover:border-accent"
                 }`}
               >
                 {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -258,7 +226,7 @@ export default function NewListingPage() {
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1 h-11 w-full rounded-lg border border-line bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             placeholder="Cold email B2B optimisé GPT-4"
           />
         </div>
@@ -272,7 +240,7 @@ export default function NewListingPage() {
             id="category"
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1 h-11 w-full rounded-lg border border-line bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           >
             <option value="">Aucune</option>
             {categories.map((c) => (
@@ -293,7 +261,7 @@ export default function NewListingPage() {
             rows={4}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-card px-4 py-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none"
+            className="mt-1 w-full rounded-lg border border-line bg-card px-4 py-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none"
             placeholder="Décris ton prompt, à qui il s'adresse, ce qu'il fait..."
           />
         </div>
@@ -303,7 +271,7 @@ export default function NewListingPage() {
           <label htmlFor="promptBody" className="block text-sm font-medium">
             Contenu du prompt
           </label>
-          <p className="mt-0.5 text-xs text-muted">
+          <p className="mt-0.5 text-xs text-ink-soft">
             Le texte complet sera visible uniquement après achat (si payant)
           </p>
           <textarea
@@ -311,7 +279,7 @@ export default function NewListingPage() {
             rows={8}
             value={promptBody}
             onChange={(e) => setPromptBody(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-card px-4 py-3 font-mono text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-y"
+            className="mt-1 w-full rounded-lg border border-line bg-card px-4 py-3 font-mono text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-y"
             placeholder="Tu es un expert en..."
           />
         </div>
@@ -327,13 +295,13 @@ export default function NewListingPage() {
               value={modelInput}
               onChange={(e) => setModelInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addModel())}
-              className="h-10 flex-1 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="h-10 flex-1 rounded-lg border border-line bg-card px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
               placeholder="GPT-4, Claude 3.5, etc."
             />
             <button
               type="button"
               onClick={addModel}
-              className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-sm hover:bg-accent-light"
+              className="flex h-10 items-center gap-1 rounded-lg border border-line px-3 text-sm hover:bg-accent-light"
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -367,13 +335,13 @@ export default function NewListingPage() {
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
-              className="h-10 flex-1 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="h-10 flex-1 rounded-lg border border-line bg-card px-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
               placeholder="copywriting, b2b, cold-email..."
             />
             <button
               type="button"
               onClick={addTag}
-              className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-sm hover:bg-accent-light"
+              className="flex h-10 items-center gap-1 rounded-lg border border-line px-3 text-sm hover:bg-accent-light"
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -413,21 +381,21 @@ export default function NewListingPage() {
               onChange={(e) =>
                 setPriceCents(Math.round(parseFloat(e.target.value || "0") * 100))
               }
-              className="h-11 w-full rounded-lg border border-border bg-card px-4 pr-12 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="h-11 w-full rounded-lg border border-line bg-card px-4 pr-12 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted">
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-ink-soft">
               EUR
             </span>
           </div>
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-1 text-xs text-ink-soft">
             0 = gratuit. Commission Prompta : 20%.
           </p>
         </div>
 
         {/* Séparateur environnement */}
-        <div className="border-t border-border pt-6">
+        <div className="border-t border-line pt-6">
           <h2 className="text-lg font-semibold">Environnement</h2>
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1 text-sm text-ink-soft">
             Indique les clés API, variables et dépendances nécessaires pour
             utiliser ce prompt/agent.
           </p>
@@ -459,7 +427,7 @@ export default function NewListingPage() {
                     onChange={(e) =>
                       updateEnvField(i, { key: e.target.value.toUpperCase() })
                     }
-                    className="h-10 w-40 shrink-0 rounded-lg border border-border bg-card px-3 font-mono text-xs outline-none focus:border-accent"
+                    className="h-10 w-40 shrink-0 rounded-lg border border-line bg-card px-3 font-mono text-xs outline-none focus:border-accent"
                   />
                   <input
                     type="text"
@@ -468,9 +436,9 @@ export default function NewListingPage() {
                     onChange={(e) =>
                       updateEnvField(i, { description: e.target.value })
                     }
-                    className="h-10 flex-1 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-accent"
+                    className="h-10 flex-1 rounded-lg border border-line bg-card px-3 text-sm outline-none focus:border-accent"
                   />
-                  <label className="flex items-center gap-1 text-xs text-muted">
+                  <label className="flex items-center gap-1 text-xs text-ink-soft">
                     <input
                       type="checkbox"
                       checked={field.required}
@@ -484,7 +452,7 @@ export default function NewListingPage() {
                   <button
                     type="button"
                     onClick={() => removeEnvField(i)}
-                    className="text-muted hover:text-destructive"
+                    className="text-ink-soft hover:text-destructive"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -504,7 +472,7 @@ export default function NewListingPage() {
             type="text"
             value={dependencies}
             onChange={(e) => setDependencies(e.target.value)}
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1 h-11 w-full rounded-lg border border-line bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             placeholder="Python 3.11, langchain, etc."
           />
         </div>
@@ -519,24 +487,24 @@ export default function NewListingPage() {
             type="text"
             value={setupTime}
             onChange={(e) => setSetupTime(e.target.value)}
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="mt-1 h-11 w-full rounded-lg border border-line bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             placeholder="5 min"
           />
         </div>
 
         {/* Upload bundle */}
-        <div className="border-t border-border pt-6">
+        <div className="border-t border-line pt-6">
           <h2 className="text-lg font-semibold">Bundle</h2>
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1 text-sm text-ink-soft">
             Uploade un fichier .zip contenant le prompt, .env.example, guide de
             démarrage.
           </p>
-          <label className="mt-3 flex cursor-pointer flex-col items-center rounded-xl border-2 border-dashed border-border p-8 transition-colors hover:border-accent hover:bg-accent-light/30">
-            <Upload className="h-8 w-8 text-muted" />
+          <label className="mt-3 flex cursor-pointer flex-col items-center rounded-xl border-2 border-dashed border-line p-8 transition-colors hover:border-accent hover:bg-accent-light/30">
+            <Upload className="h-8 w-8 text-ink-soft" />
             <span className="mt-2 text-sm font-medium">
               {bundleFile ? bundleFile.name : "Choisir un fichier .zip"}
             </span>
-            <span className="mt-1 text-xs text-muted">
+            <span className="mt-1 text-xs text-ink-soft">
               ZIP, max 50 Mo
             </span>
             <input

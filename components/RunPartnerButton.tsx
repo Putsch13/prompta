@@ -1,12 +1,20 @@
 "use client";
 
+import { posthog } from "@/lib/posthog";
+
 interface Props {
   partnerName: string;
   runUrl: string;
+  listingSlug?: string;
 }
 
-export function RunPartnerButton({ partnerName, runUrl }: Props) {
+export function RunPartnerButton({ partnerName, runUrl, listingSlug }: Props) {
   function handleClick() {
+    posthog.capture("partner_run_click", {
+      listing_slug: listingSlug,
+      partner_name: partnerName,
+    });
+
     window.open(runUrl, "_blank", "noopener,noreferrer");
   }
 

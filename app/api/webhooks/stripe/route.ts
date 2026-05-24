@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
       const { data: listing } = await admin
         .from("listings")
-        .select("price_cents, current_version_id")
+        .select("price_cents, current_version_id, title, slug")
         .eq("id", listingId)
         .single();
 
@@ -44,21 +44,67 @@ export async function POST(request: Request) {
 
       const { platformFeeCents } = computeFees(listing.price_cents);
 
-      await admin.from("purchases").insert({
-        buyer_id: buyerId,
-        listing_id: listingId,
-        version_id: listing.current_version_id,
-        amount_cents: listing.price_cents,
-        platform_fee_cents: platformFeeCents,
-        stripe_payment_intent: session.payment_intent as string,
-        status: "completed",
-      });
+      const taxCents = session.total_details?.amount_tax ?? 0;
+
+      const { data: purchase } = await admin
+        .from("purchases")
+        .insert({
+          buyer_id: buyerId,
+          listing_id: listingId,
+          version_id: listing.current_version_id,
+          amount_cents: listing.price_cents,
+          platform_fee_cents: platformFeeCents,
+          tax_cents: taxCents,
+          stripe_payment_intent: session.payment_intent as string,
+          stripe_checkout_session: session.id,
+          status: "completed",
+        })
+        .select("id")
+        .single();
 
       await admin.from("downloads").insert({
         user_id: buyerId,
         listing_id: listingId,
         version_id: listing.current_version_id,
       });
+
+      const { data: userData } = await admin.auth.admin.getUserById(buyerId);
+      const buyerEmail = userData?.user?.email;
+      const buyerName = userData?.user?.user_metadata?.display_name || buyerEmail?.split("@")[0] || "Un utilisateur";
+
+      if (buyerEmail && purchase) {
+        const { sendPurchaseReceipt, sendSaleNotification } = await import("@/lib/email");
+        await sendPurchaseReceipt({
+          to: buyerEmail,
+          listingTitle: listing.title,
+          listingSlug: listing.slug,
+          amountCents: listing.price_cents,
+          taxCents,
+          purchaseId: purchase.id,
+          versionId: listing.current_version_id || "",
+        });
+
+        const { data: listingFull } = await admin
+          .from("listings")
+          .select("creator_id")
+          .eq("id", listingId)
+          .single();
+
+        if (listingFull?.creator_id) {
+          const { data: creatorData } = await admin.auth.admin.getUserById(listingFull.creator_id);
+          const creatorEmail = creatorData?.user?.email;
+
+          if (creatorEmail) {
+            await sendSaleNotification({
+              to: creatorEmail,
+              listingTitle: listing.title,
+              amountCents: listing.price_cents,
+              platformFeeCents,
+              buyerName,
+            });
+          }
+        }
+      }
 
       break;
     }

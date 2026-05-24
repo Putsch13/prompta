@@ -2,11 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import type { Metadata } from "next";
+import { PromptCard } from "@/components/PromptCard";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Explorer les prompts, agents et workflows",
+  title: "Explorer les prompts, agents et workflows | Prompta",
   description:
     "Parcourez notre catalogue de prompts, agents et workflows IA par catégorie, type ou mot-clé.",
 };
@@ -62,7 +63,10 @@ export default async function ExplorePage({ searchParams }: Props) {
     .eq("status", "published");
 
   if (q) {
-    query = query.textSearch("search_vector", q, { type: "websearch", config: "french" });
+    query = query.textSearch("search_vector", q, {
+      type: "websearch",
+      config: "french",
+    });
   }
 
   if (typeFilter && ["prompt", "agent", "workflow"].includes(typeFilter)) {
@@ -99,6 +103,48 @@ export default async function ExplorePage({ searchParams }: Props) {
   const { data: listings, count } = await query;
   const totalPages = Math.ceil((count || 0) / PAGE_SIZE);
 
+  const listingIds = (listings || []).map((l) => l.id);
+
+  const { data: reviews } = listingIds.length > 0
+    ? await supabase
+        .from("reviews")
+        .select("listing_id, rating")
+        .in("listing_id", listingIds)
+    : { data: [] };
+
+  const { data: downloads } = listingIds.length > 0
+    ? await supabase
+        .from("downloads")
+        .select("listing_id")
+        .in("listing_id", listingIds)
+    : { data: [] };
+
+  const creatorIds = Array.from(new Set((listings || []).map((l) => l.creator_id)));
+  const { data: creators } =
+    creatorIds.length > 0
+      ? await supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar_url")
+          .in("id", creatorIds)
+      : { data: [] };
+
+  const creatorsMap = new Map(
+    (creators || []).map((c) => [c.id, c])
+  );
+
+  const reviewsByListing = new Map<string, { sum: number; count: number }>();
+  (reviews || []).forEach((r) => {
+    const existing = reviewsByListing.get(r.listing_id) || { sum: 0, count: 0 };
+    existing.sum += r.rating;
+    existing.count += 1;
+    reviewsByListing.set(r.listing_id, existing);
+  });
+
+  const downloadsByListing = new Map<string, number>();
+  (downloads || []).forEach((d) => {
+    downloadsByListing.set(d.listing_id, (downloadsByListing.get(d.listing_id) || 0) + 1);
+  });
+
   const { data: categories } = await supabase
     .from("categories")
     .select("slug, name")
@@ -106,7 +152,14 @@ export default async function ExplorePage({ searchParams }: Props) {
 
   function buildUrl(params: Record<string, string>) {
     const sp = new URLSearchParams();
-    const merged = { q, type: typeFilter, price: priceFilter, category: categoryFilter, sort, ...params };
+    const merged = {
+      q,
+      type: typeFilter,
+      price: priceFilter,
+      category: categoryFilter,
+      sort,
+      ...params,
+    };
     Object.entries(merged).forEach(([k, v]) => {
       if (v) sp.set(k, v);
     });
@@ -114,179 +167,158 @@ export default async function ExplorePage({ searchParams }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-      {/* Recherche */}
-      <form action="/explore" method="get" className="relative mx-auto max-w-2xl">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="Rechercher un prompt, agent, workflow…"
-          className="h-14 w-full rounded-xl border border-border bg-card pl-12 pr-4 text-base shadow-sm outline-none placeholder:text-muted-foreground focus:border-accent focus:ring-2 focus:ring-accent/20"
-        />
-      </form>
+    <div className="min-h-screen bg-bg">
+      <div className="mx-auto max-w-page px-4 py-10 sm:px-6 lg:px-8">
+        <form action="/explore" method="get" className="relative mx-auto max-w-2xl">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-faint" />
+          <input
+            type="text"
+            name="q"
+            defaultValue={q}
+            placeholder="Rechercher un prompt, agent, workflow…"
+            className="h-14 w-full rounded-xl border border-line bg-card pl-12 pr-4 text-base text-ink shadow-sm outline-none placeholder:text-ink-faint focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </form>
 
-      {/* Filtres */}
-      <div className="mt-8 flex flex-wrap items-center gap-3">
-        {/* Type */}
-        {TYPES.map((t) => (
-          <Link
-            key={t.value}
-            href={buildUrl({ type: t.value, page: "1" })}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              typeFilter === t.value
-                ? "bg-accent text-white"
-                : "border border-border hover:border-accent"
-            }`}
-          >
-            {t.label}
-          </Link>
-        ))}
-
-        <span className="mx-2 h-6 w-px bg-border" />
-
-        {/* Prix */}
-        {PRICE_FILTERS.map((p) => (
-          <Link
-            key={p.value}
-            href={buildUrl({ price: p.value, page: "1" })}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              priceFilter === p.value
-                ? "bg-accent text-white"
-                : "border border-border hover:border-accent"
-            }`}
-          >
-            {p.label}
-          </Link>
-        ))}
-
-        {/* Catégorie dropdown */}
-        {categories && categories.length > 0 && (
-          <>
-            <span className="mx-2 h-6 w-px bg-border" />
-            <select
-              defaultValue={categoryFilter}
-              className="rounded-full border border-border px-4 py-1.5 text-sm outline-none focus:border-accent"
-            >
-              <option value="">Toutes catégories</option>
-              {categories.map((c) => (
-                <option key={c.slug} value={c.slug}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-
-        {/* Tri */}
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-sm text-muted">Trier :</span>
-          {SORT_OPTIONS.map((s) => (
+        <div className="mt-8 flex flex-wrap items-center gap-3">
+          {TYPES.map((t) => (
             <Link
-              key={s.value}
-              href={buildUrl({ sort: s.value, page: "1" })}
-              className={`text-sm font-medium transition-colors ${
-                sort === s.value ? "text-accent" : "text-muted hover:text-foreground"
+              key={t.value}
+              href={buildUrl({ type: t.value, page: "1" })}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                typeFilter === t.value
+                  ? "bg-accent text-white"
+                  : "border border-line text-ink hover:border-accent"
               }`}
             >
-              {s.label}
+              {t.label}
             </Link>
           ))}
-        </div>
-      </div>
 
-      {/* Résultats */}
-      <div className="mt-8">
-        <p className="text-sm text-muted">
-          {count || 0} résultat{(count || 0) > 1 ? "s" : ""}
-          {q && <> pour &quot;{q}&quot;</>}
-        </p>
+          <span className="mx-2 h-6 w-px bg-line" />
 
-        {!listings || listings.length === 0 ? (
-          <div className="mt-12 text-center">
-            <p className="text-lg text-muted">Aucun résultat trouvé.</p>
-            <p className="mt-2 text-sm text-muted">
-              Essaie de modifier tes filtres ou ta recherche.
-            </p>
-          </div>
-        ) : (
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {listings.map((listing) => (
-              <Link
-                key={listing.id}
-                href={`/listing/${listing.slug}`}
-                className="group rounded-xl border border-border bg-card p-5 transition-all hover:border-accent hover:shadow-md"
+          {PRICE_FILTERS.map((p) => (
+            <Link
+              key={p.value}
+              href={buildUrl({ price: p.value, page: "1" })}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                priceFilter === p.value
+                  ? "bg-accent text-white"
+                  : "border border-line text-ink hover:border-accent"
+              }`}
+            >
+              {p.label}
+            </Link>
+          ))}
+
+          {categories && categories.length > 0 && (
+            <>
+              <span className="mx-2 h-6 w-px bg-line" />
+              <select
+                defaultValue={categoryFilter}
+                className="rounded-full border border-line bg-card px-4 py-1.5 text-sm text-ink outline-none focus:border-accent"
               >
-                <div className="flex items-start justify-between">
-                  <span className="inline-block rounded bg-accent-light px-2 py-0.5 text-xs font-medium text-accent">
-                    {listing.type}
-                  </span>
-                  <span className="text-sm font-semibold">
-                    {listing.price_cents === 0
-                      ? "Gratuit"
-                      : `${(listing.price_cents / 100).toFixed(2)} €`}
-                  </span>
-                </div>
+                <option value="">Toutes catégories</option>
+                {categories.map((c) => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
 
-                <h3 className="mt-3 font-semibold group-hover:text-accent transition-colors">
-                  {listing.title}
-                </h3>
-
-                {listing.description && (
-                  <p className="mt-2 line-clamp-2 text-sm text-muted">
-                    {listing.description}
-                  </p>
-                )}
-
-                {listing.tags.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {listing.tags.slice(0, 4).map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-muted"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {listing.models.length > 0 && (
-                  <p className="mt-2 text-xs text-muted">
-                    {listing.models.join(", ")}
-                  </p>
-                )}
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-sm text-ink-soft">Trier :</span>
+            {SORT_OPTIONS.map((s) => (
+              <Link
+                key={s.value}
+                href={buildUrl({ sort: s.value, page: "1" })}
+                className={`text-sm font-medium transition-colors ${
+                  sort === s.value ? "text-accent" : "text-ink-soft hover:text-ink"
+                }`}
+              >
+                {s.label}
               </Link>
             ))}
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="mt-10 flex items-center justify-center gap-2">
-          {page > 1 && (
-            <Link
-              href={buildUrl({ page: String(page - 1) })}
-              className="rounded-lg border border-border px-4 py-2 text-sm hover:border-accent"
-            >
-              Précédent
-            </Link>
-          )}
-          <span className="px-4 text-sm text-muted">
-            Page {page} / {totalPages}
-          </span>
-          {page < totalPages && (
-            <Link
-              href={buildUrl({ page: String(page + 1) })}
-              className="rounded-lg border border-border px-4 py-2 text-sm hover:border-accent"
-            >
-              Suivant
-            </Link>
+        <div className="mt-8">
+          <p className="text-sm text-ink-soft">
+            {count || 0} résultat{(count || 0) > 1 ? "s" : ""}
+            {q && <> pour &quot;{q}&quot;</>}
+          </p>
+
+          {!listings || listings.length === 0 ? (
+            <div className="mt-12 text-center">
+              <p className="text-lg text-ink-soft">Aucun résultat trouvé.</p>
+              <p className="mt-2 text-sm text-ink-faint">
+                Essaie de modifier tes filtres ou ta recherche.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {listings.map((listing) => {
+                const reviewData = reviewsByListing.get(listing.id);
+                const avgRating = reviewData
+                  ? reviewData.sum / reviewData.count
+                  : null;
+                const reviewCount = reviewData?.count || 0;
+                const downloadCount = downloadsByListing.get(listing.id) || 0;
+                const creator = creatorsMap.get(listing.creator_id);
+
+                return (
+                  <PromptCard
+                    key={listing.id}
+                    slug={listing.slug}
+                    title={listing.title}
+                    type={listing.type as "prompt" | "agent" | "workflow"}
+                    priceCents={listing.price_cents}
+                    description={listing.description}
+                    rating={avgRating}
+                    reviewCount={reviewCount}
+                    downloads={downloadCount}
+                    creator={
+                      creator
+                        ? {
+                            username: creator.username,
+                            display_name: creator.display_name,
+                            avatar_url: creator.avatar_url,
+                          }
+                        : null
+                    }
+                  />
+                );
+              })}
+            </div>
           )}
         </div>
-      )}
+
+        {totalPages > 1 && (
+          <div className="mt-10 flex items-center justify-center gap-2">
+            {page > 1 && (
+              <Link
+                href={buildUrl({ page: String(page - 1) })}
+                className="rounded-lg border border-line px-4 py-2 text-sm text-ink hover:border-accent"
+              >
+                Précédent
+              </Link>
+            )}
+            <span className="px-4 text-sm text-ink-soft">
+              Page {page} / {totalPages}
+            </span>
+            {page < totalPages && (
+              <Link
+                href={buildUrl({ page: String(page + 1) })}
+                className="rounded-lg border border-line px-4 py-2 text-sm text-ink hover:border-accent"
+              >
+                Suivant
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

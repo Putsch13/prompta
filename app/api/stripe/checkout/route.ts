@@ -52,13 +52,13 @@ export async function POST(request: Request) {
 
   const { data: stripeAccount } = await admin
     .from("stripe_accounts")
-    .select("stripe_account_id, charges_enabled")
+    .select("stripe_account_id, charges_enabled, payouts_enabled")
     .eq("profile_id", listing.creator_id)
     .single();
 
-  if (!stripeAccount?.charges_enabled) {
+  if (!stripeAccount?.charges_enabled || !stripeAccount?.payouts_enabled) {
     return NextResponse.json(
-      { error: "Le créateur n'a pas activé les paiements" },
+      { error: "Le créateur n'a pas complété sa vérification KYC" },
       { status: 400 }
     );
   }
@@ -74,10 +74,12 @@ export async function POST(request: Request) {
           currency: listing.currency,
           product_data: { name: listing.title },
           unit_amount: listing.price_cents,
+          tax_behavior: "exclusive",
         },
         quantity: 1,
       },
     ],
+    automatic_tax: { enabled: true },
     payment_intent_data: {
       application_fee_amount: platformFeeCents,
       transfer_data: {
@@ -89,7 +91,7 @@ export async function POST(request: Request) {
         version_id: listing.current_version_id || "",
       },
     },
-    success_url: `${appUrl}/listing/${listing.id}?purchased=true`,
+    success_url: `${appUrl}/purchase/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl}/listing/${listing.id}`,
     metadata: {
       listing_id: listing.id,

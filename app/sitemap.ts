@@ -43,5 +43,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
+  const { data: categories } = await supabase
+    .from("categories")
+    .select("slug");
+
+  if (categories) {
+    for (const c of categories) {
+      entries.push({
+        url: `${baseUrl}/c/${c.slug}`,
+        lastModified: new Date(),
+        changeFrequency: "weekly",
+        priority: 0.7,
+      });
+    }
+  }
+
   return entries;
 }

@@ -17,7 +17,9 @@ import { ReviewForm } from "@/components/ReviewForm";
 import { ReportButton } from "@/components/ReportButton";
 import { RunPartnerButton } from "@/components/RunPartnerButton";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://prompta.app";
 
 interface Props {
   params: { slug: string };
@@ -27,20 +29,26 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const supabase = createClient();
   const { data: listing } = await supabase
     .from("listings")
-    .select("title, description, type")
+    .select("title, description, type, slug")
     .eq("slug", params.slug)
     .eq("status", "published")
     .single();
 
   if (!listing) return { title: "Prompt introuvable" };
 
+  const canonicalUrl = `${APP_URL}/listing/${listing.slug}`;
+
   return {
     title: listing.title,
     description: listing.description || `${listing.type} sur Prompta`,
+    alternates: {
+      canonical: canonicalUrl,
+    },
     openGraph: {
       title: listing.title,
       description: listing.description || undefined,
       type: "website",
+      url: canonicalUrl,
     },
   };
 }
@@ -90,6 +98,17 @@ export default async function ListingPage({ params }: Props) {
     .eq("id", listing.creator_id)
     .single();
 
+  // Vérification KYC du créateur
+  const { data: creatorStripeAccount } = await supabase
+    .from("stripe_accounts")
+    .select("charges_enabled, payouts_enabled")
+    .eq("profile_id", listing.creator_id)
+    .single();
+
+  const creatorKycComplete =
+    creatorStripeAccount?.charges_enabled === true &&
+    creatorStripeAccount?.payouts_enabled === true;
+
   // Avis
   const { data: reviews } = await supabase
     .from("reviews")
@@ -128,8 +147,35 @@ export default async function ListingPage({ params }: Props) {
     setup_time?: string;
   } | null;
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: listing.title,
+    description: listing.description || undefined,
+    offers: {
+      "@type": "Offer",
+      price: (listing.price_cents / 100).toFixed(2),
+      priceCurrency: "EUR",
+      availability: "https://schema.org/InStock",
+    },
+    ...(avgRating !== null && reviews && reviews.length > 0 && {
+      aggregateRating: {
+        "@type": "AggregateRating",
+        ratingValue: avgRating.toFixed(1),
+        reviewCount: reviews.length,
+        bestRating: "5",
+        worstRating: "1",
+      },
+    }),
+  };
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="grid gap-10 lg:grid-cols-3">
         {/* Colonne principale */}
         <div className="lg:col-span-2">
@@ -292,6 +338,7 @@ export default async function ListingPage({ params }: Props) {
                 isFree={isFree}
                 alreadyPurchased={alreadyPurchased}
                 isOwner={isOwner}
+                creatorKycComplete={isFree || creatorKycComplete}
               />
 
               <div className="mt-4 flex items-center justify-between text-sm text-muted">
@@ -361,6 +408,7 @@ export default async function ListingPage({ params }: Props) {
                         key={p.id}
                         partnerName={p.name}
                         runUrl={url}
+                        listingSlug={listing.slug}
                       />
                     );
                   })}
@@ -397,5 +445,6 @@ export default async function ListingPage({ params }: Props) {
         </div>
       </div>
     </div>
+    </>
   );
 }

@@ -4,14 +4,12 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  ArrowLeft,
   Loader2,
   CreditCard,
   CheckCircle,
   ExternalLink,
   DollarSign,
 } from "lucide-react";
-import Link from "next/link";
 
 export default function PayoutsPage() {
   const supabase = createClient();
@@ -93,16 +91,10 @@ export default function PayoutsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
-      <Link
-        href="/dashboard"
-        className="mb-6 inline-flex items-center gap-1 text-sm text-muted hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Retour au dashboard
-      </Link>
-
-      <h1 className="text-2xl font-bold">Revenus & Payouts</h1>
+    <div className="max-w-3xl">
+      <h1 className="font-display text-2xl font-bold text-ink">
+        Revenus & Payouts
+      </h1>
 
       {justConnected && (
         <div className="mt-4 flex items-center gap-2 rounded-lg bg-success/10 p-3 text-sm text-success">
@@ -112,7 +104,7 @@ export default function PayoutsPage() {
       )}
 
       {/* Stripe Connect */}
-      <div className="mt-8 rounded-xl border border-border bg-card p-6">
+      <div className="mt-8 rounded-xl border border-line bg-card p-6">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           <CreditCard className="h-5 w-5 text-accent" />
           Stripe Connect
@@ -120,7 +112,7 @@ export default function PayoutsPage() {
 
         {!stripeAccount ? (
           <div className="mt-4">
-            <p className="text-sm text-muted">
+            <p className="text-sm text-ink-soft">
               Connecte ton compte Stripe pour recevoir les paiements de tes
               prompts et agents.
             </p>
@@ -168,8 +160,8 @@ export default function PayoutsPage() {
 
       {/* Stats revenus */}
       <div className="mt-6 grid grid-cols-2 gap-4">
-        <div className="rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center gap-2 text-sm text-muted">
+        <div className="rounded-xl border border-line bg-card p-5">
+          <div className="flex items-center gap-2 text-sm text-ink-soft">
             <DollarSign className="h-4 w-4 text-accent" />
             Revenus nets
           </div>
@@ -177,8 +169,8 @@ export default function PayoutsPage() {
             {(totalRevenue / 100).toFixed(2)} €
           </p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center gap-2 text-sm text-muted">
+        <div className="rounded-xl border border-line bg-card p-5">
+          <div className="flex items-center gap-2 text-sm text-ink-soft">
             <CreditCard className="h-4 w-4 text-accent" />
             Ventes totales
           </div>
@@ -190,19 +182,19 @@ export default function PayoutsPage() {
       <div className="mt-8">
         <h2 className="text-lg font-semibold">Historique des ventes</h2>
         {sales.length === 0 ? (
-          <p className="mt-4 text-sm text-muted">Aucune vente pour le moment.</p>
+          <p className="mt-4 text-sm text-ink-soft">Aucune vente pour le moment.</p>
         ) : (
           <div className="mt-4 space-y-2">
             {sales.map((sale) => (
               <div
                 key={sale.id}
-                className="flex items-center justify-between rounded-lg border border-border bg-card p-4"
+                className="flex items-center justify-between rounded-lg border border-line bg-card p-4"
               >
                 <div>
                   <p className="text-sm font-medium">
                     {(sale.amount_cents / 100).toFixed(2)} €
                   </p>
-                  <p className="text-xs text-muted">
+                  <p className="text-xs text-ink-soft">
                     Commission : {(sale.platform_fee_cents / 100).toFixed(2)} € ·
                     Net : {((sale.amount_cents - sale.platform_fee_cents) / 100).toFixed(2)} €
                   </p>
@@ -219,7 +211,7 @@ export default function PayoutsPage() {
                   >
                     {sale.status === "completed" ? "Payé" : sale.status === "refunded" ? "Remboursé" : sale.status}
                   </span>
-                  <p className="mt-1 text-xs text-muted">
+                  <p className="mt-1 text-xs text-ink-soft">
                     {new Date(sale.created_at).toLocaleDateString("fr-FR")}
                   </p>
                 </div>

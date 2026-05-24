@@ -19,6 +19,7 @@ export interface Database {
           location: string | null;
           avatar_url: string | null;
           is_verified: boolean;
+          is_admin: boolean;
           created_at: string;
         };
         Insert: {
@@ -30,6 +31,7 @@ export interface Database {
           location?: string | null;
           avatar_url?: string | null;
           is_verified?: boolean;
+          is_admin?: boolean;
           created_at?: string;
         };
         Update: {
@@ -41,6 +43,7 @@ export interface Database {
           location?: string | null;
           avatar_url?: string | null;
           is_verified?: boolean;
+          is_admin?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -82,6 +85,8 @@ export interface Database {
           status: "draft" | "under_review" | "published" | "rejected";
           current_version_id: string | null;
           search_vector: string | null;
+          reason_rejected: string | null;
+          content_flags: Json;
           created_at: string;
           updated_at: string;
         };
@@ -100,6 +105,8 @@ export interface Database {
           status?: "draft" | "under_review" | "published" | "rejected";
           current_version_id?: string | null;
           search_vector?: string | null;
+          reason_rejected?: string | null;
+          content_flags?: Json;
           created_at?: string;
           updated_at?: string;
         };
@@ -118,6 +125,8 @@ export interface Database {
           status?: "draft" | "under_review" | "published" | "rejected";
           current_version_id?: string | null;
           search_vector?: string | null;
+          reason_rejected?: string | null;
+          content_flags?: Json;
           created_at?: string;
           updated_at?: string;
         };
@@ -216,7 +225,9 @@ export interface Database {
           version_id: string | null;
           amount_cents: number;
           platform_fee_cents: number;
+          tax_cents: number;
           stripe_payment_intent: string | null;
+          stripe_checkout_session: string | null;
           status: string;
           created_at: string;
         };
@@ -227,7 +238,9 @@ export interface Database {
           version_id?: string | null;
           amount_cents: number;
           platform_fee_cents: number;
+          tax_cents?: number;
           stripe_payment_intent?: string | null;
+          stripe_checkout_session?: string | null;
           status?: string;
           created_at?: string;
         };
@@ -238,7 +251,9 @@ export interface Database {
           version_id?: string | null;
           amount_cents?: number;
           platform_fee_cents?: number;
+          tax_cents?: number;
           stripe_payment_intent?: string | null;
+          stripe_checkout_session?: string | null;
           status?: string;
           created_at?: string;
         };
@@ -420,6 +435,9 @@ export interface Database {
           listing_id: string | null;
           reason: string | null;
           status: string;
+          flagged_by: string | null;
+          resolved_by: string | null;
+          resolved_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -427,6 +445,9 @@ export interface Database {
           listing_id?: string | null;
           reason?: string | null;
           status?: string;
+          flagged_by?: string | null;
+          resolved_by?: string | null;
+          resolved_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -434,6 +455,9 @@ export interface Database {
           listing_id?: string | null;
           reason?: string | null;
           status?: string;
+          flagged_by?: string | null;
+          resolved_by?: string | null;
+          resolved_at?: string | null;
           created_at?: string;
         };
         Relationships: [];

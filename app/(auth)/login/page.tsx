@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Zap, Mail, Loader2 } from "lucide-react";
+import { Mail, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const supabase = createClient();
@@ -49,19 +49,23 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
-      <div className="w-full max-w-sm">
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-bg px-4 py-12">
+      <div className="w-full max-w-[420px] rounded-xl border border-line bg-card p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <Zap className="mx-auto h-10 w-10 text-accent" strokeWidth={2.5} />
-          <h1 className="mt-4 text-2xl font-bold">Connexion</h1>
-          <p className="mt-2 text-sm text-muted">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent">
+            <span className="font-display text-xl font-bold text-white">P</span>
+          </div>
+          <h1 className="mt-4 font-display text-2xl font-bold text-ink">
+            Connexion
+          </h1>
+          <p className="mt-2 text-sm text-ink-soft">
             Connecte-toi pour accéder à ton dashboard
           </p>
         </div>
 
         <button
           onClick={handleGoogleLogin}
-          className="flex w-full items-center justify-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium transition-colors hover:bg-accent-light"
+          className="flex w-full items-center justify-center gap-3 rounded-lg border border-line bg-card px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-card2"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path
@@ -86,34 +90,40 @@ export default function LoginPage() {
 
         <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-border" />
+            <div className="w-full border-t border-line" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted">ou</span>
+            <span className="bg-card px-2 text-ink-faint">ou</span>
           </div>
         </div>
 
         <form onSubmit={handleEmailLogin} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium">
+            <label
+              htmlFor="email"
+              className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft"
+            >
               Email
             </label>
-            <div className="relative mt-1">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <div className="relative mt-1.5">
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
               <input
                 id="email"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="h-11 w-full rounded-lg border border-border bg-card pl-10 pr-4 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="h-10 w-full rounded-lg border border-line bg-card pl-10 pr-4 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
                 placeholder="ton@email.com"
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium">
+            <label
+              htmlFor="password"
+              className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft"
+            >
               Mot de passe
             </label>
             <input
@@ -123,7 +133,7 @@ export default function LoginPage() {
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
               placeholder="••••••••"
             />
           </div>
@@ -137,7 +147,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="flex h-11 w-full items-center justify-center rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            className="flex h-10 w-full items-center justify-center rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -147,7 +157,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-muted">
+        <p className="mt-6 text-center text-sm text-ink-soft">
           Pas encore de compte ?{" "}
           <Link
             href={`/signup?redirect=${encodeURIComponent(redirect)}`}
