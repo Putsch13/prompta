@@ -28,7 +28,25 @@ export async function GET() {
   }, {});
 
   if (listingIds.length === 0) {
-    return NextResponse.json({ mrrCents: 0, activeSubs: 0 });
+    const periodMonth = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}-01`;
+    const { data: proUsage } = await admin
+      .from("platform_pro_usage")
+      .select("run_count")
+      .eq("creator_id", user.id)
+      .eq("period_month", periodMonth);
+    const proRunsThisMonth = (proUsage ?? []).reduce((s, r) => s + r.run_count, 0);
+    const { data: proRevshare } = await admin
+      .from("platform_pro_revshare")
+      .select("amount_cents")
+      .eq("creator_id", user.id)
+      .eq("period_month", periodMonth);
+    const proRevshareCents = (proRevshare ?? []).reduce((s, r) => s + r.amount_cents, 0);
+    return NextResponse.json({
+      mrrCents: 0,
+      activeSubs: 0,
+      proRevshareCents,
+      proRunsThisMonth,
+    });
   }
 
   const { data: subs } = await admin
@@ -43,5 +61,23 @@ export async function GET() {
     return sum + Math.round(price * 0.8);
   }, 0);
 
-  return NextResponse.json({ mrrCents, activeSubs });
+  const periodMonth = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}-01`;
+
+  const { data: proUsage } = await admin
+    .from("platform_pro_usage")
+    .select("run_count")
+    .eq("creator_id", user.id)
+    .eq("period_month", periodMonth);
+
+  const proRunsThisMonth = (proUsage ?? []).reduce((s, r) => s + r.run_count, 0);
+
+  const { data: proRevshare } = await admin
+    .from("platform_pro_revshare")
+    .select("amount_cents")
+    .eq("creator_id", user.id)
+    .eq("period_month", periodMonth);
+
+  const proRevshareCents = (proRevshare ?? []).reduce((s, r) => s + r.amount_cents, 0);
+
+  return NextResponse.json({ mrrCents, activeSubs, proRevshareCents, proRunsThisMonth });
 }

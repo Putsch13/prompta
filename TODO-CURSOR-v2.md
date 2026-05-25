@@ -298,6 +298,7 @@ opérationnel.
 ## Bloc 4.2 — Abonnement « Prompta Pro »
 - [x] Table `platform_subscriptions` (migration 0013).
 - [x] Abonnement plateforme unique donnant accès à tout le catalogue d'agents — UI + Stripe.
+- [x] Revshare builders au prorata de l'usage (`platform_pro_usage`, cron `/api/cron/revshare`).
 - **DoD :** un utilisateur Pro lance n'importe quel agent ; les builders sont rémunérés
   à l'usage.
 

@@ -7,6 +7,7 @@ import { estimateCost } from "@/lib/llm/providers";
 import type { LLMProvider } from "@/lib/llm/providers";
 import { getCreditBalance, debitCreditsForRun, RUN_CREDIT_COST_CENTS } from "@/lib/credits";
 import { hasPlatformPro } from "@/lib/platform-access";
+import { trackProRun } from "@/lib/revshare";
 
 export const dynamic = "force-dynamic";
 
@@ -214,6 +215,10 @@ export async function POST(request: NextRequest) {
             cost_estimate: cost,
           })
           .eq("id", run?.id ?? "");
+
+        if (isPro && !isOwner && listing.creator_id) {
+          await trackProRun(listingId, listing.creator_id).catch(() => undefined);
+        }
 
         const chunks = result.content.match(/.{1,30}/g) ?? [result.content];
         for (const chunk of chunks) {

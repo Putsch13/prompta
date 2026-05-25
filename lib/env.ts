@@ -8,21 +8,25 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().min(1),
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
   STRIPE_CONNECT_CLIENT_ID: z.string().min(1),
-  RESEND_API_KEY: z.string().min(1),
-  SENTRY_DSN: z.string().url(),
-  NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  SENTRY_DSN: z.string().url().optional().or(z.literal("")),
+  NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1).optional(),
   NEXT_PUBLIC_APP_URL: z.string().url(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(1).optional(),
   E2B_API_KEY: z.string().min(1).optional(),
   ENCRYPTION_KEY: z.string().min(1).optional(),
+  PLATFORM_OPENAI_KEY: z.string().min(1).optional(),
+  PLATFORM_ANTHROPIC_KEY: z.string().min(1).optional(),
+  PLATFORM_GOOGLE_KEY: z.string().min(1).optional(),
+  PLATFORM_MISTRAL_KEY: z.string().min(1).optional(),
 });
 
 const clientSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1),
-  NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1),
+  NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1).optional(),
   NEXT_PUBLIC_APP_URL: z.string().url(),
 });
 

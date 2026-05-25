@@ -1,0 +1,65 @@
+# Render Blueprint — Prompta
+# Docs : https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: prompta
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_CONNECT_CLIENT_ID
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: NEXT_PUBLIC_POSTHOG_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: E2B_API_KEY
+        sync: false
+      - key: PLATFORM_OPENAI_KEY
+        sync: false
+
+  - type: worker
+    name: prompta-worker
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm run worker
+    envVars:
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: SUPABASE_SERVICE_ROLE_KEY
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: NEXT_PUBLIC_SUPABASE_URL
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: ENCRYPTION_KEY

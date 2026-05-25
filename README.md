@@ -101,6 +101,8 @@ Exécuter **dans l'ordre** via Supabase → SQL Editor (ou `supabase db push`).
 | 0014 | `0014_rename_listing_agent_runs.sql` | Renommage conflit `agent_runs` |
 | 0015 | `0015_admin_agents.sql` | 7 agents, budget, personas, KPI |
 | 0016 | `0016_admin_agents_sandbox.sql` | Mode sandbox + `purge_sandbox()` |
+| 0017 | `0017_platform_credits_org_audit.sql` | Crédits, audit org, queue worker |
+| 0018 | `0018_platform_pro_revshare.sql` | Usage & revshare Prompta Pro |
 
 Après migration, te passer admin :
 
@@ -238,6 +240,9 @@ ENCRYPTION_KEY=<openssl rand -hex 32>
 | Agents admin | `0 * * * *` | `curl -sS -H "Authorization: Bearer $CRON_SECRET" https://TON-DOMAINE/api/cron/tick` |
 | Badges | `0 3 * * *` | `curl -sS -H "x-cron-secret: $CRON_SECRET" -X POST https://TON-DOMAINE/api/cron/badges` |
 | Scheduled runs | `*/15 * * * *` | `curl -sS -H "x-cron-secret: $CRON_SECRET" -X POST https://TON-DOMAINE/api/cron/scheduled-runs` |
+| Revshare Pro | `0 4 1 * *` | `curl -sS -H "x-cron-secret: $CRON_SECRET" -X POST https://TON-DOMAINE/api/cron/revshare` |
+
+Guide détaillé : [docs/RENDER-SETUP.md](./docs/RENDER-SETUP.md)
 
 ### 7. Sentry + PostHog (priorité 3)
 

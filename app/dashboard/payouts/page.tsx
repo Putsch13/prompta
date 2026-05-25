@@ -30,6 +30,8 @@ export default function PayoutsPage() {
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [mrrCents, setMrrCents] = useState(0);
   const [activeSubs, setActiveSubs] = useState(0);
+  const [proRevshareCents, setProRevshareCents] = useState(0);
+  const [proRunsThisMonth, setProRunsThisMonth] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -72,6 +74,8 @@ export default function PayoutsPage() {
           const stats = await statsRes.json();
           setMrrCents(stats.mrrCents ?? 0);
           setActiveSubs(stats.activeSubs ?? 0);
+          setProRevshareCents(stats.proRevshareCents ?? 0);
+          setProRunsThisMonth(stats.proRunsThisMonth ?? 0);
         }
       }
 
@@ -203,6 +207,16 @@ export default function PayoutsPage() {
           </p>
         </div>
       </div>
+
+      {(proRunsThisMonth > 0 || proRevshareCents > 0) && (
+        <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-5">
+          <p className="text-sm font-medium text-ink">Prompta Pro — ce mois</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            {proRunsThisMonth} run(s) via abonnés Pro · part estimée{" "}
+            <strong>{(proRevshareCents / 100).toFixed(2)} €</strong>
+          </p>
+        </div>
+      )}
 
       {/* Historique des ventes */}
       <div className="mt-8">

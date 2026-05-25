@@ -1254,6 +1254,69 @@ export interface Database {
         };
         Relationships: [];
       };
+      platform_pro_usage: {
+        Row: {
+          id: string;
+          period_month: string;
+          listing_id: string;
+          creator_id: string;
+          run_count: number;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          period_month: string;
+          listing_id: string;
+          creator_id: string;
+          run_count?: number;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          period_month?: string;
+          listing_id?: string;
+          creator_id?: string;
+          run_count?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_pro_revshare: {
+        Row: {
+          id: string;
+          period_month: string;
+          creator_id: string;
+          listing_id: string | null;
+          run_count: number;
+          pool_cents: number;
+          amount_cents: number;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          period_month: string;
+          creator_id: string;
+          listing_id?: string | null;
+          run_count?: number;
+          pool_cents?: number;
+          amount_cents?: number;
+          status?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          period_month?: string;
+          creator_id?: string;
+          listing_id?: string | null;
+          run_count?: number;
+          pool_cents?: number;
+          amount_cents?: number;
+          status?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       admin_kpis: {
