@@ -5,6 +5,8 @@ import { callModel } from "@/lib/llm/gateway";
 import { getUserKey, providerForModel, invalidateKey } from "@/lib/keys";
 import { estimateCost } from "@/lib/llm/providers";
 import type { LLMProvider } from "@/lib/llm/providers";
+import { getCreditBalance, debitCreditsForRun, RUN_CREDIT_COST_CENTS } from "@/lib/credits";
+import { hasPlatformPro } from "@/lib/platform-access";
 
 export const dynamic = "force-dynamic";
 
@@ -86,8 +88,9 @@ export async function POST(request: NextRequest) {
 
   const isOwner = listing.creator_id === user.id;
   const isFree = listing.price_cents === 0;
+  const isPro = await hasPlatformPro(user.id);
 
-  if (!isFree && !isOwner) {
+  if (!isFree && !isOwner && !isPro) {
     const { data: purchase } = await admin
       .from("purchases")
       .select("id")
@@ -127,26 +130,35 @@ export async function POST(request: NextRequest) {
 
   const provider = providerForModel(model) as LLMProvider;
   let apiKey = await getUserKey(user.id, provider);
+  let usedCredits = false;
 
   if (!apiKey) {
-    if (isFree) {
-      apiKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`] ?? null;
-      if (!apiKey) {
-        return new Response(
-          JSON.stringify({ error: "configure_keys", message: "Configurez vos clés API pour lancer ce prompt" }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
-      }
+    apiKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`] ?? null;
+
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: "configure_keys", message: "Configurez vos clés API pour lancer ce prompt" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const creditBalance = await getCreditBalance(user.id);
+    if (creditBalance >= RUN_CREDIT_COST_CENTS) {
+      usedCredits = true;
+    } else if (isFree) {
       const allowed = await checkFreeQuota(user.id);
       if (!allowed) {
         return new Response(
-          JSON.stringify({ error: "quota_exceeded", message: "Quota gratuit atteint (20 runs/jour)" }),
+          JSON.stringify({
+            error: "quota_exceeded",
+            message: "Quota gratuit atteint — achetez des crédits ou configurez vos clés",
+          }),
           { status: 429, headers: { "Content-Type": "application/json" } }
         );
       }
-    } else {
+    } else if (!isPro) {
       return new Response(
-        JSON.stringify({ error: "configure_keys", message: "Configurez vos clés API" }),
+        JSON.stringify({ error: "configure_keys", message: "Configurez vos clés API ou souscrivez à Prompta Pro" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -166,6 +178,17 @@ export async function POST(request: NextRequest) {
     })
     .select("id")
     .single();
+
+  if (usedCredits && run?.id) {
+    const debited = await debitCreditsForRun(user.id, run.id);
+    if (!debited) {
+      await admin.from("runs").update({ status: "failed", error_message: "Crédits insuffisants" }).eq("id", run.id);
+      return new Response(JSON.stringify({ error: "insufficient_credits" }), {
+        status: 402,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

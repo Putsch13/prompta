@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [samlDomain, setSamlDomain] = useState("");
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -46,6 +47,35 @@ export default function LoginPage() {
       },
     });
     if (error) setError(error.message);
+  }
+
+  async function handleMicrosoftLogin() {
+    setError(null);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirect)}`,
+        scopes: "email openid profile",
+      },
+    });
+    if (error) setError(error.message);
+  }
+
+  async function handleSamlLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!samlDomain.trim()) return;
+    const { data, error } = await supabase.auth.signInWithSSO({
+      domain: samlDomain.trim(),
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirect)}`,
+      },
+    });
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    if (data?.url) window.location.href = data.url;
   }
 
   return (
@@ -86,6 +116,19 @@ export default function LoginPage() {
             />
           </svg>
           Continuer avec Google
+        </button>
+
+        <button
+          onClick={handleMicrosoftLogin}
+          className="mt-3 flex w-full items-center justify-center gap-3 rounded-lg border border-line bg-card px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-card2"
+        >
+          <svg className="h-5 w-5" viewBox="0 0 23 23">
+            <path fill="#f25022" d="M1 1h10v10H1z" />
+            <path fill="#00a4ef" d="M12 1h10v10H12z" />
+            <path fill="#7fba00" d="M1 12h10v10H1z" />
+            <path fill="#ffb900" d="M12 12h10v10H12z" />
+          </svg>
+          Continuer avec Microsoft
         </button>
 
         <div className="relative my-6">
@@ -166,6 +209,30 @@ export default function LoginPage() {
             Créer un compte
           </Link>
         </p>
+
+        <details className="mt-6 rounded-lg border border-line bg-card2 p-4">
+          <summary className="cursor-pointer text-sm font-medium text-ink-soft">
+            Connexion SSO entreprise (SAML)
+          </summary>
+          <form onSubmit={handleSamlLogin} className="mt-3 space-y-2">
+            <input
+              type="text"
+              value={samlDomain}
+              onChange={(e) => setSamlDomain(e.target.value)}
+              placeholder="votre-entreprise.com"
+              className="h-9 w-full rounded-lg border border-line bg-card px-3 text-sm"
+            />
+            <button
+              type="submit"
+              className="w-full rounded-lg border border-line py-2 text-xs font-medium text-ink hover:bg-card"
+            >
+              Connexion SAML
+            </button>
+            <p className="text-[11px] text-ink-faint">
+              Nécessite la configuration SAML dans Supabase (palier Scale).
+            </p>
+          </form>
+        </details>
       </div>
     </div>
   );

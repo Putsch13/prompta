@@ -6,6 +6,8 @@ import {
   Plus,
   Key,
   Repeat,
+  History,
+  Coins,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +15,8 @@ export const dynamic = "force-dynamic";
 const navItems = [
   { href: "/dashboard", label: "Aperçu", icon: LayoutDashboard },
   { href: "/dashboard/connexions", label: "Connexions", icon: Key },
+  { href: "/dashboard/runs", label: "Historique runs", icon: History },
+  { href: "/dashboard/credits", label: "Crédits", icon: Coins },
   { href: "/dashboard/abonnements", label: "Abonnements", icon: Repeat },
   { href: "/dashboard/payouts", label: "Revenus", icon: CreditCard },
   { href: "/dashboard/edit-profile", label: "Profil", icon: User },

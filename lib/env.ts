@@ -14,6 +14,8 @@ const envSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   CRON_SECRET: z.string().min(1).optional(),
+  E2B_API_KEY: z.string().min(1).optional(),
+  ENCRYPTION_KEY: z.string().min(1).optional(),
 });
 
 const clientSchema = z.object({

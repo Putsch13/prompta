@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { runAgent } from "@/lib/agent/orchestrator";
-import { getUserKey } from "@/lib/keys";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +14,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  const { listingId, versionId, inputs = {} } = await request.json();
+  const { listingId, versionId, inputs = {}, async: runAsync = true } = await request.json();
 
   const admin = createAdminClient();
 
@@ -47,7 +45,9 @@ export async function POST(request: NextRequest) {
     .eq("status", "completed")
     .maybeSingle();
 
-  if (!subscription && !purchase) {
+  const isPro = await (await import("@/lib/platform-access")).hasPlatformPro(user.id);
+
+  if (!subscription && !purchase && !isPro) {
     return NextResponse.json({ error: "Abonnement ou achat requis" }, { status: 403 });
   }
 
@@ -57,30 +57,53 @@ export async function POST(request: NextRequest) {
     .eq("id", versionId)
     .single();
 
-  const manifest = version?.env;
-  if (!manifest) {
+  if (!version?.env) {
     return NextResponse.json({ error: "Manifeste agent manquant" }, { status: 400 });
+  }
+
+  if (runAsync) {
+    const { data: agentRun } = await admin
+      .from("listing_agent_runs")
+      .insert({
+        user_id: user.id,
+        listing_id: listingId,
+        version_id: versionId,
+        inputs,
+        status: "pending",
+      })
+      .select("id")
+      .single();
+
+    return NextResponse.json({
+      runId: agentRun?.id,
+      status: "queued",
+      message: "Agent en file d'attente — traité par le worker",
+    });
   }
 
   const providers = ["openai", "anthropic", "google", "mistral", "serper"] as const;
   const apiKeys: Record<string, string> = {};
-
+  const { getUserKey } = await import("@/lib/keys");
   for (const p of providers) {
     const key = await getUserKey(user.id, p);
     if (key) apiKeys[p] = key;
   }
+
+  const { runAgent } = await import("@/lib/agent/orchestrator");
 
   const { data: agentRun } = await admin
     .from("listing_agent_runs")
     .insert({
       user_id: user.id,
       listing_id: listingId,
+      version_id: versionId,
+      inputs,
       status: "running",
     })
     .select("id")
     .single();
 
-  const result = await runAgent(manifest, {
+  const result = await runAgent(version.env, {
     userId: user.id,
     listingId,
     inputs,

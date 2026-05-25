@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ExternalLink, CreditCard } from "lucide-react";
+import { ExternalLink, CreditCard, Sparkles, Loader2 } from "lucide-react";
+import { PROMPTA_PRO_PRICE_CENTS } from "@/lib/stripe-plans";
 
 interface Subscription {
   id: string;
@@ -11,16 +12,31 @@ interface Subscription {
   listing: { title: string; slug: string } | null;
 }
 
+interface PlatformSub {
+  status: string;
+  plan: string;
+  current_period_end: string | null;
+}
+
 export default function AbonnementsPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [platformSub, setPlatformSub] = useState<PlatformSub | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
+  const [loadingPro, setLoadingPro] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const res = await fetch("/api/subscriptions");
-      if (res.ok) {
-        const data = await res.json();
+      const [subsRes, proRes] = await Promise.all([
+        fetch("/api/subscriptions"),
+        fetch("/api/platform-subscription"),
+      ]);
+      if (subsRes.ok) {
+        const data = await subsRes.json();
         setSubscriptions(data.subscriptions ?? []);
+      }
+      if (proRes.ok) {
+        const data = await proRes.json();
+        setPlatformSub(data.subscription ?? null);
       }
     }
     load();
@@ -34,6 +50,16 @@ export default function AbonnementsPage() {
     setLoadingPortal(false);
   }
 
+  async function subscribePro() {
+    setLoadingPro(true);
+    const res = await fetch("/api/stripe/platform-subscribe", { method: "POST" });
+    const data = await res.json();
+    if (data.url) window.location.href = data.url;
+    setLoadingPro(false);
+  }
+
+  const isProActive = platformSub?.status === "active";
+
   return (
     <div>
       <div className="mb-8 flex items-center justify-between">
@@ -42,7 +68,7 @@ export default function AbonnementsPage() {
             Mes abonnements
           </h1>
           <p className="mt-2 text-ink-soft">
-            Gérez vos abonnements aux agents.
+            Gérez Prompta Pro et vos abonnements aux agents.
           </p>
         </div>
         <button
@@ -53,6 +79,42 @@ export default function AbonnementsPage() {
           <CreditCard className="h-4 w-4" />
           {loadingPortal ? "Chargement…" : "Portail Stripe"}
         </button>
+      </div>
+
+      <div className="mb-8 rounded-xl border border-accent/30 bg-accent/5 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-1 h-6 w-6 text-accent" />
+            <div>
+              <h2 className="font-display text-lg font-semibold text-ink">
+                Prompta Pro
+              </h2>
+              <p className="mt-1 text-sm text-ink-soft">
+                Accès à tout le catalogue d&apos;agents —{" "}
+                {(PROMPTA_PRO_PRICE_CENTS / 100).toFixed(2)} €/mois
+              </p>
+              {isProActive && platformSub?.current_period_end && (
+                <p className="mt-1 text-xs text-green-600">
+                  Actif · renouvellement le{" "}
+                  {new Date(platformSub.current_period_end).toLocaleDateString("fr-FR")}
+                </p>
+              )}
+            </div>
+          </div>
+          {!isProActive && (
+            <button
+              onClick={subscribePro}
+              disabled={loadingPro}
+              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
+            >
+              {loadingPro ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Souscrire à Pro"
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {subscriptions.length === 0 ? (

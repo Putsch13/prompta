@@ -18,6 +18,11 @@ export const AgentStepSchema = z.discriminatedUnion("type", [
     tool: z.enum(["web_search", "http_fetch", "file_read"]),
     params: z.record(z.string(), z.string()).default({}),
   }),
+  z.object({
+    type: z.literal("code"),
+    language: z.enum(["python"]).default("python"),
+    source: z.string(),
+  }),
 ]);
 
 export const AgentManifestSchema = z.object({

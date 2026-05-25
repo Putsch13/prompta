@@ -51,6 +51,18 @@ export default function SignupPage() {
     if (error) setError(error.message);
   }
 
+  async function handleMicrosoftSignup() {
+    setError(null);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent("/onboarding")}`,
+        scopes: "email openid profile",
+      },
+    });
+    if (error) setError(error.message);
+  }
+
   if (confirmSent) {
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-bg px-4 py-12">
@@ -107,6 +119,19 @@ export default function SignupPage() {
             />
           </svg>
           Continuer avec Google
+        </button>
+
+        <button
+          onClick={handleMicrosoftSignup}
+          className="mt-3 flex w-full items-center justify-center gap-3 rounded-lg border border-line bg-card px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-card2"
+        >
+          <svg className="h-5 w-5" viewBox="0 0 23 23">
+            <path fill="#f25022" d="M1 1h10v10H1z" />
+            <path fill="#00a4ef" d="M12 1h10v10H12z" />
+            <path fill="#7fba00" d="M1 12h10v10H1z" />
+            <path fill="#ffb900" d="M12 12h10v10H12z" />
+          </svg>
+          Continuer avec Microsoft
         </button>
 
         <div className="relative my-6">

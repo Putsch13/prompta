@@ -677,6 +677,8 @@ export interface Database {
           id: string;
           user_id: string;
           listing_id: string | null;
+          version_id: string | null;
+          inputs: Json;
           status: string;
           steps_completed: number;
           max_steps: number;
@@ -688,6 +690,8 @@ export interface Database {
           id?: string;
           user_id: string;
           listing_id?: string | null;
+          version_id?: string | null;
+          inputs?: Json;
           status?: string;
           steps_completed?: number;
           max_steps?: number;
@@ -699,6 +703,8 @@ export interface Database {
           id?: string;
           user_id?: string;
           listing_id?: string | null;
+          version_id?: string | null;
+          inputs?: Json;
           status?: string;
           steps_completed?: number;
           max_steps?: number;
@@ -1008,6 +1014,8 @@ export interface Database {
           slug: string;
           name: string;
           stripe_customer_id: string | null;
+          stripe_subscription_id: string | null;
+          subscription_status: string;
           seat_limit: number;
           plan: string;
           created_at: string;
@@ -1017,6 +1025,8 @@ export interface Database {
           slug: string;
           name: string;
           stripe_customer_id?: string | null;
+          stripe_subscription_id?: string | null;
+          subscription_status?: string;
           seat_limit?: number;
           plan?: string;
           created_at?: string;
@@ -1026,6 +1036,8 @@ export interface Database {
           slug?: string;
           name?: string;
           stripe_customer_id?: string | null;
+          stripe_subscription_id?: string | null;
+          subscription_status?: string;
           seat_limit?: number;
           plan?: string;
           created_at?: string;
@@ -1061,7 +1073,10 @@ export interface Database {
           title: string;
           type: string;
           status: string;
+          content: Json;
           created_by: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -1071,7 +1086,10 @@ export interface Database {
           title: string;
           type: string;
           status?: string;
+          content?: Json;
           created_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -1081,7 +1099,88 @@ export interface Database {
           title?: string;
           type?: string;
           status?: string;
+          content?: Json;
           created_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      org_audit_log: {
+        Row: {
+          id: string;
+          org_id: string;
+          user_id: string | null;
+          action: string;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          user_id?: string | null;
+          action: string;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          org_id?: string;
+          user_id?: string | null;
+          action?: string;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      user_credits: {
+        Row: {
+          user_id: string;
+          balance_cents: number;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          balance_cents?: number;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          balance_cents?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      credit_transactions: {
+        Row: {
+          id: string;
+          user_id: string;
+          amount_cents: number;
+          kind: string;
+          description: string | null;
+          run_id: string | null;
+          stripe_session_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          amount_cents: number;
+          kind: string;
+          description?: string | null;
+          run_id?: string | null;
+          stripe_session_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          amount_cents?: number;
+          kind?: string;
+          description?: string | null;
+          run_id?: string | null;
+          stripe_session_id?: string | null;
           created_at?: string;
         };
         Relationships: [];

@@ -5,6 +5,7 @@ import { Plus, Download, Star, Eye, DollarSign, Pencil } from "lucide-react";
 import type { Metadata } from "next";
 import { TypeBadge, PriceTag, fmt } from "@/components/ui";
 import { PromoteButton } from "@/components/PromoteButton";
+import { OnboardingChecklist } from "@/components/onboarding/OnboardingChecklist";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,8 @@ export default async function DashboardPage() {
           value={totalPurchases || 0}
         />
       </div>
+
+      <OnboardingChecklist userId={user.id} />
 
       <div className="mt-10">
         <div className="flex items-center justify-between">

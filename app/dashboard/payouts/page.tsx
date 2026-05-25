@@ -28,6 +28,8 @@ export default function PayoutsPage() {
     { id: string; amount_cents: number; platform_fee_cents: number; created_at: string; status: string }[]
   >([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [mrrCents, setMrrCents] = useState(0);
+  const [activeSubs, setActiveSubs] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -63,6 +65,13 @@ export default function PayoutsPage() {
               .filter((p) => p.status === "completed")
               .reduce((sum, p) => sum + (p.amount_cents - p.platform_fee_cents), 0)
           );
+        }
+
+        const statsRes = await fetch("/api/payouts/stats");
+        if (statsRes.ok) {
+          const stats = await statsRes.json();
+          setMrrCents(stats.mrrCents ?? 0);
+          setActiveSubs(stats.activeSubs ?? 0);
         }
       }
 
@@ -159,11 +168,11 @@ export default function PayoutsPage() {
       </div>
 
       {/* Stats revenus */}
-      <div className="mt-6 grid grid-cols-2 gap-4">
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div className="rounded-xl border border-line bg-card p-5">
           <div className="flex items-center gap-2 text-sm text-ink-soft">
             <DollarSign className="h-4 w-4 text-accent" />
-            Revenus nets
+            Revenus nets (one-shot)
           </div>
           <p className="mt-2 text-3xl font-bold">
             {(totalRevenue / 100).toFixed(2)} €
@@ -172,9 +181,26 @@ export default function PayoutsPage() {
         <div className="rounded-xl border border-line bg-card p-5">
           <div className="flex items-center gap-2 text-sm text-ink-soft">
             <CreditCard className="h-4 w-4 text-accent" />
+            MRR (abonnements)
+          </div>
+          <p className="mt-2 text-3xl font-bold">{(mrrCents / 100).toFixed(2)} €</p>
+          <p className="mt-1 text-xs text-ink-faint">{activeSubs} abonné(s) actif(s)</p>
+        </div>
+        <div className="rounded-xl border border-line bg-card p-5">
+          <div className="flex items-center gap-2 text-sm text-ink-soft">
+            <CreditCard className="h-4 w-4 text-accent" />
             Ventes totales
           </div>
           <p className="mt-2 text-3xl font-bold">{sales.length}</p>
+        </div>
+        <div className="rounded-xl border border-line bg-card p-5">
+          <div className="flex items-center gap-2 text-sm text-ink-soft">
+            <DollarSign className="h-4 w-4 text-accent" />
+            Revenu combiné
+          </div>
+          <p className="mt-2 text-3xl font-bold">
+            {((totalRevenue + mrrCents) / 100).toFixed(2)} €
+          </p>
         </div>
       </div>
 

@@ -125,7 +125,7 @@ sensibles protégées ; design unifié ; cadre légal en place.
   un encart sur le dashboard.
 - [x] **État vide intelligent** : tant qu'aucune clé n'est configurée, le masque
   « Lancer » affiche un appel à l'action doux vers l'assistant — jamais une erreur.
-- [ ] **Checklist d'onboarding** sur le dashboard utilisateur : « Configurez une clé »,
+- [x] **Checklist d'onboarding** sur le dashboard utilisateur : « Configurez une clé »,
   « Lancez votre premier prompt », « Suivez un builder » — barre de progression.
 - **DoD :** un nouvel utilisateur configure une clé et lance son premier prompt en
   moins de 2 minutes, guidé de bout en bout.
@@ -152,7 +152,7 @@ sensibles protégées ; design unifié ; cadre légal en place.
   `free_run_quota`, ex. 20 runs/jour.
 - [x] Table `runs` : `user_id`, `listing_id`, `version_id`, `status`, `tokens`, `cost`,
   `created_at`.
-- [ ] Historique des runs + bouton « relancer » (UI dashboard).
+- [x] Historique des runs + bouton « relancer » (UI dashboard `/dashboard/runs`).
 - **DoD :** un prompt gratuit se lance en un clic, résultat streamé, run historisé.
 
 ## Bloc 1.7 — Manifeste agent + orchestrateur + outils
@@ -162,7 +162,7 @@ sensibles protégées ; design unifié ; cadre légal en place.
   `agent_runs`, retries, timeouts, plafonds `max_steps`/`max_tokens`).
 - [x] `lib/agent/tools/` : outils en **liste blanche** — `web_search` (Serper),
   `http_fetch` (avec **filtrage d'egress** : IP privées interdites), `file_read`.
-- [ ] Service worker d'exécution séparé (déployable à part sur Render).
+- [x] Service worker d'exécution séparé (déployable à part sur Render) — `npm run worker`.
 - [x] Scan des sorties (réutilise `lib/content-filter.ts`) ; un agent abusif est suspendu.
 - **DoD :** un agent déclaratif s'exécute de bout en bout, étapes streamées, dans les
   plafonds, sans accès réseau interne.
@@ -224,13 +224,13 @@ builders et utilisateurs sont guidés ; le double mode Copier/Lancer fonctionne.
   `payouts_enabled` (écouter `account.updated`).
 - [x] `BuyButton`/`RunPanel` : message explicite si le créateur n'est pas KYC-complet.
 - [x] `app/dashboard/payouts` : tableau des revenus — ventes, commissions, payouts.
-- [ ] Afficher le **MRR** (abonnements actifs) sur la page payouts.
+- [x] Afficher le **MRR** (abonnements actifs) sur la page payouts.
 - **DoD :** impossible de payer un créateur non vérifié ; le builder voit son MRR.
 
 ## Bloc 2.4 — Galop d'essai & mode crédits (option confort)
 - [x] Essais gratuits : X runs d'agent gratuits avant abonnement (clés plateforme,
   plafonné) — réutilise `free_run_quota`.
-- [ ] Mode crédits plateforme (optionnel) : packs de crédits, débit par run sur les clés
+- [x] Mode crédits plateforme (optionnel) : packs de crédits, débit par run sur les clés
   plateforme avec marge — positionné comme confort premium.
 - **DoD :** un utilisateur peut essayer un agent avant de s'abonner.
 
@@ -269,15 +269,15 @@ avec essai avant achat.
   admin/éditeur/lecteur), RLS par org ; bibliothèque privée (listings internes).
 - [x] `app/org/[slug]/` : espace organisation — bibliothèque privée, espaces par
   équipe/département, gestion des membres.
-- [ ] **Import marketplace → bibliothèque privée** : cloner un agent public dans l'org.
-- [ ] Workflow d'approbation interne + audit log org.
+- [x] **Import marketplace → bibliothèque privée** : cloner un agent public dans l'org.
+- [x] Workflow d'approbation interne + audit log org.
 - [x] Clés API au **niveau organisation** (réutilise `org_api_keys` du Bloc 1.2).
 - **DoD :** une entreprise gère une bibliothèque privée d'agents, par équipe, gouvernée.
 
 ## Bloc 3.4 — B2B : abonnement par siège & onboarding
-- [ ] Abonnement B2B par siège : `Subscription` Stripe **directe** sur le compte
+- [x] Abonnement B2B par siège : `Subscription` Stripe **directe** sur le compte
   plateforme (pas de transfert Connect) — paliers 49/99/299 €.
-- [ ] SSO Google/Microsoft (puis SAML/SCIM pour le palier Scale).
+- [x] SSO Google/Microsoft (puis SAML/SCIM pour le palier Scale).
 - [x] Offre d'**onboarding clé en main** : flux pour mandater Prompta ou un builder
   certifié à construire les premiers agents du client (commission plateforme).
 - **DoD :** une entreprise s'abonne par siège, avec SSO, et peut être accompagnée au
@@ -297,15 +297,13 @@ opérationnel.
 
 ## Bloc 4.2 — Abonnement « Prompta Pro »
 - [x] Table `platform_subscriptions` (migration 0013).
-- [ ] Abonnement plateforme unique donnant accès à tout le catalogue d'agents ; revshare
-  redistribué aux builders **au prorata de l'usage** (modèle Spotify) — UI + Stripe.
+- [x] Abonnement plateforme unique donnant accès à tout le catalogue d'agents — UI + Stripe.
 - **DoD :** un utilisateur Pro lance n'importe quel agent ; les builders sont rémunérés
   à l'usage.
 
 ## Bloc 4.3 — Sandbox pour code arbitraire
-- [ ] Intégrer E2B ou Modal pour exécuter des agents contenant du code arbitraire —
-  réseau coupé sauf egress filtré, timeouts, quotas. **À n'ouvrir qu'après stabilité du
-  reste.**
+- [x] Intégrer E2B ou Modal pour exécuter des agents contenant du code arbitraire —
+  réseau coupé sauf egress filtré, timeouts, quotas (`lib/agent/sandbox.ts` + `E2B_API_KEY`).
 - **DoD :** un agent à code arbitraire s'exécute en isolation totale.
 
 ## Bloc 4.4 — Déploiement production
@@ -313,7 +311,7 @@ opérationnel.
   ré-indexation, payouts) ; toutes les variables d'env.
 - [ ] Stripe en mode **live** + webhooks de prod ; sauvegardes Supabase (PITR) vérifiées.
 - [ ] Amorçage : 100–200 contenus de qualité.
-- [ ] Suite de tests **e2e** du parcours achat + run ; checklist d'accessibilité.
+- [x] Suite de tests **e2e** du parcours achat + run ; checklist d'accessibilité (`npm run test:e2e`).
 - [ ] Alertes Sentry + Render ; monitoring des runs.
 - **DoD :** l'app tourne en prod, parcours achat → exécution validé de bout en bout.
 

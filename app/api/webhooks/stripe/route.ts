@@ -2,6 +2,7 @@ import { getStripe, computeFees } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
+import { ORG_PLANS, type OrgPlanKey } from "@/lib/stripe-plans";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,60 @@ export async function POST(request: Request) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
+      const sessionType = session.metadata?.type;
+
+      if (sessionType === "credits") {
+        const buyerId = session.metadata?.buyer_id;
+        const creditsCents = parseInt(session.metadata?.credits_cents ?? "0", 10);
+        if (buyerId && creditsCents > 0) {
+          const { addCredits } = await import("@/lib/credits");
+          await addCredits(
+            buyerId,
+            creditsCents,
+            "purchase",
+            "Achat pack crédits",
+            session.id
+          );
+        }
+        break;
+      }
+
+      if (sessionType === "platform_pro") {
+        const buyerId = session.metadata?.buyer_id;
+        const subId = session.subscription as string | null;
+        if (buyerId && subId) {
+          await admin.from("platform_subscriptions").upsert(
+            {
+              user_id: buyerId,
+              stripe_subscription_id: subId,
+              plan: "pro",
+              status: "active",
+            },
+            { onConflict: "user_id" }
+          );
+        }
+        break;
+      }
+
+      if (sessionType === "org_subscription") {
+        const orgId = session.metadata?.org_id;
+        const plan = session.metadata?.plan;
+        const subId = session.subscription as string | null;
+        if (orgId && subId) {
+          const planConfig = plan ? ORG_PLANS[plan as OrgPlanKey] : null;
+          await admin
+            .from("organizations")
+            .update({
+              stripe_subscription_id: subId,
+              subscription_status: "active",
+              plan: plan ?? "starter",
+              seat_limit: planConfig?.seats ?? 10,
+            })
+            .eq("id", orgId);
+        }
+        break;
+      }
+
       const listingId = session.metadata?.listing_id;
       const buyerId = session.metadata?.buyer_id;
 
@@ -140,8 +195,46 @@ export async function POST(request: Request) {
         status: string;
         customer: string;
         current_period_end: number;
-        metadata?: { listing_id?: string; buyer_id?: string };
+        metadata?: {
+          listing_id?: string;
+          buyer_id?: string;
+          type?: string;
+          org_id?: string;
+          plan?: string;
+        };
       };
+
+      if (subscription.metadata?.type === "platform_pro") {
+        const buyerId = subscription.metadata.buyer_id;
+        if (buyerId) {
+          await admin.from("platform_subscriptions").upsert(
+            {
+              user_id: buyerId,
+              stripe_subscription_id: subscription.id,
+              plan: "pro",
+              status: subscription.status === "active" ? "active" : subscription.status,
+              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            },
+            { onConflict: "user_id" }
+          );
+        }
+        break;
+      }
+
+      if (subscription.metadata?.type === "org_subscription") {
+        const orgId = subscription.metadata.org_id;
+        if (orgId) {
+          await admin
+            .from("organizations")
+            .update({
+              subscription_status: subscription.status === "active" ? "active" : subscription.status,
+              stripe_subscription_id: subscription.id,
+            })
+            .eq("id", orgId);
+        }
+        break;
+      }
+
       const listingId = subscription.metadata?.listing_id;
       const buyerId = subscription.metadata?.buyer_id;
 

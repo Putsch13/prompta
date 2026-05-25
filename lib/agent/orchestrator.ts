@@ -2,6 +2,7 @@ import { callModel } from "@/lib/llm/gateway";
 import type { LLMProvider } from "@/lib/llm/providers";
 import { AgentManifestSchema, type AgentManifest, type AgentStep } from "./schema";
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
+import { runCodeInSandbox } from "./sandbox";
 
 export interface OrchestratorContext {
   userId: string;
@@ -67,6 +68,15 @@ async function executeStep(
       default:
         throw new Error(`Outil non autorisé: ${step.tool}`);
     }
+  }
+
+  if (step.type === "code") {
+    const code = interpolate(step.source, vars);
+    const output = await runCodeInSandbox(code);
+    if (scanOutput(output)) {
+      throw new Error("Sortie code interdite détectée");
+    }
+    return output;
   }
 
   throw new Error("Étape inconnue");
