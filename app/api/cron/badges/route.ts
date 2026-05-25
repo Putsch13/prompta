@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
   }
 
   let badgesAwarded = 0;
+  let badgesRevoked = 0;
 
   for (const profile of profiles) {
     const { data: listings } = await supabase
@@ -54,7 +55,41 @@ export async function POST(request: NextRequest) {
     const badgesToAward: string[] = [];
 
     if (profile.is_verified && badgeMap.has("verified")) {
-      badgesToAward.push(badgeMap.get("verified")!);
+      const { data: agentListings } = await supabase
+        .from("listings")
+        .select("id")
+        .eq("creator_id", profile.id)
+        .in("type", ["agent", "workflow"])
+        .eq("status", "published");
+
+      let keepVerified = true;
+      for (const listing of agentListings ?? []) {
+        const { data: failedRuns } = await supabase
+          .from("listing_agent_runs")
+          .select("id")
+          .eq("listing_id", listing.id)
+          .eq("status", "failed")
+          .limit(3);
+        if ((failedRuns?.length ?? 0) >= 3) {
+          keepVerified = false;
+          break;
+        }
+      }
+
+      if (keepVerified) {
+        badgesToAward.push(badgeMap.get("verified")!);
+      } else {
+        await supabase
+          .from("profiles")
+          .update({ is_verified: false })
+          .eq("id", profile.id);
+        await supabase
+          .from("creator_badges")
+          .delete()
+          .eq("creator_id", profile.id)
+          .eq("badge_id", badgeMap.get("verified")!);
+        badgesRevoked++;
+      }
     }
 
     if (downloads >= 1000 && badgeMap.has("downloads_1k")) {
@@ -92,6 +127,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     message: "Badges recalculated",
     badgesAwarded,
+    badgesRevoked,
     profilesProcessed: profiles.length,
   });
 }

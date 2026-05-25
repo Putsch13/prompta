@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { creatorNetCents } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,7 @@ export async function GET() {
   const activeSubs = subs?.length ?? 0;
   const mrrCents = (subs ?? []).reduce((sum, s) => {
     const price = priceMap[s.listing_id] ?? 0;
-    return sum + Math.round(price * 0.8);
+    return sum + creatorNetCents(price);
   }, 0);
 
   const periodMonth = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}-01`;

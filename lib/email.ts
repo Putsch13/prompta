@@ -205,3 +205,36 @@ export async function sendSaleNotification(params: SaleNotificationParams) {
     console.error("Erreur envoi notification de vente:", error);
   }
 }
+
+interface SubscriptionConfirmationParams {
+  to: string;
+  listingTitle: string;
+  amountCents: number;
+}
+
+export async function sendSubscriptionConfirmation(params: SubscriptionConfirmationParams) {
+  const { to, listingTitle, amountCents } = params;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <h1 style="color: #0A66C2;">Abonnement confirmé</h1>
+  <p>Votre abonnement à <strong>${listingTitle}</strong> est actif.</p>
+  <p>Montant : <strong>${(amountCents / 100).toFixed(2)} €/mois</strong></p>
+  <p>Lancez l'agent avec vos clés API depuis la fiche listing.</p>
+  <p><a href="${APP_URL}/dashboard/connexions">Configurer mes clés →</a></p>
+</body>
+</html>`.trim();
+
+  try {
+    await getResend().emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject: `Abonnement confirmé — ${listingTitle}`,
+      html,
+    });
+  } catch (error) {
+    console.error("Erreur envoi confirmation abonnement:", error);
+  }
+}

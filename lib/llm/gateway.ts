@@ -217,6 +217,7 @@ export async function callModel(
   }
 }
 
+/** Streaming simulé en V1 — découpe la réponse en chunks, pas de vrai SSE provider. */
 export async function* streamModel(
   params: CallModelParams
 ): AsyncGenerator<string, CallModelResult, undefined> {

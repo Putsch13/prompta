@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { AgentManifestSchema } from "@/lib/agent/schema";
+import { parseListingEnv } from "@/lib/agent/env";
+import { shouldRunSync } from "@/lib/builder/manifest";
 
 export const dynamic = "force-dynamic";
 
@@ -14,52 +17,107 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  const { listingId, versionId, inputs = {}, async: runAsync = true } = await request.json();
+  const body = await request.json();
+  const {
+    listingId,
+    versionId,
+    inputs = {},
+    async: runAsyncParam,
+    preview,
+    manifest: previewManifest,
+  } = body as {
+    listingId?: string;
+    versionId?: string;
+    inputs?: Record<string, string>;
+    async?: boolean;
+    preview?: boolean;
+    manifest?: unknown;
+  };
 
   const admin = createAdminClient();
+  const providers = ["openai", "anthropic", "google", "mistral", "serper"] as const;
+  const apiKeys: Record<string, string> = {};
+  const { getUserKey } = await import("@/lib/keys");
+  for (const p of providers) {
+    const key = await getUserKey(user.id, p);
+    if (key) apiKeys[p] = key;
+  }
+
+  const { runAgent } = await import("@/lib/agent/orchestrator");
+
+  // Mode preview builder (Bloc 10)
+  if (preview && previewManifest) {
+    const parsed = AgentManifestSchema.safeParse(previewManifest);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Manifeste preview invalide" }, { status: 400 });
+    }
+    const result = await runAgent(parsed.data, {
+      userId: user.id,
+      listingId: listingId ?? "preview",
+      inputs,
+      apiKeys,
+    });
+    return NextResponse.json({ preview: true, ...result });
+  }
+
+  if (!listingId || !versionId) {
+    return NextResponse.json({ error: "listingId et versionId requis" }, { status: 400 });
+  }
 
   const { data: listing } = await admin
     .from("listings")
-    .select("id, type, status")
+    .select("id, type, status, creator_id")
     .eq("id", listingId)
-    .eq("status", "published")
     .single();
 
   if (!listing || listing.type === "prompt") {
     return NextResponse.json({ error: "Agent introuvable" }, { status: 404 });
   }
 
-  const { data: subscription } = await admin
-    .from("subscriptions")
-    .select("status")
-    .eq("user_id", user.id)
-    .eq("listing_id", listingId)
-    .eq("status", "active")
-    .maybeSingle();
+  const isOwner = listing.creator_id === user.id;
+  const isPublished = listing.status === "published";
 
-  const { data: purchase } = await admin
-    .from("purchases")
-    .select("id")
-    .eq("buyer_id", user.id)
-    .eq("listing_id", listingId)
-    .eq("status", "completed")
-    .maybeSingle();
+  if (!isOwner && !isPublished) {
+    return NextResponse.json({ error: "Agent introuvable" }, { status: 404 });
+  }
 
-  const isPro = await (await import("@/lib/platform-access")).hasPlatformPro(user.id);
+  if (!isOwner) {
+    const { data: subscription } = await admin
+      .from("subscriptions")
+      .select("status")
+      .eq("user_id", user.id)
+      .eq("listing_id", listingId)
+      .eq("status", "active")
+      .maybeSingle();
 
-  if (!subscription && !purchase && !isPro) {
-    return NextResponse.json({ error: "Abonnement ou achat requis" }, { status: 403 });
+    const { data: purchase } = await admin
+      .from("purchases")
+      .select("id")
+      .eq("buyer_id", user.id)
+      .eq("listing_id", listingId)
+      .eq("status", "completed")
+      .maybeSingle();
+
+    const isPro = await (await import("@/lib/platform-access")).hasPlatformPro(user.id);
+
+    if (!subscription && !purchase && !isPro) {
+      return NextResponse.json({ error: "Abonnement ou achat requis" }, { status: 403 });
+    }
   }
 
   const { data: version } = await admin
     .from("listing_versions")
-    .select("env")
+    .select("env, prompt_body")
     .eq("id", versionId)
     .single();
 
-  if (!version?.env) {
+  const parsedEnv = parseListingEnv(version?.env, version?.prompt_body);
+  if (!parsedEnv) {
     return NextResponse.json({ error: "Manifeste agent manquant" }, { status: 400 });
   }
+
+  const runAsync =
+    runAsyncParam !== undefined ? runAsyncParam : !shouldRunSync(parsedEnv.manifest);
 
   if (runAsync) {
     const { data: agentRun } = await admin
@@ -81,16 +139,6 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const providers = ["openai", "anthropic", "google", "mistral", "serper"] as const;
-  const apiKeys: Record<string, string> = {};
-  const { getUserKey } = await import("@/lib/keys");
-  for (const p of providers) {
-    const key = await getUserKey(user.id, p);
-    if (key) apiKeys[p] = key;
-  }
-
-  const { runAgent } = await import("@/lib/agent/orchestrator");
-
   const { data: agentRun } = await admin
     .from("listing_agent_runs")
     .insert({
@@ -103,7 +151,7 @@ export async function POST(request: NextRequest) {
     .select("id")
     .single();
 
-  const result = await runAgent(version.env, {
+  const result = await runAgent(parsedEnv.manifest, {
     userId: user.id,
     listingId,
     inputs,

@@ -4,6 +4,29 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+export async function GET() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
+  const { data: account } = await supabase
+    .from("stripe_accounts")
+    .select("charges_enabled, payouts_enabled, stripe_account_id")
+    .eq("profile_id", user.id)
+    .maybeSingle();
+
+  return NextResponse.json({
+    charges_enabled: account?.charges_enabled ?? false,
+    payouts_enabled: account?.payouts_enabled ?? false,
+    hasAccount: !!account?.stripe_account_id,
+  });
+}
+
 export async function POST() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

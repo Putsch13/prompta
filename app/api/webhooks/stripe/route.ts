@@ -257,13 +257,40 @@ export async function POST(request: Request) {
     }
 
     case "invoice.paid": {
-      const invoice = event.data.object as { subscription?: string | null };
+      const invoice = event.data.object as {
+        subscription?: string | null;
+        customer_email?: string | null;
+        amount_paid?: number;
+      };
       const subscriptionId = invoice.subscription;
       if (subscriptionId) {
         await admin
           .from("subscriptions")
           .update({ status: "active" })
           .eq("stripe_subscription_id", subscriptionId);
+
+        const { data: sub } = await admin
+          .from("subscriptions")
+          .select("user_id, listing_id")
+          .eq("stripe_subscription_id", subscriptionId)
+          .maybeSingle();
+
+        if (sub?.listing_id && invoice.customer_email) {
+          const { data: listing } = await admin
+            .from("listings")
+            .select("title, subscription_price_cents")
+            .eq("id", sub.listing_id)
+            .single();
+
+          if (listing) {
+            const { sendSubscriptionConfirmation } = await import("@/lib/email");
+            await sendSubscriptionConfirmation({
+              to: invoice.customer_email,
+              listingTitle: listing.title,
+              amountCents: listing.subscription_price_cents ?? invoice.amount_paid ?? 0,
+            });
+          }
+        }
       }
       break;
     }

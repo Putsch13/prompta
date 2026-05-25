@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { Copy, Play, Check, AlertTriangle, Settings } from "lucide-react";
+import { Copy, Play, Check, AlertTriangle, Settings, Coins } from "lucide-react";
 import { UserSetupWizard } from "@/components/onboarding/UserSetupWizard";
+import { estimateCost } from "@/lib/llm/providers";
+import { RUN_CREDIT_COST_CENTS } from "@/lib/credit-packs";
 
 interface EnvField {
   key: string;
@@ -19,6 +20,10 @@ interface Props {
   promptBody: string | null;
   models: string[];
   envFields?: EnvField[];
+  requiredSecrets?: string[];
+  pricingMode?: string;
+  subscriptionPriceCents?: number;
+  hasSubscription?: boolean;
   priceCents: number;
   isFree: boolean;
   canAccess: boolean;
@@ -50,6 +55,9 @@ export function RunPanel({
   promptBody,
   models,
   envFields = [],
+  requiredSecrets = [],
+  pricingMode,
+  subscriptionPriceCents = 0,
   priceCents,
   isFree,
   canAccess,
@@ -66,7 +74,15 @@ export function RunPanel({
   const [error, setError] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
 
-  const varNames = promptBody ? extractVariables(promptBody) : envFields.map((f) => f.key);
+  const [agentOutput, setAgentOutput] = useState("");
+  const [agentStatus, setAgentStatus] = useState<string | null>(null);
+
+  const varNames = promptBody
+    ? extractVariables(promptBody)
+    : envFields.map((f) => f.key);
+
+  const estimatedCostUsd = estimateCost(selectedModel, 500, 1500);
+  const creditCostEur = (RUN_CREDIT_COST_CENTS / 100).toFixed(2);
 
   const loadKeys = useCallback(async () => {
     const res = await fetch("/api/keys");
@@ -106,6 +122,46 @@ export function RunPanel({
   function hasRequiredKey(): boolean {
     const provider = getRequiredProvider();
     return keys.some((k) => k.provider === provider && k.is_valid);
+  }
+
+  function hasAllSecrets(): boolean {
+    const needed = requiredSecrets.length > 0 ? requiredSecrets : [getRequiredProvider()];
+    return needed.every((p) => keys.some((k) => k.provider === p && k.is_valid));
+  }
+
+  async function handleAgentRun() {
+    if (!versionId) return;
+    if (!hasAllSecrets()) {
+      setShowWizard(true);
+      return;
+    }
+
+    setRunning(true);
+    setAgentOutput("");
+    setAgentStatus(null);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/run/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId,
+          versionId,
+          inputs: variables,
+          async: false,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.message);
+      setAgentStatus(data.status);
+      setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
+      if (data.error) setError(data.error);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur agent");
+    } finally {
+      setRunning(false);
+    }
   }
 
   async function handleRun() {
@@ -183,15 +239,99 @@ export function RunPanel({
   }
 
   if (type !== "prompt" || !promptBody) {
+    const secrets =
+      requiredSecrets.length > 0 ? requiredSecrets : [getRequiredProvider()];
+
     return (
-      <div className="rounded-xl border border-line bg-card p-6">
-        <p className="text-sm text-ink-soft">
-          Les {type}s s&apos;exécutent via le mode agent.{" "}
-          <Link href="/dashboard/connexions" className="text-accent hover:underline">
-            Configurez vos clés
-          </Link>
-        </p>
-      </div>
+      <>
+        <div className="rounded-xl border border-line bg-card p-6">
+          <h3 className="font-display text-lg font-semibold text-ink">
+            Lancer cet {type}
+          </h3>
+          {pricingMode === "subscription" && !canAccess && !isFree && (
+            <p className="mt-2 text-sm text-ink-soft">
+              Abonnement recommandé — {(subscriptionPriceCents / 100).toFixed(2)} €/mois + vos clés API.
+            </p>
+          )}
+
+          {varNames.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {varNames.map((v) => (
+                <div key={v}>
+                  <label className="text-xs text-ink-soft">{v}</label>
+                  <input
+                    value={variables[v] ?? ""}
+                    onChange={(e) =>
+                      setVariables((prev) => ({ ...prev, [v]: e.target.value }))
+                    }
+                    className="mt-1 h-10 w-full rounded-lg border border-line px-3 text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-4">
+            <p className="mb-2 text-[11px] font-bold uppercase text-ink-soft">
+              Connexions requises
+            </p>
+            {secrets.map((p) => {
+              const key = keys.find((k) => k.provider === p);
+              return (
+                <div key={p} className="mb-1 flex justify-between rounded-lg bg-card2 px-3 py-2 text-sm">
+                  <span>{PROVIDER_LABELS[p] ?? p}</span>
+                  {key?.is_valid ? (
+                    <span className="text-green-600">✓ …{key.last4}</span>
+                  ) : (
+                    <button onClick={() => setShowWizard(true)} className="text-amber-600">
+                      Configurer
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={handleAgentRun}
+            disabled={running || (!canAccess && !isFree)}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            <Play className="h-4 w-4" />
+            {running ? "Exécution…" : "Lancer l'agent"}
+          </button>
+
+          {!canAccess && !isFree && (
+            <p className="mt-2 text-center text-xs text-ink-soft">
+              Abonnez-vous ou achetez pour lancer cet agent.
+            </p>
+          )}
+
+          {canAccess && !hasAllSecrets() && (
+            <p className="mt-2 flex items-center justify-center gap-1 text-xs text-ink-soft">
+              <Coins className="h-3 w-3" /> Mode BYOK — configurez vos clés
+            </p>
+          )}
+
+          {agentStatus && (
+            <p className="mt-2 text-sm">
+              Statut :{" "}
+              <span className={agentStatus === "completed" ? "text-green-600" : "text-red-600"}>
+                {agentStatus}
+              </span>
+            </p>
+          )}
+          {agentOutput && (
+            <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-card2 p-3 text-xs whitespace-pre-wrap">
+              {agentOutput}
+            </pre>
+          )}
+          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        </div>
+        {showWizard && (
+          <UserSetupWizard onClose={() => { setShowWizard(false); loadKeys(); }} />
+        )}
+      </>
     );
   }
 
@@ -358,13 +498,17 @@ export function RunPanel({
                 </div>
               </div>
 
+              <p className="mb-3 text-xs text-ink-faint">
+                Estimation ~{estimatedCostUsd.toFixed(4)} $ (500+1500 tokens) · ou {creditCostEur} €/run en crédits
+              </p>
+
               <button
                 onClick={handleRun}
                 disabled={running}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
               >
                 <Play className="h-4 w-4" />
-                {running ? "Exécution…" : "Lancer l'exécution"}
+                {running ? "Exécution simulée…" : "Lancer l'exécution"}
               </button>
 
               {!hasRequiredKey() && (

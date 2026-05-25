@@ -45,7 +45,8 @@ export async function saveUserKey(
   userId: string,
   provider: KeyProvider,
   plaintext: string,
-  eventType: "added" | "rotated" = "added"
+  eventType: "added" | "rotated" = "added",
+  isValid = true
 ): Promise<KeyMetadata> {
   const supabase = createAdminClient();
   const encrypted = encryptSecret(plaintext);
@@ -59,7 +60,7 @@ export async function saveUserKey(
         provider,
         encrypted_key: encrypted,
         last4,
-        is_valid: true,
+        is_valid: isValid,
         last_checked_at: new Date().toISOString(),
       },
       { onConflict: "owner_id,provider" }

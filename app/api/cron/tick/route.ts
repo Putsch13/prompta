@@ -49,7 +49,12 @@ export async function GET(req: NextRequest) {
   );
 
   if (due.length === 0) {
-    return NextResponse.json({ ran: [], message: `Rien de planifié à ${hour}h (jour ${day}).` });
+    const processed = await (await import("@/lib/worker/process-pending-runs")).processPendingAgentRuns(5);
+    return NextResponse.json({
+      ran: [],
+      pendingProcessed: processed,
+      message: `Rien de planifié à ${hour}h (jour ${day}). ${processed} run(s) marketplace traité(s).`,
+    });
   }
 
   // ── Lance chaque agent dû ──
@@ -63,5 +68,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ ran: results, at: `${hour}h jour ${day}` });
+  const pendingProcessed = await (await import("@/lib/worker/process-pending-runs")).processPendingAgentRuns(5);
+
+  return NextResponse.json({ ran: results, at: `${hour}h jour ${day}`, pendingProcessed });
 }

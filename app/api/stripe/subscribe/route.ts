@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, SUBSCRIPTION_COMMISSION_PERCENT } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       },
     ],
     subscription_data: {
-      application_fee_percent: 20,
+      application_fee_percent: SUBSCRIPTION_COMMISSION_PERCENT,
       transfer_data: { destination: stripeAccount.stripe_account_id },
       metadata: { listing_id: listingId, buyer_id: user.id },
     },

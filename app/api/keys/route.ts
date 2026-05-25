@@ -63,21 +63,15 @@ export async function POST(request: NextRequest) {
   }
 
   const valid = await testUserKey(user.id, provider, apiKey);
-  if (!valid) {
-    return NextResponse.json(
-      { error: "Clé API refusée par le fournisseur" },
-      { status: 400 }
-    );
-  }
-
   const key = await saveUserKey(
     user.id,
     provider,
     apiKey,
-    action === "rotate" ? "rotated" : "added"
+    action === "rotate" ? "rotated" : "added",
+    valid
   );
 
-  return NextResponse.json({ key });
+  return NextResponse.json({ key, valid });
 }
 
 export async function DELETE(request: NextRequest) {

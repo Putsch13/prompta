@@ -13,8 +13,16 @@ export function getStripe(): Stripe {
 }
 
 export const PLATFORM_FEE_PERCENT = 20;
+/** Alias source de vérité (Bloc 6). */
+export const PLATFORM_COMMISSION_PERCENT = PLATFORM_FEE_PERCENT;
+export const SUBSCRIPTION_COMMISSION_PERCENT = PLATFORM_FEE_PERCENT;
 
 export function computeFees(amountCents: number) {
-  const platformFeeCents = Math.round(amountCents * (PLATFORM_FEE_PERCENT / 100));
+  const platformFeeCents = Math.round(amountCents * (PLATFORM_COMMISSION_PERCENT / 100));
   return { platformFeeCents };
+}
+
+export function creatorNetCents(priceCents: number): number {
+  const { platformFeeCents } = computeFees(priceCents);
+  return priceCents - platformFeeCents;
 }

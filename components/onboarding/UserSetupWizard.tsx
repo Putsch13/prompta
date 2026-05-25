@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Check, ExternalLink } from "lucide-react";
+import { X, Check, ExternalLink, AlertTriangle } from "lucide-react";
 
 const PROVIDERS = [
   {
@@ -28,19 +28,32 @@ const PROVIDERS = [
     helpUrl: "https://console.mistral.ai/api-keys/",
     helpText: "Console Mistral → API Keys",
   },
+  {
+    id: "serper",
+    name: "Serper",
+    helpUrl: "https://serper.dev/api-key",
+    helpText: "Serper.dev → API Key",
+  },
 ];
+
+type KeySaveState = "idle" | "saving" | "saved" | "invalid";
 
 interface Props {
   onClose: () => void;
+  /** Pré-sélection pour rotation (Bloc 4) */
+  initialProvider?: string;
+  mode?: "setup" | "rotate";
 }
 
-export function UserSetupWizard({ onClose }: Props) {
-  const [step, setStep] = useState(1);
-  const [selected, setSelected] = useState<string[]>(["openai"]);
+export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Props) {
+  const [step, setStep] = useState(mode === "rotate" && initialProvider ? 2 : 1);
+  const [selected, setSelected] = useState<string[]>(
+    initialProvider ? [initialProvider] : ["openai"]
+  );
   const [keys, setKeys] = useState<Record<string, string>>({});
-  const [testing, setTesting] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [keyStates, setKeyStates] = useState<Record<string, KeySaveState>>({});
+  const [keyErrors, setKeyErrors] = useState<Record<string, string>>({});
+  const [testing, setTesting] = useState(false);
 
   function toggleProvider(id: string) {
     setSelected((prev) =>
@@ -48,47 +61,64 @@ export function UserSetupWizard({ onClose }: Props) {
     );
   }
 
-  async function saveKey(provider: string) {
+  async function saveKey(provider: string): Promise<boolean> {
     const apiKey = keys[provider];
-    if (!apiKey) return;
+    if (!apiKey) return false;
 
-    setTesting(provider);
-    setError(null);
+    setKeyStates((prev) => ({ ...prev, [provider]: "saving" }));
+    setKeyErrors((prev) => ({ ...prev, [provider]: "" }));
 
     const res = await fetch("/api/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, apiKey, action: "test" }),
+      body: JSON.stringify({
+        provider,
+        apiKey,
+        action: mode === "rotate" ? "rotate" : undefined,
+      }),
     });
 
     const data = await res.json();
 
+    if (!res.ok) {
+      setKeyStates((prev) => ({ ...prev, [provider]: "invalid" }));
+      setKeyErrors((prev) => ({
+        ...prev,
+        [provider]: data.error || "Erreur de sauvegarde",
+      }));
+      return false;
+    }
+
+    setKeyStates((prev) => ({
+      ...prev,
+      [provider]: data.valid ? "saved" : "invalid",
+    }));
     if (!data.valid) {
-      setError(`Clé ${provider} invalide`);
-      setTesting(null);
-      return;
+      setKeyErrors((prev) => ({
+        ...prev,
+        [provider]: "Clé enregistrée mais non validée par le fournisseur — re-testable",
+      }));
     }
-
-    const saveRes = await fetch("/api/keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, apiKey }),
-    });
-
-    if (saveRes.ok) {
-      setSaved((prev) => [...prev, provider]);
-    }
-
-    setTesting(null);
+    return true;
   }
 
   async function saveAllKeys() {
+    setTesting(true);
+    let allOk = true;
+
     for (const p of selected) {
-      if (keys[p] && !saved.includes(p)) {
-        await saveKey(p);
+      if (!keys[p]) {
+        allOk = false;
+        setKeyErrors((prev) => ({ ...prev, [p]: "Clé requise" }));
+        continue;
       }
+      if (keyStates[p] === "saved") continue;
+      const ok = await saveKey(p);
+      if (!ok) allOk = false;
     }
-    setStep(3);
+
+    setTesting(false);
+    if (allOk) setStep(3);
   }
 
   return (
@@ -106,9 +136,7 @@ export function UserSetupWizard({ onClose }: Props) {
             {[1, 2, 3].map((s) => (
               <div
                 key={s}
-                className={`h-1 flex-1 rounded-full ${
-                  step >= s ? "bg-accent" : "bg-line"
-                }`}
+                className={`h-1 flex-1 rounded-full ${step >= s ? "bg-accent" : "bg-line"}`}
               />
             ))}
           </div>
@@ -119,9 +147,6 @@ export function UserSetupWizard({ onClose }: Props) {
             <h2 className="font-display text-xl font-bold text-ink">
               Choisissez vos fournisseurs
             </h2>
-            <p className="mt-2 text-sm text-ink-soft">
-              Sélectionnez les services IA que vous utilisez.
-            </p>
             <div className="mt-6 grid grid-cols-2 gap-3">
               {PROVIDERS.map((p) => (
                 <button
@@ -150,14 +175,12 @@ export function UserSetupWizard({ onClose }: Props) {
         {step === 2 && (
           <>
             <h2 className="font-display text-xl font-bold text-ink">
-              Collez vos clés API
+              {mode === "rotate" ? "Rotation de clé" : "Collez vos clés API"}
             </h2>
-            <p className="mt-2 text-sm text-ink-soft">
-              Vos clés sont chiffrées et ne quittent jamais le serveur.
-            </p>
             <div className="mt-6 space-y-4">
               {selected.map((id) => {
                 const provider = PROVIDERS.find((p) => p.id === id)!;
+                const state = keyStates[id] ?? "idle";
                 return (
                   <div key={id}>
                     <div className="mb-1 flex items-center justify-between">
@@ -182,29 +205,35 @@ export function UserSetupWizard({ onClose }: Props) {
                       placeholder="sk-…"
                       className="h-10 w-full rounded-lg border border-line bg-card px-3 font-mono text-sm"
                     />
-                    {saved.includes(id) && (
+                    {state === "saved" && (
                       <p className="mt-1 flex items-center gap-1 text-xs text-green-600">
-                        <Check className="h-3 w-3" /> Clé validée
+                        <Check className="h-3 w-3" /> Enregistrée
+                      </p>
+                    )}
+                    {state === "invalid" && (
+                      <p className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                        <AlertTriangle className="h-3 w-3" /> {keyErrors[id]}
                       </p>
                     )}
                   </div>
                 );
               })}
             </div>
-            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
             <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setStep(1)}
-                className="flex-1 rounded-lg border border-line py-2.5 text-sm font-medium"
-              >
-                Retour
-              </button>
+              {mode !== "rotate" && (
+                <button
+                  onClick={() => setStep(1)}
+                  className="flex-1 rounded-lg border border-line py-2.5 text-sm font-medium"
+                >
+                  Retour
+                </button>
+              )}
               <button
                 onClick={saveAllKeys}
-                disabled={!!testing}
+                disabled={testing}
                 className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-medium text-white disabled:opacity-50"
               >
-                {testing ? "Test en cours…" : "Valider et continuer"}
+                {testing ? "Enregistrement…" : "Valider et continuer"}
               </button>
             </div>
           </>
@@ -217,17 +246,14 @@ export function UserSetupWizard({ onClose }: Props) {
                 <Check className="h-8 w-8 text-accent" />
               </div>
               <h2 className="mt-4 font-display text-xl font-bold text-ink">
-                Vous êtes prêt !
+                Clés enregistrées
               </h2>
-              <p className="mt-2 text-sm text-ink-soft">
-                Lancez des prompts et agents directement sur Prompta.
-              </p>
             </div>
             <button
               onClick={onClose}
               className="mt-6 w-full rounded-lg bg-accent py-2.5 text-sm font-medium text-white"
             >
-              Commencer
+              Terminer
             </button>
           </>
         )}

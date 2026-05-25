@@ -249,7 +249,19 @@ Guide détaillé : [docs/RENDER-SETUP.md](./docs/RENDER-SETUP.md)
 - Créer projets, renseigner `SENTRY_DSN` et `NEXT_PUBLIC_POSTHOG_KEY`
 - Configurer alertes erreurs (Sentry) et funnels (PostHog dashboard)
 
-### 8. Agents admin — mise en route (priorité 3)
+### 8. Worker marketplace (agents utilisateur)
+
+Les runs `listing_agent_runs` en statut `pending` sont traités par :
+
+```bash
+npm run worker
+```
+
+**Render** : créer un **Background Worker** avec la même commande `npm run worker` et les mêmes variables d'environnement que le Web Service.
+
+**Filet de sécurité** : le cron `/api/cron/tick` traite aussi jusqu'à 5 runs pending à chaque invocation (configurer un Cron Job Render toutes les minutes avec `Authorization: Bearer $CRON_SECRET`).
+
+### 9. Agents admin — mise en route (priorité 3)
 
 1. Aller sur `/admin/agents` → vérifier bandeau **🧪 MODE SANDBOX**
 2. Activer `prompt_factory` :
@@ -265,12 +277,12 @@ Guide détaillé : [docs/RENDER-SETUP.md](./docs/RENDER-SETUP.md)
    where agent_slug = 'prompt_factory';
    ```
 
-### 9. Juridique (priorité 4)
+### 10. Juridique (priorité 4)
 
 - Faire valider `/legal/terms` et `/legal/privacy` par un juriste
 - Compléter les placeholders (adresse, DPO, etc.)
 
-### 10. Lancement (priorité 4)
+### 11. Lancement (priorité 4)
 
 - Amorcer 100–200 listings de qualité
 - Tests manuels : inscription → dépôt → modération → achat → téléchargement → run prompt

@@ -17,6 +17,8 @@ import { ReviewForm } from "@/components/ReviewForm";
 import { ReportButton } from "@/components/ReportButton";
 import { RunPartnerButton } from "@/components/RunPartnerButton";
 import { RunPanel } from "@/components/run/RunPanel";
+import { SubscribeButton } from "@/components/SubscribeButton";
+import { parseListingEnv, envFieldsFromManifest } from "@/lib/agent/env";
 
 export const revalidate = 3600;
 
@@ -83,6 +85,19 @@ export default async function ListingPage({ params }: Props) {
     alreadyPurchased = !!purchase;
   }
 
+  // Abonnement actif ?
+  let hasSubscription = false;
+  if (user && !isOwner) {
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("listing_id", listing.id)
+      .eq("status", "active")
+      .maybeSingle();
+    hasSubscription = !!sub;
+  }
+
   // Version courante
   const { data: version } = listing.current_version_id
     ? await supabase
@@ -134,21 +149,23 @@ export default async function ListingPage({ params }: Props) {
     .select("*", { count: "exact", head: true })
     .eq("listing_id", listing.id);
 
-  const isFree = listing.price_cents === 0;
-  const canSeeFullPrompt = isFree || alreadyPurchased || isOwner;
+  const parsedEnv = parseListingEnv(version?.env, version?.prompt_body);
+  const envFields = parsedEnv
+    ? envFieldsFromManifest(parsedEnv.manifest)
+    : (version?.env as { fields?: { key: string; description: string; required: boolean }[] })?.fields;
+
+  const requiredSecrets = parsedEnv?.manifest.secrets ?? [];
+  const meta = parsedEnv?.meta ?? (version?.env as { dependencies?: string; setup_time?: string } | null);
+
+  const isFree = listing.price_cents === 0 && listing.pricing_mode !== "subscription";
+  const canSeeFullPrompt = isFree || alreadyPurchased || isOwner || hasSubscription;
+  const canUseContent = isFree || alreadyPurchased || isOwner || hasSubscription;
+
   const promptPreview = version?.prompt_body
     ? canSeeFullPrompt
       ? version.prompt_body
       : version.prompt_body.substring(0, 200) + "…"
     : null;
-
-  const envData = version?.env as {
-    fields?: { key: string; description: string; required: boolean }[];
-    dependencies?: string;
-    setup_time?: string;
-  } | null;
-
-  const canUseContent = isFree || alreadyPurchased || isOwner;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -221,18 +238,18 @@ export default async function ListingPage({ params }: Props) {
           )}
 
           {/* Environnement */}
-          {envData && (
+          {meta && (
             <div className="mt-8">
               <h2 className="text-lg font-semibold">Environnement requis</h2>
               <div className="mt-3 space-y-3">
-                {envData.fields && envData.fields.length > 0 && (
+                {envFields && envFields.length > 0 && (
                   <div className="rounded-xl border border-border p-4">
                     <h3 className="flex items-center gap-2 text-sm font-medium">
                       <Key className="h-4 w-4 text-accent" />
-                      Clés API & variables
+                      Variables & clés
                     </h3>
                     <div className="mt-3 space-y-2">
-                      {envData.fields.map((field, i) => (
+                      {envFields.map((field, i) => (
                         <div key={i} className="flex items-center gap-3 text-sm">
                           <code className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs">
                             {field.key}
@@ -249,22 +266,22 @@ export default async function ListingPage({ params }: Props) {
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-3">
-                  {envData.dependencies && (
+                  {meta.dependencies && (
                     <div className="rounded-xl border border-border p-4">
                       <h3 className="flex items-center gap-2 text-sm font-medium">
                         <Cpu className="h-4 w-4 text-accent" />
                         Dépendances
                       </h3>
-                      <p className="mt-1 text-sm text-muted">{envData.dependencies}</p>
+                      <p className="mt-1 text-sm text-muted">{meta.dependencies}</p>
                     </div>
                   )}
-                  {envData.setup_time && (
+                  {meta.setup_time && (
                     <div className="rounded-xl border border-border p-4">
                       <h3 className="flex items-center gap-2 text-sm font-medium">
                         <Clock className="h-4 w-4 text-accent" />
                         Temps de setup
                       </h3>
-                      <p className="mt-1 text-sm text-muted">{envData.setup_time}</p>
+                      <p className="mt-1 text-sm text-muted">{meta.setup_time}</p>
                     </div>
                   )}
                 </div>
@@ -339,10 +356,30 @@ export default async function ListingPage({ params }: Props) {
                 versionId={listing.current_version_id}
                 priceCents={listing.price_cents}
                 isFree={isFree}
-                alreadyPurchased={alreadyPurchased}
+                alreadyPurchased={alreadyPurchased || hasSubscription}
                 isOwner={isOwner}
                 creatorKycComplete={isFree || creatorKycComplete}
               />
+
+              {listing.pricing_mode === "subscription" &&
+                listing.subscription_price_cents > 0 &&
+                !isOwner && (
+                  <SubscribeButton
+                    listingId={listing.id}
+                    priceCents={listing.subscription_price_cents}
+                    alreadySubscribed={hasSubscription}
+                    creatorKycComplete={creatorKycComplete}
+                  />
+                )}
+
+              {(listing.type === "agent" || listing.type === "workflow") && (
+                <p className="mt-2 text-center text-xs text-ink-faint">
+                  <Link href="/dashboard/credits" className="text-accent hover:underline">
+                    Lancer avec des crédits
+                  </Link>{" "}
+                  (option)
+                </p>
+              )}
 
               <div className="mt-4 flex items-center justify-between text-sm text-muted">
                 <span className="flex items-center gap-1">
@@ -359,15 +396,19 @@ export default async function ListingPage({ params }: Props) {
             </div>
 
             {/* RunPanel — Copier / Lancer */}
-            {listing.type === "prompt" && version?.prompt_body && (
+            {(listing.type === "prompt" ? version?.prompt_body : version) && (
               <RunPanel
                 listingId={listing.id}
                 versionId={listing.current_version_id}
                 listingSlug={listing.slug}
                 title={listing.title}
-                promptBody={canSeeFullPrompt ? version.prompt_body : null}
+                promptBody={canSeeFullPrompt ? version?.prompt_body ?? null : null}
                 models={listing.models.length > 0 ? listing.models : ["gpt-4o"]}
-                envFields={envData?.fields}
+                envFields={envFields}
+                requiredSecrets={requiredSecrets}
+                pricingMode={listing.pricing_mode}
+                subscriptionPriceCents={listing.subscription_price_cents}
+                hasSubscription={hasSubscription}
                 priceCents={listing.price_cents}
                 isFree={isFree}
                 canAccess={canUseContent}

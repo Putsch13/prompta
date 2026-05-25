@@ -1,3 +1,4 @@
+/** Forfait simple par run (~0,10 €). Voir docs/MONETISATION.md */
 export const RUN_CREDIT_COST_CENTS = 10;
 
 export const CREDIT_PACKS = [

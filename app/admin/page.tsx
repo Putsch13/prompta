@@ -44,6 +44,53 @@ export default async function AdminKpiPage() {
   const { data: kpi } = await sb.from("admin_kpis").select("*").single();
   const { data: budget } = await sb.from("agent_budget").select("*").eq("id", 1).single();
 
+  const now = new Date();
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+  const [
+    { count: pendingRuns },
+    { data: oldestPending },
+    { data: recentRuns },
+  ] = await Promise.all([
+    sb.from("listing_agent_runs").select("*", { count: "exact", head: true }).eq("status", "pending"),
+    sb
+      .from("listing_agent_runs")
+      .select("created_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    sb
+      .from("listing_agent_runs")
+      .select("status, listing_id, listing:listings(title)")
+      .gte("created_at", dayAgo),
+  ]);
+
+  const recentRunsList = (recentRuns ?? []) as {
+    status: string;
+    listing_id: string | null;
+    listing: { title?: string } | null;
+  }[];
+
+  const recentTotal = recentRunsList.length;
+  const recentFailed = recentRunsList.filter((r) => r.status === "failed").length;
+  const failRate24h = recentTotal > 0 ? Math.round((recentFailed / recentTotal) * 100) : 0;
+
+  const errorByListing = new Map<string, { title: string; count: number }>();
+  for (const r of recentRunsList) {
+    if (r.status !== "failed" || !r.listing_id) continue;
+    const title = r.listing?.title ?? r.listing_id;
+    const cur = errorByListing.get(r.listing_id) ?? { title, count: 0 };
+    errorByListing.set(r.listing_id, { title, count: cur.count + 1 });
+  }
+  const topErrors = Array.from(errorByListing.entries())
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 5);
+
+  const pendingAgeMin = oldestPending?.created_at
+    ? Math.round((now.getTime() - new Date(oldestPending.created_at).getTime()) / 60000)
+    : 0;
+
   // Activité agents récente
   const { data: runs } = await sb
     .from("agent_runs")
@@ -81,6 +128,28 @@ export default async function AdminKpiPage() {
           sub="outputs d'agents"
           accent={(k.outputs_awaiting_review ?? 0) > 0 ? "#D97706" : "#1B1B18"}
         />
+      </div>
+
+      {/* Santé runtime marketplace */}
+      <div className="rounded-xl border border-[#E4E1D8] bg-white p-5">
+        <h2 className="mb-3 text-sm font-bold text-[#1B1B18]">Santé runtime agents marketplace</h2>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <KpiCard label="Runs pending" value={pendingRuns ?? 0} accent={(pendingRuns ?? 0) > 0 ? "#D97706" : "#1B1B18"} />
+          <KpiCard label="Âge plus ancien pending" value={pendingAgeMin > 0 ? `${pendingAgeMin} min` : "—"} sub="file worker" />
+          <KpiCard label="Taux échec 24h" value={`${failRate24h} %`} sub={`${recentFailed}/${recentTotal} runs`} accent={failRate24h > 20 ? "#DC2626" : "#16A34A"} />
+          <KpiCard label="Runs 24h" value={recentTotal} />
+        </div>
+        {topErrors.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-semibold text-[#5C5A52]">Agents les plus en erreur (24h)</p>
+            {topErrors.map(([id, { title, count }]) => (
+              <div key={id} className="flex justify-between py-1 text-sm">
+                <span>{title}</span>
+                <span className="text-red-600">{count} échec(s)</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Budget agents — la sécurité financière */}

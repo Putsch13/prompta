@@ -26,7 +26,8 @@ function interpolate(template: string, vars: Record<string, string>): string {
 async function executeStep(
   step: AgentStep,
   vars: Record<string, string>,
-  apiKeys: Record<string, string>
+  apiKeys: Record<string, string>,
+  maxTokens = 4096
 ): Promise<string> {
   if (step.type === "llm") {
     const provider = step.model.startsWith("claude")
@@ -45,6 +46,7 @@ async function executeStep(
       model: step.model,
       messages: [{ role: "user", content: interpolate(step.prompt, vars) }],
       apiKey,
+      maxTokens: Math.min(maxTokens, 4096),
     });
 
     if (scanOutput(result.content)) {
@@ -97,28 +99,56 @@ export async function runAgent(
   }
 
   const manifest: AgentManifest = parsed.data;
-  const vars = { ...context.inputs };
-  const outputs: Record<string, string> = {};
-  let stepsCompleted = 0;
 
-  try {
-    for (const step of manifest.steps) {
-      if (stepsCompleted >= manifest.limits.max_steps) {
-        throw new Error("Plafond max_steps atteint");
+  const run = async (): Promise<OrchestratorResult> => {
+    const vars = { ...context.inputs };
+    const outputs: Record<string, string> = {};
+    let stepsCompleted = 0;
+    let tokensUsed = 0;
+
+    try {
+      for (const step of manifest.steps) {
+        if (stepsCompleted >= manifest.limits.max_steps) {
+          throw new Error("Plafond max_steps atteint");
+        }
+
+        const result = await executeStep(step, vars, context.apiKeys, manifest.limits.max_tokens);
+        if (step.type === "llm") {
+          tokensUsed += result.length / 4;
+          if (tokensUsed > manifest.limits.max_tokens) {
+            throw new Error("Plafond max_tokens atteint");
+          }
+        }
+
+        vars[`step_${stepsCompleted}_output`] = result;
+        outputs[`step_${stepsCompleted}`] = result;
+        stepsCompleted++;
       }
 
-      const result = await executeStep(step, vars, context.apiKeys);
-      vars[`step_${stepsCompleted}_output`] = result;
-      outputs[`step_${stepsCompleted}`] = result;
-      stepsCompleted++;
+      outputs.result = vars[`step_${stepsCompleted - 1}_output`] ?? "";
+
+      return { status: "completed", stepsCompleted, output: outputs };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue";
+      const status = message.includes("suspendu") ? "suspended" : "failed";
+      return { status, stepsCompleted, output: outputs, error: message };
     }
+  };
 
-    outputs.result = vars[`step_${stepsCompleted - 1}_output`] ?? "";
+  const timeoutMs = manifest.limits.timeout_ms ?? 60000;
+  const timeout = new Promise<OrchestratorResult>((_, reject) =>
+    setTimeout(() => reject(new Error("Timeout agent dépassé")), timeoutMs)
+  );
 
-    return { status: "completed", stepsCompleted, output: outputs };
+  try {
+    return await Promise.race([run(), timeout]);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Erreur inconnue";
-    const status = message.includes("suspendu") ? "suspended" : "failed";
-    return { status, stepsCompleted, output: outputs, error: message };
+    const message = err instanceof Error ? err.message : "Timeout";
+    return {
+      status: "failed",
+      stepsCompleted: 0,
+      output: {},
+      error: message,
+    };
   }
 }

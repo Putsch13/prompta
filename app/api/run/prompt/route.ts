@@ -91,6 +91,9 @@ export async function POST(request: NextRequest) {
   const isFree = listing.price_cents === 0;
   const isPro = await hasPlatformPro(user.id);
 
+  let hasPurchase = false;
+  let hasSubscription = false;
+
   if (!isFree && !isOwner && !isPro) {
     const { data: purchase } = await admin
       .from("purchases")
@@ -108,13 +111,18 @@ export async function POST(request: NextRequest) {
       .eq("status", "active")
       .maybeSingle();
 
-    if (!purchase && !subscription) {
+    hasPurchase = !!purchase;
+    hasSubscription = !!subscription;
+
+    if (!hasPurchase && !hasSubscription) {
       return new Response(JSON.stringify({ error: "Accès non autorisé" }), {
         status: 403,
         headers: { "Content-Type": "application/json" },
       });
     }
   }
+
+  const hasEntitlement = isOwner || isPro || hasPurchase || hasSubscription;
 
   const { data: version } = await admin
     .from("listing_versions")
@@ -144,9 +152,9 @@ export async function POST(request: NextRequest) {
     }
 
     const creditBalance = await getCreditBalance(user.id);
-    if (creditBalance >= RUN_CREDIT_COST_CENTS) {
+    if (!hasEntitlement && creditBalance >= RUN_CREDIT_COST_CENTS) {
       usedCredits = true;
-    } else if (isFree) {
+    } else if (isFree && !hasEntitlement) {
       const allowed = await checkFreeQuota(user.id);
       if (!allowed) {
         return new Response(
@@ -157,7 +165,7 @@ export async function POST(request: NextRequest) {
           { status: 429, headers: { "Content-Type": "application/json" } }
         );
       }
-    } else if (!isPro) {
+    } else if (!hasEntitlement) {
       return new Response(
         JSON.stringify({ error: "configure_keys", message: "Configurez vos clés API ou souscrivez à Prompta Pro" }),
         { status: 400, headers: { "Content-Type": "application/json" } }

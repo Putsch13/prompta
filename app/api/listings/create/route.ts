@@ -4,14 +4,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { scanContent } from "@/lib/content-filter";
 import { allFindings } from "@/lib/secrets-scanner";
 import { uniqueSlug } from "@/lib/slug";
+import { AgentManifestSchema } from "@/lib/agent/schema";
+import { canSellPaid } from "@/lib/platform-access";
 
 export const dynamic = "force-dynamic";
-
-interface EnvField {
-  key: string;
-  description: string;
-  required: boolean;
-}
 
 interface CreateListingBody {
   title: string;
@@ -21,8 +17,11 @@ interface CreateListingBody {
   models: string[];
   tags: string[];
   priceCents: number;
+  pricingMode?: "free" | "one_time" | "subscription";
+  subscriptionPriceCents?: number;
   promptBody: string | null;
-  envFields: EnvField[];
+  manifest?: unknown;
+  envFields?: unknown[];
   dependencies: string | null;
   setupTime: string | null;
 }
@@ -48,20 +47,49 @@ export async function POST(request: NextRequest) {
     models,
     tags,
     priceCents,
+    pricingMode = "free",
+    subscriptionPriceCents = 0,
     promptBody,
-    envFields,
+    manifest,
     dependencies,
     setupTime,
   } = body;
 
   if (!title || !type) {
+    return NextResponse.json({ error: "Titre et type requis" }, { status: 400 });
+  }
+
+  const isPaid =
+    pricingMode !== "free" &&
+    (priceCents > 0 || (pricingMode === "subscription" && subscriptionPriceCents > 0));
+
+  if (isPaid) {
+    const sell = await canSellPaid(user.id);
+    if (!sell.canSell) {
+      return NextResponse.json(
+        {
+          error: "stripe_kyc_required",
+          message:
+            "Complétez votre vérification Stripe pour publier du contenu payant, ou publiez en gratuit.",
+        },
+        { status: 403 }
+      );
+    }
+  }
+
+  if (!manifest) {
+    return NextResponse.json({ error: "Manifeste requis" }, { status: 400 });
+  }
+
+  const manifestParsed = AgentManifestSchema.safeParse(manifest);
+  if (!manifestParsed.success) {
     return NextResponse.json(
-      { error: "Titre et type requis" },
+      { error: "Manifeste invalide", details: manifestParsed.error.flatten() },
       { status: 400 }
     );
   }
 
-  const textToScan = [description, promptBody].filter(Boolean).join("\n\n");
+  const textToScan = [description, promptBody, JSON.stringify(manifest)].filter(Boolean).join("\n\n");
   const contentScan = scanContent(textToScan);
   const bundleFindings = promptBody ? allFindings(promptBody) : [];
   const allFlags = [...contentScan.flags, ...bundleFindings];
@@ -70,8 +98,10 @@ export async function POST(request: NextRequest) {
   const contentFlags = allFlags.length > 0 ? allFlags : [];
 
   const slug = uniqueSlug(title);
-
   const adminClient = createAdminClient();
+
+  const effectivePrice =
+    pricingMode === "free" ? 0 : pricingMode === "subscription" ? 0 : priceCents;
 
   const { data: listing, error: listingError } = await adminClient
     .from("listings")
@@ -84,7 +114,10 @@ export async function POST(request: NextRequest) {
       description,
       models,
       tags,
-      price_cents: priceCents,
+      price_cents: effectivePrice,
+      subscription_price_cents:
+        pricingMode === "subscription" ? subscriptionPriceCents : 0,
+      pricing_mode: pricingMode,
       currency: "eur",
       status,
       content_flags: contentFlags,
@@ -99,13 +132,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const envData = JSON.parse(
-    JSON.stringify({
-      fields: envFields,
+  const envData = {
+    manifest: manifestParsed.data,
+    meta: {
       dependencies: dependencies || null,
       setup_time: setupTime || null,
-    })
-  );
+    },
+  };
 
   const { data: version, error: versionError } = await adminClient
     .from("listing_versions")
