@@ -2,9 +2,9 @@ import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callModel } from "@/lib/llm/gateway";
-import { getUserKey, providerForModel, invalidateKey } from "@/lib/keys";
+import { getUserKey, invalidateKey } from "@/lib/keys";
 import { estimateCost } from "@/lib/llm/providers";
-import type { LLMProvider } from "@/lib/llm/providers";
+import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
 import { getCreditBalance, debitCreditsForRun, RUN_CREDIT_COST_CENTS } from "@/lib/credits";
 import { hasPlatformPro } from "@/lib/platform-access";
 import { trackProRun } from "@/lib/revshare";
@@ -137,7 +137,8 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const provider = providerForModel(model) as LLMProvider;
+  const resolved = resolveModelOrDefault(model);
+  const { provider, apiModel, tokenParam } = resolved;
   let apiKey = await getUserKey(user.id, provider);
   let usedCredits = false;
 
@@ -205,13 +206,14 @@ export async function POST(request: NextRequest) {
       try {
         const result = await callModel({
           provider,
-          model,
+          model: apiModel,
           messages: [{ role: "user", content: prompt }],
           apiKey,
           maxTokens: 4096,
+          tokenParam,
         });
 
-        const cost = estimateCost(model, result.inputTokens, result.outputTokens);
+        const cost = estimateCost(apiModel, result.inputTokens, result.outputTokens);
 
         await admin
           .from("runs")

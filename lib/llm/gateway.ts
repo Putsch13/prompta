@@ -1,4 +1,5 @@
 import { getModel, type LLMProvider } from "./providers";
+import type { TokenParam } from "@/lib/catalogs";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -12,6 +13,7 @@ export interface CallModelParams {
   apiKey: string;
   stream?: boolean;
   maxTokens?: number;
+  tokenParam?: TokenParam;
 }
 
 export interface CallModelResult {
@@ -23,30 +25,49 @@ export interface CallModelResult {
 }
 
 const FALLBACK_MODELS: Record<LLMProvider, string> = {
-  openai: "gpt-4o-mini",
-  anthropic: "claude-3-5-haiku-20241022",
-  google: "gemini-2.0-flash",
-  mistral: "mistral-large-latest",
+  openai: "gpt-5-mini",
+  anthropic: "claude-haiku-4-5-20260201",
+  google: "gemini-3.0-flash",
+  mistral: "mistral-small-latest",
 };
 
 async function callOpenAI(
   model: string,
   messages: ChatMessage[],
   apiKey: string,
-  maxTokens = 4096
+  maxTokens = 4096,
+  tokenParam: TokenParam = "max_tokens"
 ): Promise<CallModelResult> {
+  const tokenConfig =
+    tokenParam === "max_completion_tokens"
+      ? { max_completion_tokens: maxTokens }
+      : { max_tokens: maxTokens };
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens }),
+    body: JSON.stringify({ model, messages, ...tokenConfig }),
   });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`OpenAI error: ${err}`);
+    let errorMessage = `OpenAI: ${res.status}`;
+    try {
+      const errJson = JSON.parse(err);
+      errorMessage = errJson.error?.message ?? err;
+    } catch {
+      errorMessage = err;
+    }
+    if (res.status === 404) {
+      throw new Error(`Modèle "${model}" non trouvé sur OpenAI. Vérifiez l'identifiant.`);
+    }
+    if (res.status === 401) {
+      throw new Error("Clé API OpenAI invalide ou expirée.");
+    }
+    throw new Error(errorMessage);
   }
 
   const data = await res.json();
@@ -87,7 +108,20 @@ async function callAnthropic(
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Anthropic error: ${err}`);
+    let errorMessage = `Anthropic: ${res.status}`;
+    try {
+      const errJson = JSON.parse(err);
+      errorMessage = errJson.error?.message ?? err;
+    } catch {
+      errorMessage = err;
+    }
+    if (res.status === 404) {
+      throw new Error(`Modèle "${model}" non trouvé sur Anthropic. Vérifiez l'identifiant.`);
+    }
+    if (res.status === 401) {
+      throw new Error("Clé API Anthropic invalide ou expirée.");
+    }
+    throw new Error(errorMessage);
   }
 
   const data = await res.json();
@@ -132,7 +166,20 @@ async function callGoogle(
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Google error: ${err}`);
+    let errorMessage = `Google: ${res.status}`;
+    try {
+      const errJson = JSON.parse(err);
+      errorMessage = errJson.error?.message ?? err;
+    } catch {
+      errorMessage = err;
+    }
+    if (res.status === 404) {
+      throw new Error(`Modèle "${model}" non trouvé sur Google AI. Vérifiez l'identifiant.`);
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Clé API Google AI invalide ou expirée.");
+    }
+    throw new Error(errorMessage);
   }
 
   const data = await res.json();
@@ -165,7 +212,20 @@ async function callMistral(
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Mistral error: ${err}`);
+    let errorMessage = `Mistral: ${res.status}`;
+    try {
+      const errJson = JSON.parse(err);
+      errorMessage = errJson.error?.message ?? err;
+    } catch {
+      errorMessage = err;
+    }
+    if (res.status === 404) {
+      throw new Error(`Modèle "${model}" non trouvé sur Mistral. Vérifiez l'identifiant.`);
+    }
+    if (res.status === 401) {
+      throw new Error("Clé API Mistral invalide ou expirée.");
+    }
+    throw new Error(errorMessage);
   }
 
   const data = await res.json();
@@ -181,11 +241,11 @@ async function callMistral(
 async function callProvider(
   params: CallModelParams
 ): Promise<CallModelResult> {
-  const { provider, model, messages, apiKey, maxTokens } = params;
+  const { provider, model, messages, apiKey, maxTokens, tokenParam } = params;
 
   switch (provider) {
     case "openai":
-      return callOpenAI(model, messages, apiKey, maxTokens);
+      return callOpenAI(model, messages, apiKey, maxTokens, tokenParam);
     case "anthropic":
       return callAnthropic(model, messages, apiKey, maxTokens);
     case "google":

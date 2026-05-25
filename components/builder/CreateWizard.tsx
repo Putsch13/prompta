@@ -68,7 +68,7 @@ export function CreateWizard({ categories }: Props) {
     title: "",
     categoryId: "",
     description: "",
-    models: ["gpt-4o"],
+    models: ["gpt-5.4"],
     techStack: [] as string[],
     integrations: [] as string[],
     tags: [] as string[],

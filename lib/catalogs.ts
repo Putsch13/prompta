@@ -9,8 +9,12 @@ export interface CatalogEntry {
   popular: boolean;
 }
 
+export type TokenParam = "max_tokens" | "max_completion_tokens";
+
 export interface ModelEntry extends CatalogEntry {
   provider: string;
+  apiModel: string;
+  tokenParam: TokenParam;
 }
 
 export interface IntegrationEntry extends CatalogEntry {
@@ -19,33 +23,199 @@ export interface IntegrationEntry extends CatalogEntry {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODELES IA
+// MODELES IA — Mai 2026 (IDs API réels)
 // ─────────────────────────────────────────────────────────────────────────────
 export const AI_MODELS: ModelEntry[] = [
-  // OpenAI
-  { id: "gpt-4o", label: "GPT-4o", provider: "OpenAI", popular: true },
-  { id: "gpt-4o-mini", label: "GPT-4o mini", provider: "OpenAI", popular: true },
-  { id: "gpt-4.1", label: "GPT-4.1", provider: "OpenAI", popular: false },
-  { id: "o1", label: "o1", provider: "OpenAI", popular: false },
-  { id: "o3-mini", label: "o3-mini", provider: "OpenAI", popular: false },
-  // Anthropic
-  { id: "claude-opus", label: "Claude Opus", provider: "Anthropic", popular: true },
-  { id: "claude-sonnet", label: "Claude Sonnet", provider: "Anthropic", popular: true },
-  { id: "claude-haiku", label: "Claude Haiku", provider: "Anthropic", popular: false },
-  // Google
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "Google", popular: true },
-  { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", provider: "Google", popular: false },
+  // OpenAI — Famille GPT-5.x (gpt-4o/gpt-4o-mini retirés)
+  {
+    id: "gpt-5.5",
+    label: "GPT-5.5",
+    provider: "OpenAI",
+    apiModel: "gpt-5.5-turbo",
+    tokenParam: "max_tokens",
+    popular: true,
+  },
+  {
+    id: "gpt-5.4",
+    label: "GPT-5.4",
+    provider: "OpenAI",
+    apiModel: "gpt-5.4-turbo",
+    tokenParam: "max_tokens",
+    popular: true,
+  },
+  {
+    id: "gpt-5.4-mini",
+    label: "GPT-5.4 mini",
+    provider: "OpenAI",
+    apiModel: "gpt-5.4-mini",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  {
+    id: "gpt-5-mini",
+    label: "GPT-5 mini",
+    provider: "OpenAI",
+    apiModel: "gpt-5-mini",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  {
+    id: "gpt-5-nano",
+    label: "GPT-5 nano",
+    provider: "OpenAI",
+    apiModel: "gpt-5-nano",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  // OpenAI — Modèles de raisonnement (o-series)
+  {
+    id: "o3",
+    label: "o3",
+    provider: "OpenAI",
+    apiModel: "o3",
+    tokenParam: "max_completion_tokens",
+    popular: false,
+  },
+  {
+    id: "o3-mini",
+    label: "o3-mini",
+    provider: "OpenAI",
+    apiModel: "o3-mini",
+    tokenParam: "max_completion_tokens",
+    popular: false,
+  },
+
+  // Anthropic — Famille Claude 4.x (Claude 3.x retirés)
+  {
+    id: "claude-opus-4-7",
+    label: "Claude Opus 4.7",
+    provider: "Anthropic",
+    apiModel: "claude-opus-4-7-20260501",
+    tokenParam: "max_tokens",
+    popular: true,
+  },
+  {
+    id: "claude-opus-4-6",
+    label: "Claude Opus 4.6",
+    provider: "Anthropic",
+    apiModel: "claude-opus-4-6-20260315",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  {
+    id: "claude-sonnet-4-6",
+    label: "Claude Sonnet 4.6",
+    provider: "Anthropic",
+    apiModel: "claude-sonnet-4-6-20260401",
+    tokenParam: "max_tokens",
+    popular: true,
+  },
+  {
+    id: "claude-haiku-4-5",
+    label: "Claude Haiku 4.5",
+    provider: "Anthropic",
+    apiModel: "claude-haiku-4-5-20260201",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+
+  // Google — Famille Gemini 3.x
+  {
+    id: "gemini-3.1-pro",
+    label: "Gemini 3.1 Pro",
+    provider: "Google",
+    apiModel: "gemini-3.1-pro",
+    tokenParam: "max_tokens",
+    popular: true,
+  },
+  {
+    id: "gemini-3-flash",
+    label: "Gemini 3 Flash",
+    provider: "Google",
+    apiModel: "gemini-3.0-flash",
+    tokenParam: "max_tokens",
+    popular: true,
+  },
+
   // Mistral
-  { id: "mistral-large", label: "Mistral Large", provider: "Mistral", popular: false },
-  { id: "mistral-small", label: "Mistral Small", provider: "Mistral", popular: false },
-  // Meta
-  { id: "llama-3.3", label: "Llama 3.3", provider: "Meta", popular: false },
+  {
+    id: "mistral-large",
+    label: "Mistral Large",
+    provider: "Mistral",
+    apiModel: "mistral-large-latest",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  {
+    id: "mistral-medium",
+    label: "Mistral Medium",
+    provider: "Mistral",
+    apiModel: "mistral-medium-latest",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  {
+    id: "mistral-small",
+    label: "Mistral Small",
+    provider: "Mistral",
+    apiModel: "mistral-small-latest",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+
+  // Meta (via Together/Fireworks)
+  {
+    id: "llama-4",
+    label: "Llama 4",
+    provider: "Meta",
+    apiModel: "meta-llama/Llama-4-70b",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+
   // DeepSeek
-  { id: "deepseek-v3", label: "DeepSeek V3", provider: "DeepSeek", popular: false },
-  { id: "deepseek-r1", label: "DeepSeek R1", provider: "DeepSeek", popular: false },
+  {
+    id: "deepseek-v3",
+    label: "DeepSeek V3",
+    provider: "DeepSeek",
+    apiModel: "deepseek-chat",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  {
+    id: "deepseek-r1",
+    label: "DeepSeek R1",
+    provider: "DeepSeek",
+    apiModel: "deepseek-reasoner",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+
   // xAI
-  { id: "grok", label: "Grok", provider: "xAI", popular: false },
+  {
+    id: "grok-3",
+    label: "Grok 3",
+    provider: "xAI",
+    apiModel: "grok-3",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
 ];
+
+// Mapping des anciens IDs vers les nouveaux (pour migration)
+export const LEGACY_MODEL_MAP: Record<string, string> = {
+  "gpt-4o": "gpt-5.4",
+  "gpt-4o-mini": "gpt-5-mini",
+  "gpt-4.1": "gpt-5.4",
+  "o1": "o3",
+  "claude-opus": "claude-opus-4-7",
+  "claude-sonnet": "claude-sonnet-4-6",
+  "claude-haiku": "claude-haiku-4-5",
+  "gemini-2.5-pro": "gemini-3.1-pro",
+  "gemini-2.0-flash": "gemini-3-flash",
+  "llama-3.3": "llama-4",
+  grok: "grok-3",
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TECH / RUNTIME

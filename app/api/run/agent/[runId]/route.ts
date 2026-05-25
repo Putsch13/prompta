@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const { data: run } = await supabase
     .from("listing_agent_runs")
-    .select("id, status, output, error_message, created_at")
+    .select("id, status, output, error_message, steps_completed, created_at")
     .eq("id", params.runId)
     .eq("user_id", user.id)
     .single();
@@ -34,6 +34,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     status: run.status,
     output: run.output,
     error_message: run.error_message,
+    steps_completed: run.steps_completed,
     created_at: run.created_at,
   });
 }

@@ -67,7 +67,7 @@ export function RunPanel({
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [copyMode, setCopyMode] = useState<"template" | "filled">("filled");
   const [copied, setCopied] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(models[0] ?? "gpt-4o");
+  const [selectedModel, setSelectedModel] = useState(models[0] ?? "gpt-5.4");
   const [keys, setKeys] = useState<KeyStatus[]>([]);
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState("");
@@ -76,6 +76,8 @@ export function RunPanel({
 
   const [agentOutput, setAgentOutput] = useState("");
   const [agentStatus, setAgentStatus] = useState<string | null>(null);
+  const [stepsCompleted, setStepsCompleted] = useState<number | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
 
   const varNames = promptBody
     ? extractVariables(promptBody)
@@ -113,9 +115,9 @@ export function RunPanel({
   }
 
   function getRequiredProvider(): string {
-    if (selectedModel.startsWith("claude")) return "anthropic";
-    if (selectedModel.startsWith("gemini")) return "google";
-    if (selectedModel.startsWith("mistral")) return "mistral";
+    if (selectedModel.includes("claude")) return "anthropic";
+    if (selectedModel.includes("gemini")) return "google";
+    if (selectedModel.includes("mistral")) return "mistral";
     return "openai";
   }
 
@@ -129,23 +131,24 @@ export function RunPanel({
     return needed.every((p) => keys.some((k) => k.provider === p && k.is_valid));
   }
 
-  async function pollRunStatus(runId: string) {
+  async function pollRunStatus(id: string) {
     const maxPolls = 60;
     let polls = 0;
     while (polls < maxPolls) {
       await new Promise((r) => setTimeout(r, 2000));
       polls++;
       try {
-        const res = await fetch(`/api/run/agent/${runId}`);
+        const res = await fetch(`/api/run/agent/${id}`);
         if (!res.ok) continue;
         const data = await res.json();
         setAgentStatus(data.status);
+        if (data.steps_completed != null) setStepsCompleted(data.steps_completed);
         if (data.status === "completed") {
           setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
           setRunning(false);
           return;
         }
-        if (data.status === "failed") {
+        if (data.status === "failed" || data.status === "suspended") {
           setError(data.error_message || "L'agent a échoué");
           setRunning(false);
           return;
@@ -154,7 +157,7 @@ export function RunPanel({
         // ignore poll errors, continue
       }
     }
-    setError("Délai d'attente dépassé");
+    setError("Délai d'attente dépassé — l'agent peut continuer en arrière-plan");
     setRunning(false);
   }
 
@@ -168,6 +171,8 @@ export function RunPanel({
     setRunning(true);
     setAgentOutput("");
     setAgentStatus("pending");
+    setStepsCompleted(null);
+    setRunId(null);
     setError(null);
 
     try {
@@ -183,13 +188,16 @@ export function RunPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message);
 
-      if (data.status === "completed" || data.status === "failed") {
+      if (data.runId) setRunId(data.runId);
+      if (data.stepsCompleted != null) setStepsCompleted(data.stepsCompleted);
+
+      if (data.status === "completed" || data.status === "failed" || data.status === "suspended") {
         setAgentStatus(data.status);
         setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
         if (data.error) setError(data.error);
         setRunning(false);
       } else if (data.runId) {
-        setAgentStatus("running");
+        setAgentStatus(data.status === "queued" ? "queued" : "running");
         pollRunStatus(data.runId);
       } else {
         setAgentStatus(data.status);
@@ -264,14 +272,61 @@ export function RunPanel({
   }
 
   if (!canAccess && !isFree) {
+    const isSubscription = pricingMode === "subscription";
+    const isCredits = pricingMode === "credits";
+
     return (
-      <div className="rounded-xl border border-line bg-card p-6 text-center">
-        <p className="font-display text-lg font-semibold text-ink">
-          Acheter — {(priceCents / 100).toFixed(2)} €
-        </p>
-        <p className="mt-2 text-sm text-ink-soft">
-          Débloquez la copie et l&apos;exécution de ce {type}.
-        </p>
+      <div className="rounded-xl border border-line bg-card p-6">
+        <h3 className="text-center font-display text-lg font-semibold text-ink">
+          {isSubscription ? "Abonnez-vous" : isCredits ? "Achetez des crédits" : "Achetez l'accès"}
+        </h3>
+
+        {isSubscription && (
+          <>
+            <p className="mt-3 text-center text-2xl font-bold text-ink">
+              {(subscriptionPriceCents / 100).toFixed(2)} €<span className="text-sm font-normal text-ink-soft">/mois</span>
+            </p>
+            <ul className="mt-4 space-y-2 text-sm text-ink-soft">
+              <li className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-600" /> Exécutions illimitées
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-600" /> Vos propres clés API (BYOK)
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-600" /> Annulable à tout moment
+              </li>
+            </ul>
+            <a
+              href={`/checkout/subscribe/${listingId}`}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-medium text-white"
+            >
+              S&apos;abonner
+            </a>
+            {priceCents > 0 && (
+              <p className="mt-3 text-center text-xs text-ink-faint">
+                Ou achat unique : {(priceCents / 100).toFixed(2)} €
+              </p>
+            )}
+          </>
+        )}
+
+        {!isSubscription && priceCents > 0 && (
+          <>
+            <p className="mt-3 text-center text-2xl font-bold text-ink">
+              {(priceCents / 100).toFixed(2)} €
+            </p>
+            <p className="mt-2 text-center text-sm text-ink-soft">
+              Accès permanent à ce {type}
+            </p>
+            <a
+              href={`/checkout/${listingId}`}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-medium text-white"
+            >
+              Acheter maintenant
+            </a>
+          </>
+        )}
       </div>
     );
   }
@@ -352,38 +407,86 @@ export function RunPanel({
           )}
 
           {agentStatus && (
-            <div className="mt-2 text-sm">
-              <p>
-                Statut :{" "}
-                <span
-                  className={
-                    agentStatus === "completed"
-                      ? "text-green-600"
-                      : agentStatus === "failed"
-                        ? "text-red-600"
-                        : "text-amber-600"
-                  }
-                >
-                  {agentStatus === "pending" && "En attente…"}
-                  {agentStatus === "running" && "Exécution en cours…"}
-                  {agentStatus === "queued" && "En file d'attente…"}
-                  {agentStatus === "completed" && "Terminé"}
-                  {agentStatus === "failed" && "Échoué"}
-                </span>
-              </p>
-              {(agentStatus === "pending" || agentStatus === "running" || agentStatus === "queued") && (
-                <p className="mt-1 text-xs text-ink-faint">
-                  L&apos;agent s&apos;exécute en arrière-plan. Rafraîchissement automatique…
+            <div className="mt-4 rounded-lg border border-line bg-card2 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">
+                  Statut :{" "}
+                  <span
+                    className={
+                      agentStatus === "completed"
+                        ? "text-green-600"
+                        : agentStatus === "failed" || agentStatus === "suspended"
+                          ? "text-red-600"
+                          : "text-amber-600"
+                    }
+                  >
+                    {agentStatus === "pending" && "En attente…"}
+                    {agentStatus === "running" && "Exécution en cours…"}
+                    {agentStatus === "queued" && "En file d'attente…"}
+                    {agentStatus === "completed" && "Terminé ✓"}
+                    {agentStatus === "failed" && "Échoué ✗"}
+                    {agentStatus === "suspended" && "Suspendu"}
+                  </span>
                 </p>
+                <div className="flex items-center gap-2">
+                  {stepsCompleted != null && stepsCompleted > 0 && (
+                    <span className="text-xs text-ink-soft">
+                      Étape {stepsCompleted} complétée
+                    </span>
+                  )}
+                  {runId && agentStatus === "completed" && (
+                    <a
+                      href={`/dashboard/runs?id=${runId}`}
+                      className="text-xs text-accent hover:underline"
+                    >
+                      Voir le détail
+                    </a>
+                  )}
+                </div>
+              </div>
+              {(agentStatus === "pending" || agentStatus === "running" || agentStatus === "queued") && (
+                <div className="mt-2">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-line">
+                    <div className="h-full animate-pulse bg-accent" style={{ width: "60%" }} />
+                  </div>
+                  <p className="mt-1 text-xs text-ink-faint">
+                    L&apos;agent s&apos;exécute en arrière-plan. Rafraîchissement automatique…
+                  </p>
+                </div>
               )}
             </div>
           )}
+
           {agentOutput && (
-            <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-card2 p-3 text-xs whitespace-pre-wrap">
-              {agentOutput}
-            </pre>
+            <div className="mt-3">
+              <p className="mb-1 text-xs font-medium text-ink-soft">Résultat</p>
+              <pre className="max-h-60 overflow-auto rounded-lg bg-card2 p-3 text-xs whitespace-pre-wrap">
+                {agentOutput}
+              </pre>
+            </div>
           )}
-          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+          {error && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-sm text-red-700">{error}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {error.toLowerCase().includes("clé") && (
+                  <button
+                    onClick={() => setShowWizard(true)}
+                    className="rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+                  >
+                    Reconfigurer les clés
+                  </button>
+                )}
+                <button
+                  onClick={handleAgentRun}
+                  className="rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+                >
+                  Réessayer
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         {showWizard && (
           <UserSetupWizard onClose={() => { setShowWizard(false); loadKeys(); }} />

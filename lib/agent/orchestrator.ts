@@ -1,5 +1,5 @@
 import { callModel } from "@/lib/llm/gateway";
-import type { LLMProvider } from "@/lib/llm/providers";
+import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
 import { AgentManifestSchema, type AgentManifest, type AgentStep } from "./schema";
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
 import { runCodeInSandbox } from "./sandbox";
@@ -30,23 +30,19 @@ async function executeStep(
   maxTokens = 4096
 ): Promise<string> {
   if (step.type === "llm") {
-    const provider = step.model.startsWith("claude")
-      ? "anthropic"
-      : step.model.startsWith("gemini")
-        ? "google"
-        : step.model.startsWith("mistral")
-          ? "mistral"
-          : "openai";
+    const resolved = resolveModelOrDefault(step.model);
+    const { provider, apiModel, tokenParam } = resolved;
 
     const apiKey = apiKeys[provider];
     if (!apiKey) throw new Error(`Clé ${provider} manquante`);
 
     const result = await callModel({
-      provider: provider as LLMProvider,
-      model: step.model,
+      provider,
+      model: apiModel,
       messages: [{ role: "user", content: interpolate(step.prompt, vars) }],
       apiKey,
       maxTokens: Math.min(maxTokens, 4096),
+      tokenParam,
     });
 
     if (scanOutput(result.content)) {
