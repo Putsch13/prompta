@@ -20,18 +20,18 @@ export function Footer() {
             <h3 className="text-sm font-semibold">Produit</h3>
             <ul className="mt-3 space-y-2">
               <li>
-                <Link href="/explore" className="text-sm text-muted hover:text-foreground transition-colors">
+                <Link href="/explore" prefetch className="text-sm text-ink-soft hover:text-ink transition-colors">
                   Explorer
                 </Link>
               </li>
               <li>
-                <Link href="/dashboard/new" className="text-sm text-muted hover:text-foreground transition-colors">
+                <Link href="/dashboard/new" prefetch className="text-sm text-ink-soft hover:text-ink transition-colors">
                   Publier
                 </Link>
               </li>
               <li>
-                <Link href="/teams" className="text-sm text-muted hover:text-foreground transition-colors">
-                  Teams
+                <Link href="/explore" prefetch className="text-sm text-ink-soft hover:text-ink transition-colors">
+                  Organisations (B2B)
                 </Link>
               </li>
             </ul>
@@ -41,12 +41,12 @@ export function Footer() {
             <h3 className="text-sm font-semibold">Builders</h3>
             <ul className="mt-3 space-y-2">
               <li>
-                <Link href="/dashboard" className="text-sm text-muted hover:text-foreground transition-colors">
+                <Link href="/dashboard" prefetch className="text-sm text-ink-soft hover:text-ink transition-colors">
                   Dashboard
                 </Link>
               </li>
               <li>
-                <Link href="/dashboard/payouts" className="text-sm text-muted hover:text-foreground transition-colors">
+                <Link href="/dashboard/payouts" prefetch className="text-sm text-ink-soft hover:text-ink transition-colors">
                   Revenus
                 </Link>
               </li>

@@ -45,12 +45,14 @@ export function AuthNav() {
       <div className="flex items-center gap-2">
         <Link
           href="/login"
-          className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:text-foreground transition-colors"
+          prefetch
+          className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft hover:text-ink transition-colors"
         >
           Connexion
         </Link>
         <Link
           href="/signup"
+          prefetch
           className="hidden rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors sm:inline-flex"
         >
           S&apos;inscrire
@@ -63,6 +65,7 @@ export function AuthNav() {
     <div className="flex items-center gap-2">
       <Link
         href="/dashboard"
+        prefetch
         className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-light text-accent hover:bg-accent hover:text-white transition-colors"
       >
         <User className="h-4 w-4" />

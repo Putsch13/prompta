@@ -21,8 +21,8 @@
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  color: theme("colors.ink");
+  background: theme("colors.bg");
 }
 
 @layer base {

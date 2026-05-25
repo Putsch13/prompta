@@ -7,8 +7,8 @@ const RATE_LIMITED_ROUTES = [
   { pattern: /^\/api\/stripe\/checkout/, limit: 10, window: 60000 },
   { pattern: /^\/api\/download\//, limit: 30, window: 60000 },
   { pattern: /^\/api\/webhooks\//, limit: 100, window: 60000 },
-  { pattern: /^\/login$/, limit: 5, window: 60000 },
-  { pattern: /^\/signup$/, limit: 5, window: 60000 },
+  { pattern: /^\/login$/, limit: 20, window: 60000 },
+  { pattern: /^\/signup$/, limit: 20, window: 60000 },
   { pattern: /^\/api\/auth\//, limit: 10, window: 60000 },
 ];
 
@@ -41,6 +41,12 @@ function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0].trim();
   return request.headers.get("x-real-ip") || "unknown";
+}
+
+function copyCookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach(({ name, value }) => {
+    to.cookies.set(name, value);
+  });
 }
 
 export async function middleware(request: NextRequest) {
@@ -80,9 +86,7 @@ export async function middleware(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value)
-        );
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         supabaseResponse = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
           supabaseResponse.cookies.set(name, value, options)
@@ -95,15 +99,15 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isProtected = PROTECTED_ROUTES.some((route) =>
-    pathname.startsWith(route)
-  );
+  const isProtected = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
 
   if (isProtected && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    copyCookies(supabaseResponse, redirectResponse);
+    return redirectResponse;
   }
 
   return supabaseResponse;
