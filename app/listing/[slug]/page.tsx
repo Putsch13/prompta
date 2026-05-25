@@ -16,6 +16,7 @@ import { BuyButton } from "@/components/BuyButton";
 import { ReviewForm } from "@/components/ReviewForm";
 import { ReportButton } from "@/components/ReportButton";
 import { RunPartnerButton } from "@/components/RunPartnerButton";
+import { RunPanel } from "@/components/run/RunPanel";
 
 export const revalidate = 3600;
 
@@ -146,6 +147,8 @@ export default async function ListingPage({ params }: Props) {
     dependencies?: string;
     setup_time?: string;
   } | null;
+
+  const canUseContent = isFree || alreadyPurchased || isOwner;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -354,6 +357,23 @@ export default async function ListingPage({ params }: Props) {
                 )}
               </div>
             </div>
+
+            {/* RunPanel — Copier / Lancer */}
+            {listing.type === "prompt" && version?.prompt_body && (
+              <RunPanel
+                listingId={listing.id}
+                versionId={listing.current_version_id}
+                listingSlug={listing.slug}
+                title={listing.title}
+                promptBody={canSeeFullPrompt ? version.prompt_body : null}
+                models={listing.models.length > 0 ? listing.models : ["gpt-4o"]}
+                envFields={envData?.fields}
+                priceCents={listing.price_cents}
+                isFree={isFree}
+                canAccess={canUseContent}
+                type={listing.type}
+              />
+            )}
 
             {/* Modèles */}
             {listing.models.length > 0 && (

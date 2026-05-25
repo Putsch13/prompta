@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { scanContent } from "@/lib/content-filter";
+import { allFindings } from "@/lib/secrets-scanner";
 import { uniqueSlug } from "@/lib/slug";
 
 export const dynamic = "force-dynamic";
@@ -61,10 +62,12 @@ export async function POST(request: NextRequest) {
   }
 
   const textToScan = [description, promptBody].filter(Boolean).join("\n\n");
-  const scanResult = scanContent(textToScan);
+  const contentScan = scanContent(textToScan);
+  const bundleFindings = promptBody ? allFindings(promptBody) : [];
+  const allFlags = [...contentScan.flags, ...bundleFindings];
 
-  const status = scanResult.flagged ? "under_review" : "draft";
-  const contentFlags = scanResult.flagged ? scanResult.flags : [];
+  const status = allFlags.length > 0 ? "under_review" : "draft";
+  const contentFlags = allFlags.length > 0 ? allFlags : [];
 
   const slug = uniqueSlug(title);
 
@@ -131,7 +134,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     id: listing.id,
     versionId: version.id,
-    flagged: scanResult.flagged,
-    flags: scanResult.flags,
+    flagged: allFlags.length > 0,
+    flags: allFlags,
   });
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus, Download, Star, Eye, DollarSign, Pencil } from "lucide-react";
 import type { Metadata } from "next";
 import { TypeBadge, PriceTag, fmt } from "@/components/ui";
+import { PromoteButton } from "@/components/PromoteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -131,12 +132,14 @@ export default async function DashboardPage() {
         ) : (
           <div className="mt-4 space-y-3">
             {listings.map((listing) => (
-              <Link
+              <div
                 key={listing.id}
-                href={`/dashboard/listing/${listing.id}/edit`}
                 className="flex items-center justify-between rounded-xl border border-line bg-card p-4 transition-colors hover:border-accent/50 hover:shadow-sm"
               >
-                <div className="flex items-center gap-3">
+                <Link
+                  href={`/dashboard/listing/${listing.id}/edit`}
+                  className="flex flex-1 items-center gap-3"
+                >
                   <TypeBadge
                     type={listing.type as "prompt" | "agent" | "workflow"}
                     size="sm"
@@ -148,13 +151,18 @@ export default async function DashboardPage() {
                       {new Date(listing.updated_at).toLocaleDateString("fr-FR")}
                     </p>
                   </div>
-                </div>
+                </Link>
                 <div className="flex items-center gap-3">
+                  {listing.status === "published" && (
+                    <PromoteButton slug={listing.slug} title={listing.title} />
+                  )}
                   <StatusBadge status={listing.status} />
                   <PriceTag priceCents={listing.price_cents} size="sm" />
-                  <Pencil className="h-4 w-4 text-ink-faint" />
+                  <Link href={`/dashboard/listing/${listing.id}/edit`}>
+                    <Pencil className="h-4 w-4 text-ink-faint" />
+                  </Link>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}

@@ -4,12 +4,16 @@ import {
   CreditCard,
   User,
   Plus,
+  Key,
+  Repeat,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 const navItems = [
   { href: "/dashboard", label: "Aperçu", icon: LayoutDashboard },
+  { href: "/dashboard/connexions", label: "Connexions", icon: Key },
+  { href: "/dashboard/abonnements", label: "Abonnements", icon: Repeat },
   { href: "/dashboard/payouts", label: "Revenus", icon: CreditCard },
   { href: "/dashboard/edit-profile", label: "Profil", icon: User },
 ];

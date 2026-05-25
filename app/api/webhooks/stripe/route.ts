@@ -132,6 +132,60 @@ export async function POST(request: Request) {
       }
       break;
     }
+
+    case "customer.subscription.updated":
+    case "customer.subscription.deleted": {
+      const subscription = event.data.object as unknown as {
+        id: string;
+        status: string;
+        customer: string;
+        current_period_end: number;
+        metadata?: { listing_id?: string; buyer_id?: string };
+      };
+      const listingId = subscription.metadata?.listing_id;
+      const buyerId = subscription.metadata?.buyer_id;
+
+      if (listingId && buyerId) {
+        await admin.from("subscriptions").upsert(
+          {
+            user_id: buyerId,
+            listing_id: listingId,
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: subscription.customer,
+            status: subscription.status,
+            current_period_end: new Date(
+              subscription.current_period_end * 1000
+            ).toISOString(),
+          },
+          { onConflict: "user_id,listing_id" }
+        );
+      }
+      break;
+    }
+
+    case "invoice.paid": {
+      const invoice = event.data.object as { subscription?: string | null };
+      const subscriptionId = invoice.subscription;
+      if (subscriptionId) {
+        await admin
+          .from("subscriptions")
+          .update({ status: "active" })
+          .eq("stripe_subscription_id", subscriptionId);
+      }
+      break;
+    }
+
+    case "invoice.payment_failed": {
+      const invoice = event.data.object as { subscription?: string | null };
+      const subscriptionId = invoice.subscription;
+      if (subscriptionId) {
+        await admin
+          .from("subscriptions")
+          .update({ status: "past_due" })
+          .eq("stripe_subscription_id", subscriptionId);
+      }
+      break;
+    }
   }
 
   return NextResponse.json({ received: true });

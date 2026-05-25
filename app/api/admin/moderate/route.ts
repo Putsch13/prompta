@@ -21,6 +21,26 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
+  const adminUser = admin;
+  if (!adminUser) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 403 });
+  }
+
+  async function logAction(
+    actionType: string,
+    listingIdParam?: string | null,
+    flagIdParam?: string | null,
+    actionReason?: string | null
+  ) {
+    await supabase.from("moderation_actions").insert({
+      admin_id: adminUser.userId,
+      listing_id: listingIdParam ?? null,
+      flag_id: flagIdParam ?? null,
+      action: actionType,
+      reason: actionReason ?? null,
+    });
+  }
+
   if (action === "approve" && listingId) {
     const { error } = await supabase
       .from("listings")
@@ -37,6 +57,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    await logAction("approve", listingId);
+
     return NextResponse.redirect(
       new URL("/admin/moderation", request.url),
       303
@@ -44,11 +66,14 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "reject" && listingId) {
+    const rejectReason =
+      reason || "Contenu non conforme aux règles de la plateforme";
+
     const { error } = await supabase
       .from("listings")
       .update({
         status: "rejected",
-        reason_rejected: reason || "Contenu non conforme aux règles de la plateforme",
+        reason_rejected: rejectReason,
         updated_at: new Date().toISOString(),
       })
       .eq("id", listingId);
@@ -59,6 +84,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    await logAction("reject", listingId, null, rejectReason);
 
     return NextResponse.redirect(
       new URL("/admin/moderation", request.url),
@@ -71,7 +98,7 @@ export async function POST(request: NextRequest) {
       .from("moderation_flags")
       .update({
         status: "resolved",
-        resolved_by: admin.userId,
+        resolved_by: adminUser.userId,
         resolved_at: new Date().toISOString(),
       })
       .eq("id", flagId);
@@ -82,6 +109,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    await logAction("resolve", null, flagId);
 
     return NextResponse.redirect(
       new URL("/admin/moderation#signalements", request.url),

@@ -182,9 +182,15 @@ export default async function ModerationPage() {
                         Approuver
                       </button>
                     </form>
-                    <form action={`/api/admin/moderate`} method="POST">
+                    <form action={`/api/admin/moderate`} method="POST" className="flex items-center gap-2">
                       <input type="hidden" name="listingId" value={listing.id} />
                       <input type="hidden" name="action" value="reject" />
+                      <input
+                        type="text"
+                        name="reason"
+                        placeholder="Motif du refus"
+                        className="h-9 rounded-lg border border-line px-2 text-sm"
+                      />
                       <button
                         type="submit"
                         className="flex h-9 items-center gap-1.5 rounded-lg bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700"

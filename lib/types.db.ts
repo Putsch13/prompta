@@ -87,6 +87,8 @@ export interface Database {
           search_vector: string | null;
           reason_rejected: string | null;
           content_flags: Json;
+          subscription_price_cents: number;
+          pricing_mode: "free" | "one_time" | "subscription";
           created_at: string;
           updated_at: string;
         };
@@ -107,6 +109,8 @@ export interface Database {
           search_vector?: string | null;
           reason_rejected?: string | null;
           content_flags?: Json;
+          subscription_price_cents?: number;
+          pricing_mode?: "free" | "one_time" | "subscription";
           created_at?: string;
           updated_at?: string;
         };
@@ -127,6 +131,8 @@ export interface Database {
           search_vector?: string | null;
           reason_rejected?: string | null;
           content_flags?: Json;
+          subscription_price_cents?: number;
+          pricing_mode?: "free" | "one_time" | "subscription";
           created_at?: string;
           updated_at?: string;
         };
@@ -458,6 +464,384 @@ export interface Database {
           flagged_by?: string | null;
           resolved_by?: string | null;
           resolved_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      moderation_actions: {
+        Row: {
+          id: string;
+          admin_id: string;
+          listing_id: string | null;
+          flag_id: string | null;
+          action: string;
+          reason: string | null;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          admin_id: string;
+          listing_id?: string | null;
+          flag_id?: string | null;
+          action: string;
+          reason?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          admin_id?: string;
+          listing_id?: string | null;
+          flag_id?: string | null;
+          action?: string;
+          reason?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      user_api_keys: {
+        Row: {
+          id: string;
+          owner_id: string;
+          provider: string;
+          encrypted_key: string;
+          last4: string;
+          is_valid: boolean;
+          last_checked_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_id: string;
+          provider: string;
+          encrypted_key: string;
+          last4: string;
+          is_valid?: boolean;
+          last_checked_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          owner_id?: string;
+          provider?: string;
+          encrypted_key?: string;
+          last4?: string;
+          is_valid?: boolean;
+          last_checked_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      key_events: {
+        Row: {
+          id: string;
+          owner_id: string;
+          provider: string;
+          event_type: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_id: string;
+          provider: string;
+          event_type: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          owner_id?: string;
+          provider?: string;
+          event_type?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      runs: {
+        Row: {
+          id: string;
+          user_id: string;
+          listing_id: string | null;
+          version_id: string | null;
+          model: string | null;
+          provider: string | null;
+          status: string;
+          input_tokens: number;
+          output_tokens: number;
+          cost_estimate: number;
+          output: string | null;
+          error_message: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          listing_id?: string | null;
+          version_id?: string | null;
+          model?: string | null;
+          provider?: string | null;
+          status?: string;
+          input_tokens?: number;
+          output_tokens?: number;
+          cost_estimate?: number;
+          output?: string | null;
+          error_message?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          listing_id?: string | null;
+          version_id?: string | null;
+          model?: string | null;
+          provider?: string | null;
+          status?: string;
+          input_tokens?: number;
+          output_tokens?: number;
+          cost_estimate?: number;
+          output?: string | null;
+          error_message?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      free_run_quota: {
+        Row: {
+          user_id: string;
+          runs_today: number;
+          last_reset: string;
+        };
+        Insert: {
+          user_id: string;
+          runs_today?: number;
+          last_reset?: string;
+        };
+        Update: {
+          user_id?: string;
+          runs_today?: number;
+          last_reset?: string;
+        };
+        Relationships: [];
+      };
+      agent_runs: {
+        Row: {
+          id: string;
+          user_id: string;
+          listing_id: string | null;
+          status: string;
+          steps_completed: number;
+          max_steps: number;
+          output: Json;
+          error_message: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          listing_id?: string | null;
+          status?: string;
+          steps_completed?: number;
+          max_steps?: number;
+          output?: Json;
+          error_message?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          listing_id?: string | null;
+          status?: string;
+          steps_completed?: number;
+          max_steps?: number;
+          output?: Json;
+          error_message?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          listing_id: string;
+          stripe_subscription_id: string | null;
+          stripe_customer_id: string | null;
+          status: string;
+          current_period_end: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          listing_id: string;
+          stripe_subscription_id?: string | null;
+          stripe_customer_id?: string | null;
+          status?: string;
+          current_period_end?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          listing_id?: string;
+          stripe_subscription_id?: string | null;
+          stripe_customer_id?: string | null;
+          status?: string;
+          current_period_end?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      organizations: {
+        Row: {
+          id: string;
+          slug: string;
+          name: string;
+          stripe_customer_id: string | null;
+          seat_limit: number;
+          plan: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          slug: string;
+          name: string;
+          stripe_customer_id?: string | null;
+          seat_limit?: number;
+          plan?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          slug?: string;
+          name?: string;
+          stripe_customer_id?: string | null;
+          seat_limit?: number;
+          plan?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      org_members: {
+        Row: {
+          org_id: string;
+          user_id: string;
+          role: string;
+          joined_at: string;
+        };
+        Insert: {
+          org_id: string;
+          user_id: string;
+          role?: string;
+          joined_at?: string;
+        };
+        Update: {
+          org_id?: string;
+          user_id?: string;
+          role?: string;
+          joined_at?: string;
+        };
+        Relationships: [];
+      };
+      org_listings: {
+        Row: {
+          id: string;
+          org_id: string;
+          source_listing_id: string | null;
+          title: string;
+          type: string;
+          status: string;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          source_listing_id?: string | null;
+          title: string;
+          type: string;
+          status?: string;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          org_id?: string;
+          source_listing_id?: string | null;
+          title?: string;
+          type?: string;
+          status?: string;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      scheduled_runs: {
+        Row: {
+          id: string;
+          user_id: string;
+          listing_id: string;
+          cron_expression: string;
+          inputs: Json;
+          notify_email: boolean;
+          active: boolean;
+          last_run_at: string | null;
+          next_run_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          listing_id: string;
+          cron_expression: string;
+          inputs?: Json;
+          notify_email?: boolean;
+          active?: boolean;
+          last_run_at?: string | null;
+          next_run_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          listing_id?: string;
+          cron_expression?: string;
+          inputs?: Json;
+          notify_email?: boolean;
+          active?: boolean;
+          last_run_at?: string | null;
+          next_run_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          stripe_subscription_id: string | null;
+          plan: string;
+          status: string;
+          current_period_end: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          stripe_subscription_id?: string | null;
+          plan?: string;
+          status?: string;
+          current_period_end?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          stripe_subscription_id?: string | null;
+          plan?: string;
+          status?: string;
+          current_period_end?: string | null;
           created_at?: string;
         };
         Relationships: [];
