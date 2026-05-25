@@ -1,27 +1,8 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import {
-  LayoutDashboard,
-  CreditCard,
-  User,
-  Key,
-  Repeat,
-  History,
-  Coins,
-} from "lucide-react";
 import { DashboardNav } from "@/components/DashboardNav";
 
 export const dynamic = "force-dynamic";
-
-const navItems = [
-  { href: "/dashboard", label: "Aperçu", icon: LayoutDashboard, exact: true },
-  { href: "/dashboard/connexions", label: "Connexions", icon: Key },
-  { href: "/dashboard/runs", label: "Historique runs", icon: History },
-  { href: "/dashboard/credits", label: "Crédits", icon: Coins },
-  { href: "/dashboard/abonnements", label: "Abonnements", icon: Repeat },
-  { href: "/dashboard/payouts", label: "Revenus", icon: CreditCard },
-  { href: "/dashboard/edit-profile", label: "Profil", icon: User },
-];
 
 export default function DashboardLayout({
   children,
@@ -33,7 +14,7 @@ export default function DashboardLayout({
       <div className="mx-auto max-w-page px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-8 lg:flex-row">
           <aside className="w-full shrink-0 lg:w-56">
-            <DashboardNav items={navItems} />
+            <DashboardNav />
             <hr className="my-3 border-line" />
             <Link
               href="/dashboard/new"
