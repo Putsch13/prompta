@@ -12,6 +12,9 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { loadEnvFiles } from "./load-env";
+
+loadEnvFiles();
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
