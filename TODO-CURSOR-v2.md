@@ -125,7 +125,7 @@ sensibles protégées ; design unifié ; cadre légal en place.
   un encart sur le dashboard.
 - [x] **État vide intelligent** : tant qu'aucune clé n'est configurée, le masque
   « Lancer » affiche un appel à l'action doux vers l'assistant — jamais une erreur.
-- [x] **Checklist d'onboarding** sur le dashboard utilisateur : « Configurez une clé »,
+- [ ] **Checklist d'onboarding** sur le dashboard utilisateur : « Configurez une clé »,
   « Lancez votre premier prompt », « Suivez un builder » — barre de progression.
 - **DoD :** un nouvel utilisateur configure une clé et lance son premier prompt en
   moins de 2 minutes, guidé de bout en bout.
@@ -151,7 +151,8 @@ sensibles protégées ; design unifié ; cadre légal en place.
 - [x] Quota gratuit plafonné (clés plateforme) pour les utilisateurs sans clé — table
   `free_run_quota`, ex. 20 runs/jour.
 - [x] Table `runs` : `user_id`, `listing_id`, `version_id`, `status`, `tokens`, `cost`,
-  `created_at`. Historique des runs + bouton « relancer ».
+  `created_at`.
+- [ ] Historique des runs + bouton « relancer » (UI dashboard).
 - **DoD :** un prompt gratuit se lance en un clic, résultat streamé, run historisé.
 
 ## Bloc 1.7 — Manifeste agent + orchestrateur + outils
@@ -222,14 +223,14 @@ builders et utilisateurs sont guidés ; le double mode Copier/Lancer fonctionne.
 - [x] Bloquer achat/abonnement si le créateur n'a pas `charges_enabled` **et**
   `payouts_enabled` (écouter `account.updated`).
 - [x] `BuyButton`/`RunPanel` : message explicite si le créateur n'est pas KYC-complet.
-- [x] `app/dashboard/payouts` : tableau des revenus — ventes, **MRR**, commissions,
-  payouts.
+- [x] `app/dashboard/payouts` : tableau des revenus — ventes, commissions, payouts.
+- [ ] Afficher le **MRR** (abonnements actifs) sur la page payouts.
 - **DoD :** impossible de payer un créateur non vérifié ; le builder voit son MRR.
 
 ## Bloc 2.4 — Galop d'essai & mode crédits (option confort)
 - [x] Essais gratuits : X runs d'agent gratuits avant abonnement (clés plateforme,
   plafonné) — réutilise `free_run_quota`.
-- [x] Mode crédits plateforme (optionnel) : packs de crédits, débit par run sur les clés
+- [ ] Mode crédits plateforme (optionnel) : packs de crédits, débit par run sur les clés
   plateforme avec marge — positionné comme confort premium.
 - **DoD :** un utilisateur peut essayer un agent avant de s'abonner.
 
@@ -268,13 +269,13 @@ avec essai avant achat.
   admin/éditeur/lecteur), RLS par org ; bibliothèque privée (listings internes).
 - [x] `app/org/[slug]/` : espace organisation — bibliothèque privée, espaces par
   équipe/département, gestion des membres.
-- [x] **Import marketplace → bibliothèque privée** : cloner un agent public dans l'org.
-- [x] Workflow d'approbation interne + audit log org.
+- [ ] **Import marketplace → bibliothèque privée** : cloner un agent public dans l'org.
+- [ ] Workflow d'approbation interne + audit log org.
 - [x] Clés API au **niveau organisation** (réutilise `org_api_keys` du Bloc 1.2).
 - **DoD :** une entreprise gère une bibliothèque privée d'agents, par équipe, gouvernée.
 
 ## Bloc 3.4 — B2B : abonnement par siège & onboarding
-- [x] Abonnement B2B par siège : `Subscription` Stripe **directe** sur le compte
+- [ ] Abonnement B2B par siège : `Subscription` Stripe **directe** sur le compte
   plateforme (pas de transfert Connect) — paliers 49/99/299 €.
 - [ ] SSO Google/Microsoft (puis SAML/SCIM pour le palier Scale).
 - [x] Offre d'**onboarding clé en main** : flux pour mandater Prompta ou un builder
@@ -295,8 +296,9 @@ opérationnel.
 - **DoD :** un agent peut tourner automatiquement à intervalle régulier.
 
 ## Bloc 4.2 — Abonnement « Prompta Pro »
-- [x] Abonnement plateforme unique donnant accès à tout le catalogue d'agents ; revshare
-  redistribué aux builders **au prorata de l'usage** (modèle Spotify).
+- [x] Table `platform_subscriptions` (migration 0013).
+- [ ] Abonnement plateforme unique donnant accès à tout le catalogue d'agents ; revshare
+  redistribué aux builders **au prorata de l'usage** (modèle Spotify) — UI + Stripe.
 - **DoD :** un utilisateur Pro lance n'importe quel agent ; les builders sont rémunérés
   à l'usage.
 
