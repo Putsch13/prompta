@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin } from "@/lib/admin/guard";
 import { createClient } from "@/lib/supabase/server";
 import { CheckCircle, XCircle, AlertTriangle, Eye, Flag } from "lucide-react";
 import Link from "next/link";

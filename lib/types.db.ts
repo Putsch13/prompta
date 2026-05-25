@@ -20,6 +20,7 @@ export interface Database {
           avatar_url: string | null;
           is_verified: boolean;
           is_admin: boolean;
+          is_persona: boolean;
           created_at: string;
         };
         Insert: {
@@ -32,6 +33,7 @@ export interface Database {
           avatar_url?: string | null;
           is_verified?: boolean;
           is_admin?: boolean;
+          is_persona?: boolean;
           created_at?: string;
         };
         Update: {
@@ -44,6 +46,7 @@ export interface Database {
           avatar_url?: string | null;
           is_verified?: boolean;
           is_admin?: boolean;
+          is_persona?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -627,6 +630,51 @@ export interface Database {
       agent_runs: {
         Row: {
           id: string;
+          agent_slug: string;
+          trigger: string;
+          status: string;
+          input_tokens: number;
+          output_tokens: number;
+          cost_usd: number;
+          items_produced: number;
+          error: string | null;
+          is_sandbox: boolean;
+          started_at: string;
+          finished_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          agent_slug: string;
+          trigger?: string;
+          status?: string;
+          input_tokens?: number;
+          output_tokens?: number;
+          cost_usd?: number;
+          items_produced?: number;
+          error?: string | null;
+          is_sandbox?: boolean;
+          started_at?: string;
+          finished_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          agent_slug?: string;
+          trigger?: string;
+          status?: string;
+          input_tokens?: number;
+          output_tokens?: number;
+          cost_usd?: number;
+          items_produced?: number;
+          error?: string | null;
+          is_sandbox?: boolean;
+          started_at?: string;
+          finished_at?: string | null;
+        };
+        Relationships: [];
+      };
+      listing_agent_runs: {
+        Row: {
+          id: string;
           user_id: string;
           listing_id: string | null;
           status: string;
@@ -656,6 +704,267 @@ export interface Database {
           max_steps?: number;
           output?: Json;
           error_message?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      agent_outputs: {
+        Row: {
+          id: string;
+          run_id: string | null;
+          agent_slug: string;
+          kind: string;
+          status: string;
+          title: string | null;
+          payload: Json;
+          quality_score: number | null;
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          published_ref: string | null;
+          is_sandbox: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id?: string | null;
+          agent_slug: string;
+          kind: string;
+          status?: string;
+          title?: string | null;
+          payload: Json;
+          quality_score?: number | null;
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          published_ref?: string | null;
+          is_sandbox?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          run_id?: string | null;
+          agent_slug?: string;
+          kind?: string;
+          status?: string;
+          title?: string | null;
+          payload?: Json;
+          quality_score?: number | null;
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          published_ref?: string | null;
+          is_sandbox?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      agent_definitions: {
+        Row: {
+          id: string;
+          slug: string;
+          name: string;
+          description: string | null;
+          is_enabled: boolean;
+          requires_review: boolean;
+          max_runs_per_day: number;
+          config: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          slug: string;
+          name: string;
+          description?: string | null;
+          is_enabled?: boolean;
+          requires_review?: boolean;
+          max_runs_per_day?: number;
+          config?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          slug?: string;
+          name?: string;
+          description?: string | null;
+          is_enabled?: boolean;
+          requires_review?: boolean;
+          max_runs_per_day?: number;
+          config?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      agent_schedules: {
+        Row: {
+          id: string;
+          agent_slug: string;
+          days: number[];
+          hours: number[];
+          is_enabled: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          agent_slug: string;
+          days?: number[];
+          hours?: number[];
+          is_enabled?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          agent_slug?: string;
+          days?: number[];
+          hours?: number[];
+          is_enabled?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      agent_budget: {
+        Row: {
+          id: number;
+          daily_cap_usd: number;
+          monthly_cap_usd: number;
+          daily_spent_usd: number;
+          monthly_spent_usd: number;
+          daily_reset_date: string;
+          monthly_reset_month: string;
+          is_paused: boolean;
+          mode: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          daily_cap_usd?: number;
+          monthly_cap_usd?: number;
+          daily_spent_usd?: number;
+          monthly_spent_usd?: number;
+          daily_reset_date?: string;
+          monthly_reset_month?: string;
+          is_paused?: boolean;
+          mode?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          daily_cap_usd?: number;
+          monthly_cap_usd?: number;
+          daily_spent_usd?: number;
+          monthly_spent_usd?: number;
+          daily_reset_date?: string;
+          monthly_reset_month?: string;
+          is_paused?: boolean;
+          mode?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      agent_logs: {
+        Row: {
+          id: string;
+          run_id: string | null;
+          agent_slug: string;
+          level: string;
+          message: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id?: string | null;
+          agent_slug: string;
+          level?: string;
+          message: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          run_id?: string | null;
+          agent_slug?: string;
+          level?: string;
+          message?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      personas: {
+        Row: {
+          id: string;
+          profile_id: string | null;
+          username: string;
+          display_name: string;
+          email: string;
+          specialty: string;
+          tone: string;
+          language: string;
+          is_active: boolean;
+          daily_quota: number;
+          last_used_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          profile_id?: string | null;
+          username: string;
+          display_name: string;
+          email: string;
+          specialty: string;
+          tone: string;
+          language?: string;
+          is_active?: boolean;
+          daily_quota?: number;
+          last_used_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          profile_id?: string | null;
+          username?: string;
+          display_name?: string;
+          email?: string;
+          specialty?: string;
+          tone?: string;
+          language?: string;
+          is_active?: boolean;
+          daily_quota?: number;
+          last_used_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      kpi_snapshots: {
+        Row: {
+          day: string;
+          total_users: number;
+          total_listings: number;
+          published_listings: number;
+          total_purchases: number;
+          revenue_cents: number;
+          platform_fee_cents: number;
+          total_downloads: number;
+          new_signups: number;
+          created_at: string;
+        };
+        Insert: {
+          day?: string;
+          total_users?: number;
+          total_listings?: number;
+          published_listings?: number;
+          total_purchases?: number;
+          revenue_cents?: number;
+          platform_fee_cents?: number;
+          total_downloads?: number;
+          new_signups?: number;
+          created_at?: string;
+        };
+        Update: {
+          day?: string;
+          total_users?: number;
+          total_listings?: number;
+          published_listings?: number;
+          total_purchases?: number;
+          revenue_cents?: number;
+          platform_fee_cents?: number;
+          total_downloads?: number;
+          new_signups?: number;
           created_at?: string;
         };
         Relationships: [];
@@ -847,7 +1156,34 @@ export interface Database {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      admin_kpis: {
+        Row: {
+          total_users: number;
+          new_users_7d: number;
+          total_listings: number;
+          published_listings: number;
+          listings_pending: number;
+          total_purchases: number;
+          gross_revenue_cents: number;
+          platform_revenue_cents: number;
+          revenue_30d_cents: number;
+          total_downloads: number;
+          avg_rating: number;
+          outputs_awaiting_review: number;
+        };
+        Relationships: [];
+      };
+      sandbox_summary: {
+        Row: {
+          current_mode: string;
+          sandbox_runs: number;
+          sandbox_outputs: number;
+          sandbox_pending: number;
+        };
+        Relationships: [];
+      };
+    };
     Functions: Record<string, never>;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

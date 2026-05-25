@@ -12,6 +12,8 @@ const envSchema = z.object({
   SENTRY_DSN: z.string().url(),
   NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1),
   NEXT_PUBLIC_APP_URL: z.string().url(),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  CRON_SECRET: z.string().min(1).optional(),
 });
 
 const clientSchema = z.object({

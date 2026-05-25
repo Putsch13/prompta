@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   let processed = 0;
 
   for (const run of dueRuns ?? []) {
-    await admin.from("agent_runs").insert({
+    await admin.from("listing_agent_runs").insert({
       user_id: run.user_id,
       listing_id: run.listing_id,
       status: "pending",

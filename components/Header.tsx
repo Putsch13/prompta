@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Search, Zap } from "lucide-react";
 import dynamic from "next/dynamic";
+import { AdminNavLink } from "@/components/AdminNavLink";
 
 const AuthNav = dynamic(() => import("@/components/AuthNav").then((m) => m.AuthNav), {
   ssr: false,
@@ -29,6 +30,7 @@ export function Header() {
           >
             Dashboard
           </Link>
+          <AdminNavLink />
         </nav>
 
         <div className="flex items-center gap-3">

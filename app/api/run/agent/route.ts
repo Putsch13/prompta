@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { data: agentRun } = await admin
-    .from("agent_runs")
+    .from("listing_agent_runs")
     .insert({
       user_id: user.id,
       listing_id: listingId,
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
   });
 
   await admin
-    .from("agent_runs")
+    .from("listing_agent_runs")
     .update({
       status: result.status,
       steps_completed: result.stepsCompleted,
