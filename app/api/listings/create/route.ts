@@ -15,6 +15,8 @@ interface CreateListingBody {
   categoryId: string | null;
   description: string | null;
   models: string[];
+  techStack?: string[];
+  integrations?: string[];
   tags: string[];
   priceCents: number;
   pricingMode?: "free" | "one_time" | "subscription";
@@ -22,7 +24,6 @@ interface CreateListingBody {
   promptBody: string | null;
   manifest?: unknown;
   envFields?: unknown[];
-  dependencies: string | null;
   setupTime: string | null;
 }
 
@@ -45,13 +46,14 @@ export async function POST(request: NextRequest) {
     categoryId,
     description,
     models,
+    techStack = [],
+    integrations = [],
     tags,
     priceCents,
     pricingMode = "free",
     subscriptionPriceCents = 0,
     promptBody,
     manifest,
-    dependencies,
     setupTime,
   } = body;
 
@@ -103,25 +105,31 @@ export async function POST(request: NextRequest) {
   const effectivePrice =
     pricingMode === "free" ? 0 : pricingMode === "subscription" ? 0 : priceCents;
 
+  const insertData = {
+    creator_id: user.id,
+    category_id: categoryId || null,
+    type,
+    title,
+    slug,
+    description,
+    models,
+    tags,
+    price_cents: effectivePrice,
+    subscription_price_cents:
+      pricingMode === "subscription" ? subscriptionPriceCents : 0,
+    pricing_mode: pricingMode,
+    currency: "eur",
+    status,
+    content_flags: contentFlags,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+
+  if (techStack.length > 0) insertData.tech_stack = techStack;
+  if (integrations.length > 0) insertData.integrations = integrations;
+
   const { data: listing, error: listingError } = await adminClient
     .from("listings")
-    .insert({
-      creator_id: user.id,
-      category_id: categoryId || null,
-      type,
-      title,
-      slug,
-      description,
-      models,
-      tags,
-      price_cents: effectivePrice,
-      subscription_price_cents:
-        pricingMode === "subscription" ? subscriptionPriceCents : 0,
-      pricing_mode: pricingMode,
-      currency: "eur",
-      status,
-      content_flags: contentFlags,
-    })
+    .insert(insertData)
     .select("id")
     .single();
 
@@ -135,7 +143,6 @@ export async function POST(request: NextRequest) {
   const envData = {
     manifest: manifestParsed.data,
     meta: {
-      dependencies: dependencies || null,
       setup_time: setupTime || null,
     },
   };

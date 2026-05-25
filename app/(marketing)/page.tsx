@@ -1,6 +1,7 @@
 import { Search, Sparkles, Package, Shield } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { B2BSection } from "@/components/marketing/B2BSection";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +126,8 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      <B2BSection />
     </div>
   );
 }

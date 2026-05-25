@@ -129,6 +129,35 @@ export function RunPanel({
     return needed.every((p) => keys.some((k) => k.provider === p && k.is_valid));
   }
 
+  async function pollRunStatus(runId: string) {
+    const maxPolls = 60;
+    let polls = 0;
+    while (polls < maxPolls) {
+      await new Promise((r) => setTimeout(r, 2000));
+      polls++;
+      try {
+        const res = await fetch(`/api/run/agent/${runId}`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        setAgentStatus(data.status);
+        if (data.status === "completed") {
+          setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
+          setRunning(false);
+          return;
+        }
+        if (data.status === "failed") {
+          setError(data.error_message || "L'agent a échoué");
+          setRunning(false);
+          return;
+        }
+      } catch {
+        // ignore poll errors, continue
+      }
+    }
+    setError("Délai d'attente dépassé");
+    setRunning(false);
+  }
+
   async function handleAgentRun() {
     if (!versionId) return;
     if (!hasAllSecrets()) {
@@ -138,7 +167,7 @@ export function RunPanel({
 
     setRunning(true);
     setAgentOutput("");
-    setAgentStatus(null);
+    setAgentStatus("pending");
     setError(null);
 
     try {
@@ -149,17 +178,26 @@ export function RunPanel({
           listingId,
           versionId,
           inputs: variables,
-          async: false,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message);
-      setAgentStatus(data.status);
-      setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
-      if (data.error) setError(data.error);
+
+      if (data.status === "completed" || data.status === "failed") {
+        setAgentStatus(data.status);
+        setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
+        if (data.error) setError(data.error);
+        setRunning(false);
+      } else if (data.runId) {
+        setAgentStatus("running");
+        pollRunStatus(data.runId);
+      } else {
+        setAgentStatus(data.status);
+        setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
+        setRunning(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur agent");
-    } finally {
       setRunning(false);
     }
   }
@@ -314,12 +352,31 @@ export function RunPanel({
           )}
 
           {agentStatus && (
-            <p className="mt-2 text-sm">
-              Statut :{" "}
-              <span className={agentStatus === "completed" ? "text-green-600" : "text-red-600"}>
-                {agentStatus}
-              </span>
-            </p>
+            <div className="mt-2 text-sm">
+              <p>
+                Statut :{" "}
+                <span
+                  className={
+                    agentStatus === "completed"
+                      ? "text-green-600"
+                      : agentStatus === "failed"
+                        ? "text-red-600"
+                        : "text-amber-600"
+                  }
+                >
+                  {agentStatus === "pending" && "En attente…"}
+                  {agentStatus === "running" && "Exécution en cours…"}
+                  {agentStatus === "queued" && "En file d'attente…"}
+                  {agentStatus === "completed" && "Terminé"}
+                  {agentStatus === "failed" && "Échoué"}
+                </span>
+              </p>
+              {(agentStatus === "pending" || agentStatus === "running" || agentStatus === "queued") && (
+                <p className="mt-1 text-xs text-ink-faint">
+                  L&apos;agent s&apos;exécute en arrière-plan. Rafraîchissement automatique…
+                </p>
+              )}
+            </div>
           )}
           {agentOutput && (
             <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-card2 p-3 text-xs whitespace-pre-wrap">

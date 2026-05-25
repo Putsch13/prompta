@@ -11,7 +11,14 @@ import {
   Clock,
   Key,
   BadgeCheck,
+  Plug,
+  Server,
 } from "lucide-react";
+import {
+  AI_MODELS,
+  TECH_RUNTIMES,
+  INTEGRATIONS,
+} from "@/lib/catalogs";
 import { BuyButton } from "@/components/BuyButton";
 import { ReviewForm } from "@/components/ReviewForm";
 import { ReportButton } from "@/components/ReportButton";
@@ -56,17 +63,43 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+interface ListingWithTech {
+  id: string;
+  creator_id: string;
+  category_id: string | null;
+  type: "prompt" | "agent" | "workflow";
+  title: string;
+  slug: string;
+  description: string | null;
+  models: string[];
+  tech_stack?: string[];
+  integrations?: string[];
+  tags: string[];
+  price_cents: number;
+  subscription_price_cents: number;
+  pricing_mode: string;
+  currency: string;
+  status: string;
+  content_flags: string[];
+  current_version_id: string | null;
+  search_vector: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
 export default async function ListingPage({ params }: Props) {
   const supabase = createClient();
 
-  const { data: listing } = await supabase
+  const { data: rawListing } = await supabase
     .from("listings")
     .select("*")
     .eq("slug", params.slug)
     .eq("status", "published")
     .single();
 
-  if (!listing) notFound();
+  if (!rawListing) notFound();
+
+  const listing = rawListing as ListingWithTech;
 
   // Utilisateur courant
   const { data: { user } } = await supabase.auth.getUser();
@@ -416,23 +449,78 @@ export default async function ListingPage({ params }: Props) {
               />
             )}
 
-            {/* Modèles */}
-            {listing.models.length > 0 && (
-              <div className="rounded-xl border border-border p-4">
-                <h3 className="flex items-center gap-2 text-sm font-medium">
-                  <Cpu className="h-4 w-4 text-accent" />
-                  Modèles compatibles
-                </h3>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {listing.models.map((m) => (
-                    <span
-                      key={m}
-                      className="rounded-full bg-accent-light px-2.5 py-0.5 text-xs font-medium text-accent"
-                    >
-                      {m}
-                    </span>
-                  ))}
-                </div>
+            {/* Compatibilité & prérequis */}
+            {(listing.models.length > 0 ||
+              (listing.tech_stack && listing.tech_stack.length > 0) ||
+              (listing.integrations && listing.integrations.length > 0)) && (
+              <div className="rounded-xl border border-border p-4 space-y-4">
+                <h3 className="text-sm font-semibold">Compatibilité & prérequis</h3>
+
+                {listing.models.length > 0 && (
+                  <div>
+                    <p className="flex items-center gap-2 text-xs font-medium text-ink-soft">
+                      <Cpu className="h-3.5 w-3.5 text-accent" />
+                      Modèles IA
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {listing.models.map((m) => {
+                        const modelInfo = AI_MODELS.find((am) => am.id === m);
+                        return (
+                          <span
+                            key={m}
+                            className="rounded-full bg-accent-light px-2.5 py-0.5 text-xs font-medium text-accent"
+                          >
+                            {modelInfo?.label ?? m}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {listing.tech_stack && listing.tech_stack.length > 0 && (
+                  <div>
+                    <p className="flex items-center gap-2 text-xs font-medium text-ink-soft">
+                      <Server className="h-3.5 w-3.5 text-accent" />
+                      Runtime / Tech
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {listing.tech_stack.map((t) => {
+                        const techInfo = TECH_RUNTIMES.find((tr) => tr.id === t);
+                        return (
+                          <span
+                            key={t}
+                            className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-ink"
+                          >
+                            {techInfo?.label ?? t}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {listing.integrations && listing.integrations.length > 0 && (
+                  <div>
+                    <p className="flex items-center gap-2 text-xs font-medium text-ink-soft">
+                      <Plug className="h-3.5 w-3.5 text-accent" />
+                      Intégrations
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {listing.integrations.map((i) => {
+                        const intInfo = INTEGRATIONS.find((int) => int.id === i);
+                        return (
+                          <span
+                            key={i}
+                            className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700"
+                          >
+                            {intInfo?.label ?? i}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

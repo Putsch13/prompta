@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import type { Metadata } from "next";
 import { PromptCard } from "@/components/PromptCard";
+import { AI_MODELS, INTEGRATIONS, getPopularFirst } from "@/lib/catalogs";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,8 @@ interface Props {
     type?: string;
     price?: string;
     category?: string;
+    model?: string;
+    integration?: string;
     sort?: string;
     page?: string;
   };
@@ -50,6 +53,8 @@ export default async function ExplorePage({ searchParams }: Props) {
   const typeFilter = searchParams.type || "";
   const priceFilter = searchParams.price || "";
   const categoryFilter = searchParams.category || "";
+  const modelFilter = searchParams.model || "";
+  const integrationFilter = searchParams.integration || "";
   const sort = searchParams.sort || "recent";
   const page = parseInt(searchParams.page || "1");
   const offset = (page - 1) * PAGE_SIZE;
@@ -88,6 +93,15 @@ export default async function ExplorePage({ searchParams }: Props) {
     if (cat) {
       query = query.eq("category_id", cat.id);
     }
+  }
+
+  if (modelFilter) {
+    query = query.contains("models", [modelFilter]);
+  }
+
+  if (integrationFilter) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    query = (query as any).contains("integrations", [integrationFilter]);
   }
 
   if (sort === "price_asc") {
@@ -150,6 +164,9 @@ export default async function ExplorePage({ searchParams }: Props) {
     .select("slug, name")
     .order("name");
 
+  const popularModels = getPopularFirst(AI_MODELS).slice(0, 10);
+  const popularIntegrations = getPopularFirst(INTEGRATIONS).slice(0, 10);
+
   function buildUrl(params: Record<string, string>) {
     const sp = new URLSearchParams();
     const merged = {
@@ -157,6 +174,8 @@ export default async function ExplorePage({ searchParams }: Props) {
       type: typeFilter,
       price: priceFilter,
       category: categoryFilter,
+      model: modelFilter,
+      integration: integrationFilter,
       sort,
       ...params,
     };
@@ -214,19 +233,71 @@ export default async function ExplorePage({ searchParams }: Props) {
           {categories && categories.length > 0 && (
             <>
               <span className="mx-2 h-6 w-px bg-line" />
-              <select
-                defaultValue={categoryFilter}
-                className="rounded-full border border-line bg-card px-4 py-1.5 text-sm text-ink outline-none focus:border-accent"
-              >
-                <option value="">Toutes catégories</option>
-                {categories.map((c) => (
-                  <option key={c.slug} value={c.slug}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              {[{ slug: "", name: "Toutes catégories" }, ...categories].map((c) => (
+                <Link
+                  key={c.slug}
+                  href={buildUrl({ category: c.slug, page: "1" })}
+                  className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
+                    categoryFilter === c.slug
+                      ? "bg-accent text-white"
+                      : "border border-line text-ink hover:border-accent"
+                  }`}
+                >
+                  {c.name}
+                </Link>
+              ))}
             </>
           )}
+
+          <span className="mx-2 h-6 w-px bg-line" />
+          <Link
+            href={buildUrl({ model: "", page: "1" })}
+            className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
+              !modelFilter
+                ? "bg-accent/10 text-accent"
+                : "text-ink-soft hover:text-ink"
+            }`}
+          >
+            Modèle
+          </Link>
+          {popularModels.map((m) => (
+            <Link
+              key={m.id}
+              href={buildUrl({ model: m.id, page: "1" })}
+              className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
+                modelFilter === m.id
+                  ? "bg-accent text-white"
+                  : "border border-line text-ink hover:border-accent"
+              }`}
+            >
+              {m.label}
+            </Link>
+          ))}
+
+          <span className="mx-2 h-6 w-px bg-line" />
+          <Link
+            href={buildUrl({ integration: "", page: "1" })}
+            className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
+              !integrationFilter
+                ? "bg-accent/10 text-accent"
+                : "text-ink-soft hover:text-ink"
+            }`}
+          >
+            Intégration
+          </Link>
+          {popularIntegrations.map((i) => (
+            <Link
+              key={i.id}
+              href={buildUrl({ integration: i.id, page: "1" })}
+              className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
+                integrationFilter === i.id
+                  ? "bg-accent text-white"
+                  : "border border-line text-ink hover:border-accent"
+              }`}
+            >
+              {i.label}
+            </Link>
+          ))}
 
           <div className="ml-auto flex items-center gap-2">
             <span className="text-sm text-ink-soft">Trier :</span>

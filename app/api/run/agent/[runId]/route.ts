@@ -1,14 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-interface Props {
+interface Params {
   params: { runId: string };
 }
 
-export async function GET(_request: Request, { params }: Props) {
+export async function GET(request: NextRequest, { params }: Params) {
   const supabase = createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -19,14 +20,20 @@ export async function GET(_request: Request, { params }: Props) {
 
   const { data: run } = await supabase
     .from("listing_agent_runs")
-    .select("id, status, steps_completed, output, error_message, created_at")
+    .select("id, status, output, error_message, created_at")
     .eq("id", params.runId)
     .eq("user_id", user.id)
     .single();
 
   if (!run) {
-    return NextResponse.json({ error: "Run introuvable" }, { status: 404 });
+    return NextResponse.json({ error: "Run non trouvé" }, { status: 404 });
   }
 
-  return NextResponse.json({ run });
+  return NextResponse.json({
+    id: run.id,
+    status: run.status,
+    output: run.output,
+    error_message: run.error_message,
+    created_at: run.created_at,
+  });
 }

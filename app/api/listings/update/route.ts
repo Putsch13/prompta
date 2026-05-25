@@ -14,13 +14,14 @@ interface UpdateListingBody {
   description?: string | null;
   promptBody?: string | null;
   models?: string[];
+  techStack?: string[];
+  integrations?: string[];
   tags?: string[];
   priceCents?: number;
   pricingMode?: "free" | "one_time" | "subscription";
   subscriptionPriceCents?: number;
   manifest?: unknown;
   envFields?: unknown[];
-  dependencies?: string | null;
   setupTime?: string | null;
   publish?: boolean;
 }
@@ -76,24 +77,16 @@ export async function POST(request: NextRequest) {
   const bundleScan = body.promptBody ? allFindings(body.promptBody) : [];
   const allFlags = [...contentScan.flags, ...bundleScan];
 
-  const updates: {
-    updated_at: string;
-    title?: string;
-    description?: string | null;
-    models?: string[];
-    tags?: string[];
-    price_cents?: number;
-    subscription_price_cents?: number;
-    pricing_mode?: "free" | "one_time" | "subscription";
-    status?: "draft" | "under_review" | "published" | "rejected";
-    content_flags?: string[];
-  } = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updates: Record<string, any> = {
     updated_at: new Date().toISOString(),
   };
 
   if (body.title) updates.title = body.title;
   if (body.description !== undefined) updates.description = body.description;
   if (body.models) updates.models = body.models;
+  if (body.techStack) updates.tech_stack = body.techStack;
+  if (body.integrations) updates.integrations = body.integrations;
   if (body.tags) updates.tags = body.tags;
   if (body.priceCents !== undefined) updates.price_cents = body.priceCents;
   if (body.subscriptionPriceCents !== undefined) {
@@ -106,7 +99,8 @@ export async function POST(request: NextRequest) {
     updates.content_flags = allFlags;
   }
 
-  await admin.from("listings").update(updates).eq("id", body.listingId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin.from("listings") as any).update(updates).eq("id", body.listingId);
 
   if (listing.current_version_id && (body.promptBody !== undefined || body.manifest)) {
     let envPayload: { manifest: unknown; meta: Record<string, unknown> } | null = null;
@@ -119,7 +113,6 @@ export async function POST(request: NextRequest) {
       envPayload = {
         manifest: manifestParsed.data,
         meta: {
-          dependencies: body.dependencies ?? null,
           setup_time: body.setupTime ?? null,
         },
       };

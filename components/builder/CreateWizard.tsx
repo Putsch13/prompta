@@ -5,8 +5,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Trash2, Plus, Loader2, AlertTriangle, Check } from "lucide-react";
 import { StepEditor } from "@/components/builder/StepEditor";
+import { CatalogMultiSelect } from "@/components/builder/CatalogMultiSelect";
 import { CommissionNote } from "@/components/CommissionNote";
 import { buildManifest } from "@/lib/builder/manifest";
+import {
+  AI_MODELS,
+  TECH_RUNTIMES,
+  INTEGRATIONS,
+  getIntegrationsRequiringKey,
+} from "@/lib/catalogs";
 import type { AgentStep } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 
@@ -62,6 +69,8 @@ export function CreateWizard({ categories }: Props) {
     categoryId: "",
     description: "",
     models: ["gpt-4o"],
+    techStack: [] as string[],
+    integrations: [] as string[],
     tags: [] as string[],
     promptBody: "",
     agentSteps: [] as AgentStep[],
@@ -131,13 +140,14 @@ export function CreateWizard({ categories }: Props) {
         categoryId: form.categoryId || null,
         description: form.description,
         models: form.models,
+        techStack: form.techStack,
+        integrations: form.integrations,
         tags: form.tags,
         priceCents: form.pricingMode === "free" ? 0 : form.priceCents,
         pricingMode: form.pricingMode,
         subscriptionPriceCents: form.subscriptionPriceCents,
         promptBody: form.promptBody,
         manifest,
-        dependencies: form.dependencies,
         setupTime: form.setupTime,
       }),
     });
@@ -244,6 +254,15 @@ export function CreateWizard({ categories }: Props) {
             rows={3}
             className="w-full rounded-lg border border-line px-3 py-2"
           />
+
+          <CatalogMultiSelect
+            catalog={AI_MODELS}
+            selected={form.models}
+            onChange={(ids) => updateField("models", ids)}
+            label="Modèles IA compatibles"
+            groupByKey="provider"
+            placeholder="Rechercher un modèle…"
+          />
         </div>
       )}
 
@@ -288,72 +307,107 @@ export function CreateWizard({ categories }: Props) {
         <div className="space-y-4">
           <h2 className="font-display text-xl font-bold text-ink">Environnement</h2>
           <p className="text-sm text-ink-soft">
-            Variables d&apos;entrée et clés API requises pour l&apos;exécution.
+            Runtime, intégrations, variables d&apos;entrée et clés API requises.
           </p>
 
-          <div className="space-y-2">
-            {form.envFields.map((f, i) => (
-              <div key={i} className="flex gap-2">
-                <input
-                  value={f.key}
-                  onChange={(e) => {
-                    const fields = [...form.envFields];
-                    fields[i] = { ...fields[i], key: e.target.value };
-                    updateField("envFields", fields);
-                  }}
-                  placeholder="clé"
-                  className="h-10 w-28 rounded-lg border border-line px-3 font-mono text-sm"
-                />
-                <input
-                  value={f.label}
-                  onChange={(e) => {
-                    const fields = [...form.envFields];
-                    fields[i] = { ...fields[i], label: e.target.value };
-                    updateField("envFields", fields);
-                  }}
-                  placeholder="Label"
-                  className="h-10 flex-1 rounded-lg border border-line px-3 text-sm"
-                />
-                <label className="flex items-center gap-1 text-xs text-ink-soft">
+          <CatalogMultiSelect
+            catalog={TECH_RUNTIMES}
+            selected={form.techStack}
+            onChange={(ids) => updateField("techStack", ids)}
+            label="Runtime / Tech requise"
+            placeholder="Rechercher un runtime…"
+          />
+
+          <CatalogMultiSelect
+            catalog={INTEGRATIONS}
+            selected={form.integrations}
+            onChange={(ids) => {
+              updateField("integrations", ids);
+              const integrationsNeedingKeys = getIntegrationsRequiringKey(ids);
+              if (integrationsNeedingKeys.length > 0) {
+                const newSecrets = [...form.requiredSecrets];
+                for (const int of integrationsNeedingKeys) {
+                  const key = int.id as KeyProvider;
+                  if (!newSecrets.includes(key) && SECRET_PROVIDERS.some((p) => p.id === key)) {
+                    newSecrets.push(key);
+                  }
+                }
+                if (newSecrets.length !== form.requiredSecrets.length) {
+                  updateField("requiredSecrets", newSecrets);
+                }
+              }
+            }}
+            label="Intégrations connectées"
+            groupByKey="category"
+            placeholder="Rechercher une intégration…"
+          />
+
+          <div className="border-t border-line pt-4">
+            <p className="mb-2 text-sm font-medium text-ink">Variables d&apos;entrée</p>
+            <div className="space-y-2">
+              {form.envFields.map((f, i) => (
+                <div key={i} className="flex gap-2">
                   <input
-                    type="checkbox"
-                    checked={f.required}
+                    value={f.key}
                     onChange={(e) => {
                       const fields = [...form.envFields];
-                      fields[i] = { ...fields[i], required: e.target.checked };
+                      fields[i] = { ...fields[i], key: e.target.value };
                       updateField("envFields", fields);
                     }}
+                    placeholder="clé"
+                    className="h-10 w-28 rounded-lg border border-line px-3 font-mono text-sm"
                   />
-                  Requis
-                </label>
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateField(
-                      "envFields",
-                      form.envFields.filter((_, j) => j !== i)
-                    )
-                  }
-                  className="rounded p-2 text-destructive hover:bg-red-50"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
-          </div>
+                  <input
+                    value={f.label}
+                    onChange={(e) => {
+                      const fields = [...form.envFields];
+                      fields[i] = { ...fields[i], label: e.target.value };
+                      updateField("envFields", fields);
+                    }}
+                    placeholder="Label"
+                    className="h-10 flex-1 rounded-lg border border-line px-3 text-sm"
+                  />
+                  <label className="flex items-center gap-1 text-xs text-ink-soft">
+                    <input
+                      type="checkbox"
+                      checked={f.required}
+                      onChange={(e) => {
+                        const fields = [...form.envFields];
+                        fields[i] = { ...fields[i], required: e.target.checked };
+                        updateField("envFields", fields);
+                      }}
+                    />
+                    Requis
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateField(
+                        "envFields",
+                        form.envFields.filter((_, j) => j !== i)
+                      )
+                    }
+                    className="rounded p-2 text-destructive hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
 
-          <button
-            type="button"
-            onClick={() =>
-              updateField("envFields", [
-                ...form.envFields,
-                { key: "", label: "", required: true },
-              ])
-            }
-            className="flex items-center gap-1 text-sm text-accent hover:underline"
-          >
-            <Plus className="h-4 w-4" /> Ajouter une variable
-          </button>
+            <button
+              type="button"
+              onClick={() =>
+                updateField("envFields", [
+                  ...form.envFields,
+                  { key: "", label: "", required: true },
+                ])
+              }
+              className="mt-2 flex items-center gap-1 text-sm text-accent hover:underline"
+            >
+              <Plus className="h-4 w-4" /> Ajouter une variable
+            </button>
+          </div>
 
           <div className="border-t border-line pt-4">
             <p className="mb-2 text-sm font-medium text-ink">Clés API requises</p>
@@ -384,15 +438,9 @@ export function CreateWizard({ categories }: Props) {
           </div>
 
           <input
-            value={form.dependencies}
-            onChange={(e) => updateField("dependencies", e.target.value)}
-            placeholder="Dépendances (ex: Node 18+)"
-            className="h-10 w-full rounded-lg border border-line px-3"
-          />
-          <input
             value={form.setupTime}
             onChange={(e) => updateField("setupTime", e.target.value)}
-            placeholder="Temps de setup"
+            placeholder="Temps de setup estimé (ex: 5 min)"
             className="h-10 w-full rounded-lg border border-line px-3"
           />
         </div>

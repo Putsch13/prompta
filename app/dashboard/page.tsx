@@ -154,26 +154,43 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      {!kycComplete && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-amber-900">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            Stripe à compléter — requis pour la vente payante
+      <div className="mb-6 rounded-xl border border-line bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <CreditCard className="h-5 w-5 text-accent" />
+            <div>
+              <p className="font-medium text-ink">
+                Compte Stripe :{" "}
+                {kycComplete ? (
+                  <span className="text-green-600">✅ connecté</span>
+                ) : (
+                  <span className="text-amber-600">⚠️ à compléter</span>
+                )}
+              </p>
+              <p className="mt-0.5 text-xs text-ink-soft">
+                Connectez votre compte une seule fois. Ensuite, fixez un prix sur vos contenus et la
+                commission de {PLATFORM_COMMISSION_PERCENT} % est prélevée automatiquement.
+              </p>
+            </div>
           </div>
-          <Link
-            href="/dashboard/payouts"
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
-          >
-            Configurer Stripe
-          </Link>
+          {!kycComplete && (
+            <Link
+              href="/dashboard/payouts"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
+            >
+              Configurer Stripe
+            </Link>
+          )}
+          {kycComplete && (
+            <Link
+              href="/dashboard/payouts"
+              className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-accent"
+            >
+              Voir mes revenus
+            </Link>
+          )}
         </div>
-      )}
-
-      {kycComplete && (
-        <div className="mb-6 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-          <CreditCard className="h-4 w-4" /> KYC Stripe validé — vente payante activée
-        </div>
-      )}
+      </div>
 
       <div>
         <h1 className="font-display text-2xl font-bold text-ink">
