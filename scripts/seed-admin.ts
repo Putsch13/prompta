@@ -2,10 +2,9 @@
  * Crée (ou promeut) le compte administrateur Prompta.
  *
  * Usage :
- *   ADMIN_EMAIL=admin@prompta.fr ADMIN_PASSWORD='MotDePasseSecur1!' ADMIN_USERNAME=admin npx tsx scripts/seed-admin.ts
+ *   ADMIN_EMAIL=admin@prompta.fr ADMIN_PASSWORD='MotDePasseSecur1!' ADMIN_USERNAME=admin npm run seed:admin
  *
- * Variables requises : NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- * Variables optionnelles : ADMIN_DISPLAY_NAME (défaut: "Admin Prompta")
+ * Si ADMIN_USERNAME existe déjà (ex: florent), met à jour l'email/mot de passe de CE compte.
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -27,7 +26,6 @@ if (!url || !serviceKey) {
 
 if (!email || !password) {
   console.error("❌ ADMIN_EMAIL et ADMIN_PASSWORD requis.");
-  console.error("   Ex: ADMIN_EMAIL=admin@prompta.fr ADMIN_PASSWORD='xxx' npx tsx scripts/seed-admin.ts");
   process.exit(1);
 }
 
@@ -40,28 +38,51 @@ const sb = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+async function listAllUsers() {
+  const users = [];
+  let page = 1;
+  while (true) {
+    const { data, error } = await sb.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) throw error;
+    users.push(...(data.users ?? []));
+    if ((data.users?.length ?? 0) < 200) break;
+    page++;
+  }
+  return users;
+}
+
 async function main() {
-  const adminEmail = email!;
+  const adminEmail = email!.toLowerCase();
   const adminPassword = password!;
   const adminUsername = username;
 
   console.log(`→ Compte admin : ${adminEmail} (@${adminUsername})`);
 
-  const { data: existingUsers } = await sb.auth.admin.listUsers();
-  const found = existingUsers?.users.find(
-    (u) => u.email?.toLowerCase() === adminEmail.toLowerCase()
-  );
+  const allUsers = await listAllUsers();
+  const userByEmail = allUsers.find((u) => u.email?.toLowerCase() === adminEmail);
+
+  const { data: profileByUsername } = await sb
+    .from("profiles")
+    .select("id, username")
+    .eq("username", adminUsername)
+    .maybeSingle();
 
   let userId: string;
+  let orphanEmailUserId: string | null = null;
 
-  if (found) {
-    userId = found.id;
-    console.log("  Utilisateur existant — mise à jour mot de passe + admin");
-    const { error } = await sb.auth.admin.updateUserById(userId, {
-      password: adminPassword,
-      email_confirm: true,
-    });
-    if (error) throw error;
+  if (profileByUsername && userByEmail && profileByUsername.id !== userByEmail.id) {
+    userId = profileByUsername.id;
+    orphanEmailUserId = userByEmail.id;
+    console.log("  Compte @username existant — fusion avec le nouvel email");
+    console.log("  Suppression du doublon avant transfert email…");
+    await sb.auth.admin.deleteUser(orphanEmailUserId);
+    orphanEmailUserId = null;
+  } else if (userByEmail) {
+    userId = userByEmail.id;
+    console.log("  Compte trouvé par email — mise à jour");
+  } else if (profileByUsername) {
+    userId = profileByUsername.id;
+    console.log("  Compte trouvé par username — mise à jour email + mot de passe");
   } else {
     console.log("  Création du compte…");
     const { data, error } = await sb.auth.admin.createUser({
@@ -74,7 +95,27 @@ async function main() {
     userId = data.user.id;
   }
 
-  // Attendre le trigger profil
+  // Mettre à jour auth (email + password)
+  const { error: authError } = await sb.auth.admin.updateUserById(userId, {
+    email: adminEmail,
+    password: adminPassword,
+    email_confirm: true,
+  });
+  if (authError) throw authError;
+
+  if (orphanEmailUserId) {
+    console.log("  Suppression du compte doublon (ancien email)…");
+    await sb.auth.admin.deleteUser(orphanEmailUserId);
+  }
+
+  // Supprimer autres doublons même email
+  for (const u of allUsers) {
+    if (u.id !== userId && u.email?.toLowerCase() === adminEmail) {
+      console.log("  Suppression doublon auth…");
+      await sb.auth.admin.deleteUser(u.id);
+    }
+  }
+
   await new Promise((r) => setTimeout(r, 500));
 
   const { data: profile } = await sb
@@ -83,28 +124,46 @@ async function main() {
     .eq("id", userId)
     .maybeSingle();
 
+  const { data: usernameOwner } = await sb
+    .from("profiles")
+    .select("id")
+    .eq("username", adminUsername)
+    .maybeSingle();
+
+  const canSetUsername = !usernameOwner || usernameOwner.id === userId;
+
   if (!profile) {
     const { error } = await sb.from("profiles").insert({
       id: userId,
-      username: adminUsername,
+      username: canSetUsername ? adminUsername : adminUsername + "_admin",
       display_name: displayName,
       is_admin: true,
     });
     if (error) throw error;
   } else {
-    const { error } = await sb
-      .from("profiles")
-      .update({
-        username: adminUsername,
-        display_name: displayName,
-        is_admin: true,
-      })
-      .eq("id", userId);
+    const updates: {
+      display_name: string;
+      is_admin: boolean;
+      username?: string;
+    } = {
+      display_name: displayName,
+      is_admin: true,
+    };
+    if (canSetUsername) updates.username = adminUsername;
+
+    const { error } = await sb.from("profiles").update(updates).eq("id", userId);
     if (error) throw error;
   }
 
+  const { data: finalProfile } = await sb
+    .from("profiles")
+    .select("username")
+    .eq("id", userId)
+    .single();
+
   console.log("✅ Admin prêt.");
   console.log(`   Login : ${adminEmail}`);
+  console.log(`   @${finalProfile?.username ?? adminUsername}`);
   console.log(`   URL   : /login → /admin`);
 }
 
