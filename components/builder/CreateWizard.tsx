@@ -1032,6 +1032,7 @@ export function CreateWizard({ categories }: Props) {
                 stepTrace={testResult?.stepTrace}
                 pollWhileRunning={testRunning}
                 title="Travail de l'agent en direct"
+                errorMessage={testResult?.error ?? null}
               />
             </div>
           )}

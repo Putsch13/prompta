@@ -18,7 +18,7 @@ export async function executeConnectorAction(
       .map(([k, v]) => `${k}: ${v.slice(0, 80)}`)
       .join(", ");
     return {
-      output: `[APERÇU — aucune action réelle]\nAction : ${actionId}\n${summary || "(sans paramètres)"}`,
+      output: `[APERÇU — aucune action réelle]\nAction : ${actionId}\n${summary || "(sans paramètres)"}\n(dry-run — rien n'a été envoyé aux services externes)`,
       metadata: { simulated: true },
     };
   }

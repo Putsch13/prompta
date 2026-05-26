@@ -237,7 +237,8 @@ async function executeStep(
 
     if (step.type === "tool") {
       if (simulated) {
-        const preview = `[APERÇU — outil ${step.tool}]\n${interpolate(step.params.query ?? step.params.url ?? "", vars).slice(0, 500)}`;
+        const queryPreview = interpolate(step.params.query ?? step.params.url ?? "", vars).slice(0, 500);
+        const preview = `[APERÇU — outil ${step.tool}, étape ${stepIndex + 1}]\n${queryPreview || "(aucun paramètre)"}`;
         await logRunActivity({
           userId: ctx.userId,
           runId: ctx.runId,
@@ -504,6 +505,8 @@ export async function runAgent(
     let toolCalls = 0;
     let totalOutputBytes = 0;
     const seenHashes = new Set<string>();
+    let lastOutputSig = "";
+    let repeatStreak = 0;
 
     const maxToolCalls = manifestWithLimits.limits.max_tool_calls ?? 5;
     const maxOutputBytes = manifestWithLimits.limits.max_output_bytes ?? 51200;
@@ -551,9 +554,46 @@ export async function runAgent(
           throw new Error("Plafond max_output_bytes atteint");
         }
 
-        const hash = `${step.type}:${content.slice(0, 100)}`;
-        if (seenHashes.has(hash)) throw new Error("Boucle détectée — run arrêté");
-        seenHashes.add(hash);
+        if (!effectiveContext.dryRun) {
+          const sig = content.slice(0, 400);
+          if (sig.length > 0 && sig === lastOutputSig) {
+            repeatStreak++;
+          } else {
+            repeatStreak = 0;
+            lastOutputSig = sig;
+          }
+          if (repeatStreak >= 2) {
+            stepTrace.push({
+              stepIndex: i,
+              stepType: step.type,
+              label: describeStep(step, i),
+              status: "failed",
+              outputPreview: content.slice(0, 800),
+              durationMs: Date.now() - stepStartedAt,
+              model: step.type === "llm" ? step.model : usage?.model,
+              actionSlug: step.type === "action" ? step.action : undefined,
+            });
+            throw new Error(
+              `Boucle détectée à l'étape ${i + 1} (${describeStep(step, i)}) — 3 sorties identiques d'affilée`
+            );
+          }
+
+          const hash = `${describeStep(step, i)}:${content.slice(0, 120)}`;
+          if (seenHashes.has(hash)) {
+            stepTrace.push({
+              stepIndex: i,
+              stepType: step.type,
+              label: describeStep(step, i),
+              status: "failed",
+              outputPreview: content.slice(0, 800),
+              durationMs: Date.now() - stepStartedAt,
+            });
+            throw new Error(
+              `Boucle détectée à l'étape ${i + 1} (${describeStep(step, i)}) — même sortie qu'une étape précédente du même type`
+            );
+          }
+          seenHashes.add(hash);
+        }
 
         // Always set by index for backward compat
         vars[`step_${stepsCompleted}_output`] = content;
@@ -616,6 +656,22 @@ export async function runAgent(
       }
       const message = err instanceof Error ? err.message : "Erreur inconnue";
       const status = message.includes("suspendu") ? "suspended" : "failed";
+      const failIndex = Math.min(stepsCompleted, manifestWithLimits.steps.length - 1);
+      const failStep = manifestWithLimits.steps[failIndex];
+      const lastTrace = stepTrace[stepTrace.length - 1];
+      if (
+        failStep &&
+        status === "failed" &&
+        (!lastTrace || lastTrace.stepIndex !== failIndex || lastTrace.status !== "failed")
+      ) {
+        stepTrace.push({
+          stepIndex: failIndex,
+          stepType: failStep.type,
+          label: describeStep(failStep, failIndex),
+          status: "failed",
+          outputPreview: message,
+        });
+      }
       return { status, stepsCompleted, output: outputs, error: message, usage: usageLog, stepTrace };
     }
   };

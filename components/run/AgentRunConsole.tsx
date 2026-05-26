@@ -28,6 +28,7 @@ interface Props {
   stepTrace?: StepTraceEntry[];
   pollWhileRunning?: boolean;
   title?: string;
+  errorMessage?: string | null;
 }
 
 function normalizeStatus(s: string | null | undefined): RunStatus {
@@ -104,6 +105,7 @@ export function AgentRunConsole({
   stepTrace = [],
   pollWhileRunning = false,
   title = "Console d'exécution",
+  errorMessage = null,
 }: Props) {
   const [dbSteps, setDbSteps] = useState<RunStepLog[]>([]);
   const [loading, setLoading] = useState(Boolean(runId));
@@ -224,6 +226,13 @@ export function AgentRunConsole({
           />
         </div>
       </div>
+
+      {errorMessage && runStatus === "failed" && (
+        <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:px-5">
+          <p className="font-medium">Erreur</p>
+          <p className="mt-0.5 text-xs leading-relaxed">{errorMessage}</p>
+        </div>
+      )}
 
       <div className="max-h-[min(60vh,520px)] overflow-y-auto p-4 sm:p-5">
         {loading && displaySteps.length === 0 ? (
