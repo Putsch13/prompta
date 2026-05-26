@@ -518,6 +518,7 @@ export function RunPanel({
                   agentStatus === "pending"
                 }
                 title={`Exécution — ${title}`}
+                errorMessage={error}
               />
               {runId && agentStatus === "completed" && (
                 <a
