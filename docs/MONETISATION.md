@@ -6,7 +6,7 @@
 |--------|----------|-----------------|
 | **Abonnement par agent + BYOK** | Utilisateurs réguliers d'un agent/workflow | Abonnement mensuel au créateur + clés API personnelles |
 | **Achat unique** | Prompts et contenus one-shot | Paiement unique → accès permanent à la dernière version |
-| **Crédits Prompta** | Utilisateurs non techniques sans clés | Forfait **0,10 € / run** (`RUN_CREDIT_COST_CENTS = 10`) — clé plateforme |
+| **Crédits Prompta** | Utilisateurs non techniques sans clés | Coût calculé (tokens × tarif + marge) — voir `lib/billing/credits.ts` |
 | **Prompta Pro** | Power users | Abonnement plateforme → runs via clés Prompta sans débit crédits |
 | **Organisation (B2B)** | Équipes | Abonnement org + sièges |
 
@@ -24,5 +24,4 @@ Seuls les utilisateurs **sans accès** (listing gratuit) ou **sans clé ni droit
 
 ## Coût crédits
 
-Le forfait **0,10 € / run** est un **prix d'appel simplifié** (non basé sur tokens/outils en V1).  
-Documenté explicitement pour éviter toute ambiguïté.
+Le débit en crédits est calculé à partir du **coût réel** (tokens, outils, compute) avec marge plateforme — voir `lib/billing/credits.ts` et `lib/llm/pricing.ts`.

@@ -10,7 +10,7 @@ import { BudgetBlockedError } from "./anthropic";
 import type { AgentContext, AgentResult, AgentRunner, AgentSlug } from "./types";
 
 // Registre des agents — rempli par agents/index.ts
-import { AGENT_REGISTRY } from "@/agents";
+import { AGENT_REGISTRY } from "@/lib/admin-agents";
 
 export type StartRunResult =
   | { ok: true; runId: string; result: AgentResult }

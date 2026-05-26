@@ -684,6 +684,9 @@ export interface Database {
           max_steps: number;
           output: Json;
           error_message: string | null;
+          dry_run: boolean;
+          used_credits: boolean;
+          credit_hold_estimate_cents: number | null;
           created_at: string;
         };
         Insert: {
@@ -697,6 +700,9 @@ export interface Database {
           max_steps?: number;
           output?: Json;
           error_message?: string | null;
+          dry_run?: boolean;
+          used_credits?: boolean;
+          credit_hold_estimate_cents?: number | null;
           created_at?: string;
         };
         Update: {
@@ -710,6 +716,45 @@ export interface Database {
           max_steps?: number;
           output?: Json;
           error_message?: string | null;
+          dry_run?: boolean;
+          used_credits?: boolean;
+          credit_hold_estimate_cents?: number | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      user_run_activity: {
+        Row: {
+          id: string;
+          user_id: string;
+          run_id: string | null;
+          listing_id: string | null;
+          action_type: string;
+          action_label: string;
+          detail: Json;
+          simulated: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          run_id?: string | null;
+          listing_id?: string | null;
+          action_type: string;
+          action_label: string;
+          detail?: Json;
+          simulated?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          run_id?: string | null;
+          listing_id?: string | null;
+          action_type?: string;
+          action_label?: string;
+          detail?: Json;
+          simulated?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -1314,6 +1359,66 @@ export interface Database {
           amount_cents?: number;
           status?: string;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_run_economics: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          run_id: string | null;
+          run_type: string;
+          actual_cost_cents: number;
+          billed_cents: number;
+          margin_cents: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          run_id?: string | null;
+          run_type: string;
+          actual_cost_cents: number;
+          billed_cents: number;
+          margin_cents: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string | null;
+          run_id?: string | null;
+          run_type?: string;
+          actual_cost_cents?: number;
+          billed_cents?: number;
+          margin_cents?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      platform_credit_guard: {
+        Row: {
+          id: number;
+          is_paused: boolean;
+          daily_cost_cents: number;
+          daily_margin_cents: number;
+          guard_day: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          is_paused?: boolean;
+          daily_cost_cents?: number;
+          daily_margin_cents?: number;
+          guard_day?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          is_paused?: boolean;
+          daily_cost_cents?: number;
+          daily_margin_cents?: number;
+          guard_day?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };

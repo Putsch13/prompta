@@ -216,6 +216,10 @@ export const LEGACY_MODEL_MAP: Record<string, string> = {
   "gemini-2.5-pro": "gemini-3.1-pro",
   "gemini-2.0-flash": "gemini-3-flash",
   "llama-3.3": "llama-4",
+  "claude-sonnet-4-20250514": "claude-sonnet-4-6",
+  "claude-3-5-haiku-20241022": "claude-haiku-4-5",
+  "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
+  "claude-3-opus-20240229": "claude-opus-4-7",
   grok: "grok-3",
 };
 
@@ -308,6 +312,12 @@ export const INTEGRATIONS: IntegrationEntry[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Modèles exécutables via la passerelle (4 fournisseurs supportés). */
+export function getGatewayModels(): ModelEntry[] {
+  const supported = new Set(["OpenAI", "Anthropic", "Google", "Mistral"]);
+  return AI_MODELS.filter((m) => supported.has(m.provider));
+}
 
 /** Groupe les entrées par une clé (provider, category) */
 export function groupBy<T extends { [key: string]: unknown }>(

@@ -23,7 +23,7 @@ export interface BuildManifestParams {
 const LONG_TOOLS = new Set(["http_fetch", "file_read"]);
 
 export function buildManifest(params: BuildManifestParams): AgentManifest {
-  const model = params.defaultModel ?? "gpt-4o";
+  const model = params.defaultModel ?? "gpt-5.4";
   const toolsUsed = new Set<string>();
 
   let steps: AgentStep[];
@@ -63,10 +63,15 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
   };
 }
 
-/** Sync si court et sans outil long (Bloc 3). */
+/** Sync si court et sans outil long, connecteur ou code. */
 export function shouldRunSync(manifest: AgentManifest): boolean {
   if (manifest.steps.length > 3) return false;
-  return !manifest.steps.some(
-    (s) => s.type === "tool" && LONG_TOOLS.has(s.tool)
-  );
+  return !manifest.steps.some((s) => {
+    if (s.type === "action" || s.type === "code") return true;
+    if (s.type === "tool") {
+      if (LONG_TOOLS.has(s.tool)) return true;
+      if (s.tool === "web_search") return true;
+    }
+    return false;
+  });
 }

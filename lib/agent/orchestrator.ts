@@ -4,6 +4,7 @@ import { executeConnectorAction } from "@/lib/connectors/execute";
 import { getUserConnection } from "@/lib/connections";
 import { AgentManifestSchema, type AgentManifest, type AgentStep } from "./schema";
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
+import { logRunActivity } from "./activity-log";
 import { runCodeInSandbox } from "./sandbox";
 
 export interface StepUsage {
@@ -19,7 +20,9 @@ export interface OrchestratorContext {
   listingId: string;
   inputs: Record<string, string>;
   apiKeys: Record<string, string>;
-  preferredModel?: string;
+  runId?: string;
+  dryRun?: boolean;
+  onProgress?: (stepsCompleted: number) => void | Promise<void>;
 }
 
 export interface OrchestratorResult {
@@ -38,8 +41,11 @@ async function executeStep(
   step: AgentStep,
   vars: Record<string, string>,
   ctx: OrchestratorContext,
-  maxTokens = 4096
+  maxTokens = 4096,
+  stepIndex = 0
 ): Promise<{ content: string; usage?: StepUsage }> {
+  const simulated = ctx.dryRun ?? false;
+
   if (step.type === "llm") {
     const resolved = resolveModelOrDefault(step.model);
     const { provider, apiModel, tokenParam } = resolved;
@@ -54,6 +60,16 @@ async function executeStep(
       apiKey,
       maxTokens: Math.min(maxTokens, 4096),
       tokenParam,
+    });
+
+    await logRunActivity({
+      userId: ctx.userId,
+      runId: ctx.runId,
+      listingId: ctx.listingId,
+      actionType: "llm",
+      actionLabel: simulated ? `LLM (aperçu) — ${resolved.catalogId}` : `LLM — ${resolved.catalogId}`,
+      simulated,
+      detail: { model: apiModel, stepIndex },
     });
 
     if (scanOutput(result.content)) {
@@ -71,6 +87,20 @@ async function executeStep(
   }
 
   if (step.type === "tool") {
+    if (simulated) {
+      const preview = `[APERÇU — outil ${step.tool}]\n${interpolate(step.params.query ?? step.params.url ?? "", vars).slice(0, 500)}`;
+      await logRunActivity({
+        userId: ctx.userId,
+        runId: ctx.runId,
+        listingId: ctx.listingId,
+        actionType: "tool",
+        actionLabel: `Outil ${step.tool} (aperçu)`,
+        simulated: true,
+        detail: { tool: step.tool, stepIndex },
+      });
+      return { content: preview, usage: { inputTokens: 0, outputTokens: 0, tool: step.tool } };
+    }
+
     let content: string;
     switch (step.tool) {
       case "web_search":
@@ -88,6 +118,14 @@ async function executeStep(
       default:
         throw new Error(`Outil non autorisé: ${(step as AgentStep & { tool: string }).tool}`);
     }
+    await logRunActivity({
+      userId: ctx.userId,
+      runId: ctx.runId,
+      listingId: ctx.listingId,
+      actionType: "tool",
+      actionLabel: `Outil ${step.tool}`,
+      detail: { tool: step.tool, stepIndex },
+    });
     return { content, usage: { inputTokens: 0, outputTokens: 0, tool: step.tool } };
   }
 
@@ -102,6 +140,17 @@ async function executeStep(
       userId: ctx.userId,
       accessToken: conn?.accessToken,
       apiKey: step.connector === "telegram" ? conn?.accessToken : undefined,
+      dryRun: simulated,
+    });
+
+    await logRunActivity({
+      userId: ctx.userId,
+      runId: ctx.runId,
+      listingId: ctx.listingId,
+      actionType: "action",
+      actionLabel: simulated ? `${step.action} (aperçu)` : step.action,
+      simulated,
+      detail: { connector: step.connector, stepIndex },
     });
 
     if (scanOutput(result.output)) {
@@ -115,6 +164,19 @@ async function executeStep(
   }
 
   if (step.type === "code") {
+    if (simulated) {
+      const preview = `[APERÇU — code sandbox non exécuté]\n${interpolate(step.source, vars).slice(0, 300)}…`;
+      await logRunActivity({
+        userId: ctx.userId,
+        runId: ctx.runId,
+        listingId: ctx.listingId,
+        actionType: "code",
+        actionLabel: "Code (aperçu)",
+        simulated: true,
+        detail: { stepIndex },
+      });
+      return { content: preview };
+    }
     const code = interpolate(step.source, vars);
     const output = await runCodeInSandbox(code);
     if (scanOutput(output)) {
@@ -141,6 +203,7 @@ export async function runAgent(
   }
 
   const manifest: AgentManifest = parsed.data;
+  let latestStepsCompleted = 0;
 
   const run = async (): Promise<OrchestratorResult> => {
     const vars = { ...context.inputs };
@@ -165,7 +228,8 @@ export async function runAgent(
           step,
           vars,
           context,
-          manifest.limits.max_tokens
+          manifest.limits.max_tokens,
+          stepsCompleted
         );
 
         if (step.type === "tool" || step.type === "action") {
@@ -195,6 +259,10 @@ export async function runAgent(
         vars[`step_${stepsCompleted}_output`] = content;
         outputs[`step_${stepsCompleted}`] = content;
         stepsCompleted++;
+        latestStepsCompleted = stepsCompleted;
+        if (context.onProgress) {
+          await context.onProgress(stepsCompleted);
+        }
       }
 
       outputs.result = vars[`step_${stepsCompleted - 1}_output`] ?? "";
@@ -218,7 +286,7 @@ export async function runAgent(
     const message = err instanceof Error ? err.message : "Timeout";
     return {
       status: "failed",
-      stepsCompleted: 0,
+      stepsCompleted: latestStepsCompleted,
       output: {},
       error: message,
     };

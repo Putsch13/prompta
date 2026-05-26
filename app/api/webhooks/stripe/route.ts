@@ -91,7 +91,7 @@ export async function POST(request: Request) {
 
       const { data: listing } = await admin
         .from("listings")
-        .select("price_cents, current_version_id, title, slug")
+        .select("price_cents, current_version_id, title, slug, type")
         .eq("id", listingId)
         .single();
 
@@ -117,11 +117,13 @@ export async function POST(request: Request) {
         .select("id")
         .single();
 
-      await admin.from("downloads").insert({
-        user_id: buyerId,
-        listing_id: listingId,
-        version_id: listing.current_version_id,
-      });
+      if (listing.type === "prompt") {
+        await admin.from("downloads").insert({
+          user_id: buyerId,
+          listing_id: listingId,
+          version_id: listing.current_version_id,
+        });
+      }
 
       const { data: userData } = await admin.auth.admin.getUserById(buyerId);
       const buyerEmail = userData?.user?.email;
@@ -133,6 +135,7 @@ export async function POST(request: Request) {
           to: buyerEmail,
           listingTitle: listing.title,
           listingSlug: listing.slug,
+          listingType: listing.type,
           amountCents: listing.price_cents,
           taxCents,
           purchaseId: purchase.id,

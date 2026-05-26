@@ -1,16 +1,18 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runAgent } from "@/lib/agent/orchestrator";
 import { parseListingEnv } from "@/lib/agent/env";
-import { getUserKey } from "@/lib/keys";
-
-const PROVIDERS = ["openai", "anthropic", "google", "mistral", "serper"] as const;
+import {
+  resolveAgentRunKeys,
+  settleAgentRunCredits,
+  releaseAgentRunCredits,
+} from "@/lib/billing/agent-run-billing";
 
 export async function processPendingAgentRuns(limit = 3): Promise<number> {
   const admin = createAdminClient();
 
   const { data: jobs } = await admin
     .from("listing_agent_runs")
-    .select("id, user_id, listing_id, version_id, inputs")
+    .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
     .limit(limit);
@@ -18,31 +20,74 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
   let processed = 0;
 
   for (const job of jobs ?? []) {
-    await admin.from("listing_agent_runs").update({ status: "running" }).eq("id", job.id);
+    const { data: claimed } = await admin
+      .from("listing_agent_runs")
+      .update({ status: "running" })
+      .eq("id", job.id)
+      .eq("status", "pending")
+      .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents")
+      .maybeSingle();
+
+    if (!claimed) continue;
 
     try {
+      const { data: listing } = await admin
+        .from("listings")
+        .select("price_cents, creator_id")
+        .eq("id", claimed.listing_id ?? "")
+        .single();
+
       const { data: version } = await admin
         .from("listing_versions")
         .select("env, prompt_body")
-        .eq("id", job.version_id ?? "")
+        .eq("id", claimed.version_id ?? "")
         .single();
 
       const parsed = parseListingEnv(version?.env, version?.prompt_body);
       if (!parsed) throw new Error("Manifeste agent manquant");
 
-      const apiKeys: Record<string, string> = {};
-      for (const p of PROVIDERS) {
-        const key = await getUserKey(job.user_id, p);
-        if (key) apiKeys[p] = key;
-      }
+      const isFree = (listing?.price_cents ?? 0) === 0;
+      const isOwner = listing?.creator_id === claimed.user_id;
+      const billing = await resolveAgentRunKeys(
+        claimed.user_id,
+        parsed.manifest,
+        isOwner,
+        isFree,
+        { consumeFreeQuota: false }
+      );
 
-      const inputs = (job.inputs as Record<string, string>) ?? {};
+      const inputs = (claimed.inputs as Record<string, string>) ?? {};
       const result = await runAgent(parsed.manifest, {
-        userId: job.user_id,
-        listingId: job.listing_id ?? "",
+        userId: claimed.user_id,
+        listingId: claimed.listing_id ?? "",
         inputs,
-        apiKeys,
+        apiKeys: billing.apiKeys,
+        runId: claimed.id,
+        dryRun: claimed.dry_run ?? false,
+        onProgress: async (stepsCompleted) => {
+          await admin
+            .from("listing_agent_runs")
+            .update({ steps_completed: stepsCompleted })
+            .eq("id", claimed.id);
+        },
       });
+
+      if (claimed.used_credits && claimed.credit_hold_estimate_cents != null) {
+        if (result.status === "completed" && result.usage) {
+          await settleAgentRunCredits(
+            claimed.user_id,
+            claimed.id,
+            { steps: result.usage },
+            Number(claimed.credit_hold_estimate_cents)
+          );
+        } else {
+          await releaseAgentRunCredits(
+            claimed.user_id,
+            claimed.id,
+            Number(claimed.credit_hold_estimate_cents)
+          );
+        }
+      }
 
       await admin
         .from("listing_agent_runs")
@@ -52,15 +97,24 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
           output: result.output,
           error_message: result.error ?? null,
         })
-        .eq("id", job.id);
+        .eq("id", claimed.id);
 
       processed++;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur worker";
+
+      if (claimed.used_credits && claimed.credit_hold_estimate_cents != null) {
+        await releaseAgentRunCredits(
+          claimed.user_id,
+          claimed.id,
+          Number(claimed.credit_hold_estimate_cents)
+        ).catch(() => undefined);
+      }
+
       await admin
         .from("listing_agent_runs")
         .update({ status: "failed", error_message: message })
-        .eq("id", job.id);
+        .eq("id", claimed.id);
       processed++;
     }
   }

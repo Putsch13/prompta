@@ -25,4 +25,16 @@ test.describe("Prompta — parcours public", () => {
     await page.goto("/legal/privacy");
     await expect(page.locator("body")).toContainText(/confidentialité|privacy|données/i);
   });
+
+  test("page wallet accessible (redirige si non connecté)", async ({ page }) => {
+    await page.goto("/wallet");
+    await expect(page).toHaveURL(/login|wallet/);
+  });
+
+  test("API health — run agent refuse sans auth", async ({ request }) => {
+    const res = await request.post("/api/run/agent", {
+      data: { listingId: "00000000-0000-0000-0000-000000000000", versionId: "00000000-0000-0000-0000-000000000000" },
+    });
+    expect(res.status()).toBe(401);
+  });
 });

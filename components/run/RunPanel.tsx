@@ -23,6 +23,7 @@ interface Props {
   envFields?: EnvField[];
   requiredSecrets?: string[];
   requiredConnectors?: string[];
+  stepCount?: number;
   pricingMode?: string;
   subscriptionPriceCents?: number;
   hasSubscription?: boolean;
@@ -46,10 +47,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   serper: "Serper.dev",
 };
 
-function extractVariables(text: string): string[] {
-  const matches = text.match(/\{\{(\w+)\}\}/g) ?? [];
-  return Array.from(new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, ""))));
-}
+import { extractInputVariables } from "@/lib/builder/variables";
 
 export function RunPanel({
   listingId,
@@ -59,6 +57,7 @@ export function RunPanel({
   envFields = [],
   requiredSecrets = [],
   requiredConnectors = [],
+  stepCount = 3,
   pricingMode,
   subscriptionPriceCents = 0,
   priceCents,
@@ -81,9 +80,10 @@ export function RunPanel({
   const [agentStatus, setAgentStatus] = useState<string | null>(null);
   const [stepsCompleted, setStepsCompleted] = useState<number | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
+  const [dryRun, setDryRun] = useState(false);
 
   const varNames = promptBody
-    ? extractVariables(promptBody)
+    ? extractInputVariables(promptBody)
     : envFields.map((f) => f.key);
 
   const [connectionsReady, setConnectionsReady] = useState(true);
@@ -142,7 +142,7 @@ export function RunPanel({
   }
 
   async function pollRunStatus(id: string) {
-    const maxPolls = 60;
+    const maxPolls = 90;
     let polls = 0;
     while (polls < maxPolls) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -151,7 +151,8 @@ export function RunPanel({
         const res = await fetch(`/api/run/agent/${id}`);
         if (!res.ok) continue;
         const data = await res.json();
-        setAgentStatus(data.status);
+        const status = data.status === "pending" ? "queued" : data.status;
+        setAgentStatus(status);
         if (data.steps_completed != null) setStepsCompleted(data.steps_completed);
         if (data.status === "completed") {
           setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
@@ -193,10 +194,16 @@ export function RunPanel({
           listingId,
           versionId,
           inputs: variables,
+          dryRun,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message);
+      if (!res.ok) {
+        if (data.error === "configuration_incomplete") {
+          setShowWizard(true);
+        }
+        throw new Error(data.message ?? data.error);
+      }
 
       if (data.runId) setRunId(data.runId);
       if (data.stepsCompleted != null) setStepsCompleted(data.stepsCompleted);
@@ -401,13 +408,29 @@ export function RunPanel({
             onReadyChange={setConnectionsReady}
           />
 
+          {requiredConnectors.length > 0 && (
+            <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-ink-soft">
+              <input
+                type="checkbox"
+                checked={dryRun}
+                onChange={(e) => setDryRun(e.target.checked)}
+                className="rounded border-line"
+              />
+              Mode aperçu — simuler les actions connecteur sans effet réel
+            </label>
+          )}
+
           <button
             onClick={handleAgentRun}
-            disabled={running || (!canAccess && !isFree) || !connectionsReady}
+            disabled={running || (!canAccess && !isFree) || (!dryRun && !connectionsReady)}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-medium text-white disabled:opacity-50"
           >
             <Play className="h-4 w-4" />
-            {running ? "Exécution…" : "Lancer l'agent"}
+            {running
+              ? "Exécution…"
+              : dryRun
+                ? "Aperçu (dry-run)"
+                : "Lancer l'agent"}
           </button>
 
           {!canAccess && !isFree && (
@@ -465,10 +488,26 @@ export function RunPanel({
               {(agentStatus === "pending" || agentStatus === "running" || agentStatus === "queued") && (
                 <div className="mt-2">
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-line">
-                    <div className="h-full animate-pulse bg-accent" style={{ width: "60%" }} />
+                    <div
+                      className="h-full bg-accent transition-all duration-500"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          stepsCompleted != null && stepCount > 0
+                            ? Math.round((stepsCompleted / stepCount) * 100)
+                            : agentStatus === "queued"
+                              ? 15
+                              : 40
+                        )}%`,
+                      }}
+                    />
                   </div>
                   <p className="mt-1 text-xs text-ink-faint">
-                    L&apos;agent s&apos;exécute en arrière-plan. Rafraîchissement automatique…
+                    {agentStatus === "queued"
+                      ? "En file d'attente — le worker va démarrer l'exécution…"
+                      : stepsCompleted != null && stepsCompleted > 0
+                        ? `Étape ${stepsCompleted} / ${stepCount} complétée(s)…`
+                        : "Exécution en cours…"}
                   </p>
                 </div>
               )}
@@ -688,7 +727,7 @@ export function RunPanel({
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
               >
                 <Play className="h-4 w-4" />
-                {running ? "Exécution simulée…" : "Lancer l'exécution"}
+                {running ? "Exécution en cours…" : "Lancer l'exécution"}
               </button>
 
               {!hasRequiredKey() && (

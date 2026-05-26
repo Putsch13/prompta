@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+const DOWNLOADABLE_TYPES = new Set(["prompt"]);
+
 export async function GET(
   _request: Request,
   { params }: { params: { versionId: string } }
@@ -29,7 +31,7 @@ export async function GET(
 
   const { data: listing } = await admin
     .from("listings")
-    .select("id, price_cents, creator_id")
+    .select("id, price_cents, creator_id, type")
     .eq("id", version.listing_id)
     .single();
 
@@ -37,7 +39,13 @@ export async function GET(
     return NextResponse.json({ error: "Listing introuvable" }, { status: 404 });
   }
 
-  // Gratuit OU achat vérifié OU c'est le créateur
+  if (!DOWNLOADABLE_TYPES.has(listing.type)) {
+    return NextResponse.json(
+      { error: "Les agents et workflows s'exécutent sur la plateforme — pas de téléchargement." },
+      { status: 403 }
+    );
+  }
+
   if (listing.price_cents > 0 && listing.creator_id !== user.id) {
     const { data: purchase } = await admin
       .from("purchases")
@@ -52,14 +60,12 @@ export async function GET(
     }
   }
 
-  // Enregistrer le téléchargement
   await admin.from("downloads").insert({
     user_id: user.id,
     listing_id: listing.id,
     version_id: version.id,
   });
 
-  // Générer une URL signée (1h)
   const { data: signedUrl, error: signError } = await admin.storage
     .from("bundles")
     .createSignedUrl(version.bundle_path, 3600);

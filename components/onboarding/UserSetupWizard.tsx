@@ -51,6 +51,7 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
     initialProvider ? [initialProvider] : ["openai"]
   );
   const [keys, setKeys] = useState<Record<string, string>>({});
+  const [savedKeys, setSavedKeys] = useState<Record<string, string>>({});
   const [keyStates, setKeyStates] = useState<Record<string, KeySaveState>>({});
   const [keyErrors, setKeyErrors] = useState<Record<string, string>>({});
   const [testing, setTesting] = useState(false);
@@ -59,6 +60,18 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
     );
+  }
+
+  function handleKeyChange(id: string, value: string) {
+    setKeys((prev) => ({ ...prev, [id]: value }));
+    if (savedKeys[id] && value !== savedKeys[id]) {
+      setKeyStates((prev) => ({ ...prev, [id]: "idle" }));
+    }
+  }
+
+  function isKeyPersisted(id: string): boolean {
+    const state = keyStates[id];
+    return (state === "saved" || state === "invalid") && keys[id] === savedKeys[id];
   }
 
   async function saveKey(provider: string): Promise<boolean> {
@@ -89,6 +102,7 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
       return false;
     }
 
+    setSavedKeys((prev) => ({ ...prev, [provider]: apiKey }));
     setKeyStates((prev) => ({
       ...prev,
       [provider]: data.valid ? "saved" : "invalid",
@@ -104,22 +118,26 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
 
   async function saveAllKeys() {
     setTesting(true);
-    let allOk = true;
+    let allPersisted = true;
 
     for (const p of selected) {
       if (!keys[p]) {
-        allOk = false;
+        allPersisted = false;
         setKeyErrors((prev) => ({ ...prev, [p]: "Clé requise" }));
         continue;
       }
-      if (keyStates[p] === "saved") continue;
+      if (isKeyPersisted(p)) continue;
       const ok = await saveKey(p);
-      if (!ok) allOk = false;
+      if (!ok) allPersisted = false;
     }
 
     setTesting(false);
-    if (allOk) setStep(3);
+
+    const everySaved = selected.every((p) => keys[p] && isKeyPersisted(p));
+    if (allPersisted && everySaved) setStep(3);
   }
+
+  const invalidProviders = selected.filter((id) => keyStates[id] === "invalid");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -199,15 +217,16 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
                     <input
                       type="password"
                       value={keys[id] ?? ""}
-                      onChange={(e) =>
-                        setKeys((prev) => ({ ...prev, [id]: e.target.value }))
-                      }
+                      onChange={(e) => handleKeyChange(id, e.target.value)}
                       placeholder="sk-…"
                       className="h-10 w-full rounded-lg border border-line bg-card px-3 font-mono text-sm"
                     />
+                    {state === "saving" && (
+                      <p className="mt-1 text-xs text-ink-soft">Enregistrement…</p>
+                    )}
                     {state === "saved" && (
                       <p className="mt-1 flex items-center gap-1 text-xs text-green-600">
-                        <Check className="h-3 w-3" /> Enregistrée
+                        <Check className="h-3 w-3" /> Enregistrée et validée
                       </p>
                     )}
                     {state === "invalid" && (
@@ -248,6 +267,12 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
               <h2 className="mt-4 font-display text-xl font-bold text-ink">
                 Clés enregistrées
               </h2>
+              {invalidProviders.length > 0 && (
+                <p className="mt-2 text-sm text-amber-600">
+                  {invalidProviders.length} clé(s) enregistrée(s) mais non validée(s) par le
+                  fournisseur — vous pourrez les re-tester depuis Connexions.
+                </p>
+              )}
             </div>
             <button
               onClick={onClose}

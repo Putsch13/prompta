@@ -4,6 +4,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { AgentManifestSchema } from "@/lib/agent/schema";
 import { parseListingEnv } from "@/lib/agent/env";
 import { shouldRunSync } from "@/lib/builder/manifest";
+import {
+  resolveAgentRunKeys,
+  holdAgentRunCredits,
+  settleAgentRunCredits,
+  releaseAgentRunCredits,
+} from "@/lib/billing/agent-run-billing";
+import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +24,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
+  const rate = checkRateLimit(`run:agent:${user.id}`, RATE_LIMITS.run);
+  if (!rate.success) {
+    return rateLimitResponse(rate.resetAt);
+  }
+
   const body = await request.json();
   const {
     listingId,
     versionId,
     inputs = {},
     async: runAsyncParam,
+    dryRun = false,
     preview,
     manifest: previewManifest,
   } = body as {
@@ -30,32 +43,26 @@ export async function POST(request: NextRequest) {
     versionId?: string;
     inputs?: Record<string, string>;
     async?: boolean;
+    dryRun?: boolean;
     preview?: boolean;
     manifest?: unknown;
   };
 
   const admin = createAdminClient();
-  const providers = ["openai", "anthropic", "google", "mistral", "serper"] as const;
-  const apiKeys: Record<string, string> = {};
-  const { getUserKey } = await import("@/lib/keys");
-  for (const p of providers) {
-    const key = await getUserKey(user.id, p);
-    if (key) apiKeys[p] = key;
-  }
-
   const { runAgent } = await import("@/lib/agent/orchestrator");
 
-  // Mode preview builder (Bloc 10)
   if (preview && previewManifest) {
     const parsed = AgentManifestSchema.safeParse(previewManifest);
     if (!parsed.success) {
       return NextResponse.json({ error: "Manifeste preview invalide" }, { status: 400 });
     }
+    const { apiKeys } = await resolveAgentRunKeys(user.id, parsed.data, true, true);
     const result = await runAgent(parsed.data, {
       userId: user.id,
       listingId: listingId ?? "preview",
       inputs,
       apiKeys,
+      dryRun: true,
     });
     return NextResponse.json({ preview: true, ...result });
   }
@@ -66,7 +73,7 @@ export async function POST(request: NextRequest) {
 
   const { data: listing } = await admin
     .from("listings")
-    .select("id, type, status, creator_id")
+    .select("id, type, status, creator_id, price_cents")
     .eq("id", listingId)
     .single();
 
@@ -76,10 +83,13 @@ export async function POST(request: NextRequest) {
 
   const isOwner = listing.creator_id === user.id;
   const isPublished = listing.status === "published";
+  const isFree = listing.price_cents === 0;
 
   if (!isOwner && !isPublished) {
     return NextResponse.json({ error: "Agent introuvable" }, { status: 404 });
   }
+
+  let hasEntitlement = isOwner;
 
   if (!isOwner) {
     const { data: subscription } = await admin
@@ -100,7 +110,9 @@ export async function POST(request: NextRequest) {
 
     const isPro = await (await import("@/lib/platform-access")).hasPlatformPro(user.id);
 
-    if (!subscription && !purchase && !isPro) {
+    hasEntitlement = !!(subscription || purchase || isPro);
+
+    if (!hasEntitlement && !isFree) {
       return NextResponse.json({ error: "Abonnement ou achat requis" }, { status: 403 });
     }
   }
@@ -116,11 +128,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Manifeste agent manquant" }, { status: 400 });
   }
 
+  let billing: Awaited<ReturnType<typeof resolveAgentRunKeys>>;
+  try {
+    billing = await resolveAgentRunKeys(
+      user.id,
+      parsedEnv.manifest,
+      hasEntitlement,
+      isFree
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Erreur billing" },
+      { status: 402 }
+    );
+  }
+
+  const { validateAgentPreflight } = await import("@/lib/agent/preflight");
+  const preflightIssues = await validateAgentPreflight(
+    parsedEnv.manifest,
+    billing.apiKeys,
+    user.id,
+    { dryRun }
+  );
+  if (preflightIssues.length > 0) {
+    return NextResponse.json(
+      {
+        error: "configuration_incomplete",
+        message: preflightIssues[0].message,
+        issues: preflightIssues,
+      },
+      { status: 400 }
+    );
+  }
+
   const runAsync =
-    runAsyncParam !== undefined ? runAsyncParam : !shouldRunSync(parsedEnv.manifest);
+    dryRun ? false : runAsyncParam !== undefined ? runAsyncParam : !shouldRunSync(parsedEnv.manifest);
 
   if (runAsync) {
-    const { data: agentRun } = await admin
+    const { data: agentRun, error: insertError } = await admin
       .from("listing_agent_runs")
       .insert({
         user_id: user.id,
@@ -128,12 +173,30 @@ export async function POST(request: NextRequest) {
         version_id: versionId,
         inputs,
         status: "pending",
+        dry_run: dryRun,
+        used_credits: billing.usedCredits,
+        credit_hold_estimate_cents: billing.usedCredits ? billing.estimatedMax : null,
       })
       .select("id")
       .single();
 
+    if (insertError || !agentRun?.id) {
+      return NextResponse.json(
+        { error: insertError?.message ?? "Impossible de créer le run" },
+        { status: 500 }
+      );
+    }
+
+    if (billing.usedCredits) {
+      const held = await holdAgentRunCredits(user.id, agentRun.id, billing.estimatedMax);
+      if (!held) {
+        await admin.from("listing_agent_runs").update({ status: "failed" }).eq("id", agentRun.id);
+        return NextResponse.json({ error: "Crédits insuffisants" }, { status: 402 });
+      }
+    }
+
     return NextResponse.json({
-      runId: agentRun?.id,
+      runId: agentRun.id,
       status: "queued",
       message: "Agent en file d'attente — traité par le worker",
     });
@@ -147,16 +210,45 @@ export async function POST(request: NextRequest) {
       version_id: versionId,
       inputs,
       status: "running",
+      dry_run: dryRun,
+      used_credits: billing.usedCredits,
+      credit_hold_estimate_cents: billing.usedCredits ? billing.estimatedMax : null,
     })
     .select("id")
     .single();
+
+  if (billing.usedCredits && agentRun?.id) {
+    const held = await holdAgentRunCredits(user.id, agentRun.id, billing.estimatedMax);
+    if (!held) {
+      await admin.from("listing_agent_runs").update({ status: "failed" }).eq("id", agentRun.id);
+      return NextResponse.json({ error: "Crédits insuffisants" }, { status: 402 });
+    }
+  }
 
   const result = await runAgent(parsedEnv.manifest, {
     userId: user.id,
     listingId,
     inputs,
-    apiKeys,
+    apiKeys: billing.apiKeys,
+    runId: agentRun?.id,
+    dryRun,
+    onProgress: async (stepsCompleted) => {
+      if (agentRun?.id) {
+        await admin
+          .from("listing_agent_runs")
+          .update({ steps_completed: stepsCompleted })
+          .eq("id", agentRun.id);
+      }
+    },
   });
+
+  if (billing.usedCredits && agentRun?.id) {
+    if (result.status === "completed" && result.usage) {
+      await settleAgentRunCredits(user.id, agentRun.id, { steps: result.usage }, billing.estimatedMax);
+    } else {
+      await releaseAgentRunCredits(user.id, agentRun.id, billing.estimatedMax);
+    }
+  }
 
   await admin
     .from("listing_agent_runs")
@@ -168,5 +260,5 @@ export async function POST(request: NextRequest) {
     })
     .eq("id", agentRun?.id ?? "");
 
-  return NextResponse.json({ runId: agentRun?.id, ...result });
+  return NextResponse.json({ runId: agentRun?.id, dryRun, ...result });
 }

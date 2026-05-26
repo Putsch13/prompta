@@ -20,6 +20,7 @@ interface PurchaseReceiptParams {
   to: string;
   listingTitle: string;
   listingSlug: string;
+  listingType?: string;
   amountCents: number;
   taxCents: number;
   purchaseId: string;
@@ -31,6 +32,7 @@ export async function sendPurchaseReceipt(params: PurchaseReceiptParams) {
     to,
     listingTitle,
     listingSlug,
+    listingType = "prompt",
     amountCents,
     taxCents,
     purchaseId,
@@ -38,7 +40,11 @@ export async function sendPurchaseReceipt(params: PurchaseReceiptParams) {
   } = params;
 
   const totalCents = amountCents + taxCents;
-  const downloadUrl = `${APP_URL}/api/download/${versionId}`;
+  const isRunnable = listingType === "agent" || listingType === "workflow";
+  const actionUrl = isRunnable
+    ? `${APP_URL}/listing/${listingSlug}`
+    : `${APP_URL}/api/download/${versionId}`;
+  const actionLabel = isRunnable ? "Lancer l'agent" : "Télécharger le bundle";
   const listingUrl = `${APP_URL}/listing/${listingSlug}`;
   const date = new Date().toLocaleDateString("fr-FR", {
     day: "numeric",
@@ -97,11 +103,11 @@ export async function sendPurchaseReceipt(params: PurchaseReceiptParams) {
   </table>
 
   <div style="text-align: center; margin-bottom: 32px;">
-    <a href="${downloadUrl}" style="display: inline-block; background: #0A66C2; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-      Télécharger le bundle
+    <a href="${actionUrl}" style="display: inline-block; background: #0A66C2; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+      ${actionLabel}
     </a>
     <p style="margin: 16px 0 0; font-size: 14px; color: #666;">
-      ou <a href="${listingUrl}" style="color: #0A66C2;">voir la fiche du prompt</a>
+      ou <a href="${listingUrl}" style="color: #0A66C2;">voir la fiche ${isRunnable ? "de l'agent" : "du prompt"}</a>
     </p>
   </div>
 

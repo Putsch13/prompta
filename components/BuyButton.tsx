@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Download, ShoppingCart } from "lucide-react";
+import { Loader2, Download, ShoppingCart, Play } from "lucide-react";
+import Link from "next/link";
 
 interface Props {
   listingId: string;
   versionId: string | null;
+  listingSlug?: string;
+  listingType?: "prompt" | "agent" | "workflow";
   priceCents: number;
   isFree: boolean;
   alreadyPurchased: boolean;
@@ -13,9 +16,13 @@ interface Props {
   creatorKycComplete?: boolean;
 }
 
+const RUNNABLE_TYPES = new Set(["agent", "workflow"]);
+
 export function BuyButton({
   listingId,
   versionId,
+  listingSlug,
+  listingType = "prompt",
   priceCents,
   isFree,
   alreadyPurchased,
@@ -23,6 +30,7 @@ export function BuyButton({
   creatorKycComplete = true,
 }: Props) {
   const [loading, setLoading] = useState(false);
+  const canDownload = listingType === "prompt";
 
   async function handleBuy() {
     setLoading(true);
@@ -41,7 +49,7 @@ export function BuyButton({
   }
 
   async function handleDownload() {
-    if (!versionId) return;
+    if (!versionId || !canDownload) return;
     setLoading(true);
     const res = await fetch(`/api/download/${versionId}`);
     const data = await res.json();
@@ -53,7 +61,20 @@ export function BuyButton({
     setLoading(false);
   }
 
-  if (isOwner) {
+  if (RUNNABLE_TYPES.has(listingType) && (isFree || alreadyPurchased || isOwner)) {
+    const href = listingSlug ? `/listing/${listingSlug}` : `/listing/${listingId}`;
+    return (
+      <Link
+        href={href}
+        className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+      >
+        <Play className="h-4 w-4" />
+        Lancer l&apos;agent
+      </Link>
+    );
+  }
+
+  if (isOwner && canDownload) {
     return (
       <button
         onClick={handleDownload}
@@ -66,7 +87,7 @@ export function BuyButton({
     );
   }
 
-  if (isFree || alreadyPurchased) {
+  if ((isFree || alreadyPurchased) && canDownload) {
     return (
       <button
         onClick={handleDownload}

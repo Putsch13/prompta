@@ -103,6 +103,7 @@ Exécuter **dans l'ordre** via Supabase → SQL Editor (ou `supabase db push`).
 | 0016 | `0016_admin_agents_sandbox.sql` | Mode sandbox + `purge_sandbox()` |
 | 0017 | `0017_platform_credits_org_audit.sql` | Crédits, audit org, queue worker |
 | 0018 | `0018_platform_pro_revshare.sql` | Usage & revshare Prompta Pro |
+| 0019+ | `0019` → `0025` | Connexions, crédits, Composio, journal activité… |
 
 Après migration, te passer admin :
 
@@ -297,17 +298,21 @@ app/                    # Pages Next.js (App Router)
   admin/                # KPI, agents, modération
   api/                  # Routes API (stripe, run, agents, cron…)
   dashboard/            # Espace builder
-  listing/              # Fiches prompt
-agents/                 # 7 agents IA (registre admin)
-lib/
-  agents/               # Wrapper Anthropic, budget, runner (admin)
-  agent/                # Orchestrateur runtime utilisateur
-  llm/                  # Passerelle multi-modèles
-  admin/                # Guard admin
+  listing/              # Fiches marketplace
+  wallet/               # Foyer utilisateur (crédits, connexions, runs)
 components/             # UI réutilisable
-delivery/               # Sources originales (référence, hors build)
-scripts/                # seed-personas.ts
-supabase/migrations/    # 16 migrations SQL
+lib/
+  agent/                # Runtime marketplace (manifeste, orchestrateur, worker)
+  agents/               # Infra admin (budget, runner, anthropic)
+  admin-agents/         # 7 agents ops internes (SEO, LinkedIn, etc.)
+  catalogs.ts           # Catalogues modèles & intégrations (source de vérité)
+  llm/                  # Passerelle multi-modèles + pricing.ts
+  composio/             # Backend connecteurs Composio
+  connectors/           # Exécution outils (Composio ou natif)
+worker/                 # run-worker.ts — npm run worker
+scripts/                # seed, QA, clean-fake-vars…
+supabase/migrations/    # Migrations SQL (0001 → 0024+)
+docs/                   # Guides setup (Composio, Render, QA…)
 ```
 
 ---

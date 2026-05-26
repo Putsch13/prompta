@@ -1,5 +1,11 @@
-# Marketplace agent runtime
+# Marketplace agent runtime (`lib/agent/`)
 
 Runtime des **agents/workflows marketplace** : manifeste Zod → orchestrateur → worker.
 
-Ne pas confondre avec `lib/agents/` (agents admin internes Prompt Factory, SEO, etc.).
+| Dossier | Rôle |
+|---------|------|
+| **`lib/agent/`** | Marketplace — manifeste, orchestrateur, worker |
+| **`lib/agents/`** | Infra admin — budget, runner, anthropic |
+| **`lib/admin-agents/`** | 7 implémentations admin (SEO, LinkedIn, etc.) |
+
+Un seul schéma manifeste marketplace : `lib/agent/schema.ts` (`AgentManifestSchema`).

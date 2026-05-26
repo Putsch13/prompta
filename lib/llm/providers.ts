@@ -1,7 +1,15 @@
+import { AI_MODELS } from "@/lib/catalogs";
 import { resolveModelOrDefault } from "./resolve-model";
 import { getModelPricing } from "./pricing";
 
 export type LLMProvider = "openai" | "anthropic" | "google" | "mistral";
+
+const PROVIDER_LABEL_TO_KEY: Record<string, LLMProvider> = {
+  OpenAI: "openai",
+  Anthropic: "anthropic",
+  Google: "google",
+  Mistral: "mistral",
+};
 
 export interface ModelInfo {
   id: string;
@@ -11,17 +19,23 @@ export interface ModelInfo {
   outputCostPer1M: number;
 }
 
-export const MODEL_CATALOG: ModelInfo[] = [
-  { id: "gpt-4o", provider: "openai", label: "GPT-4o", inputCostPer1M: 2.5, outputCostPer1M: 10 },
-  { id: "gpt-4o-mini", provider: "openai", label: "GPT-4o Mini", inputCostPer1M: 0.15, outputCostPer1M: 0.6 },
-  { id: "claude-sonnet-4-20250514", provider: "anthropic", label: "Claude Sonnet", inputCostPer1M: 3, outputCostPer1M: 15 },
-  { id: "claude-3-5-haiku-20241022", provider: "anthropic", label: "Claude Haiku", inputCostPer1M: 0.8, outputCostPer1M: 4 },
-  { id: "gemini-2.0-flash", provider: "google", label: "Gemini 2.0 Flash", inputCostPer1M: 0.1, outputCostPer1M: 0.4 },
-  { id: "mistral-large-latest", provider: "mistral", label: "Mistral Large", inputCostPer1M: 2, outputCostPer1M: 6 },
-];
+/** Modèles routables via la passerelle (OpenAI, Anthropic, Google, Mistral). */
+export const MODEL_CATALOG: ModelInfo[] = AI_MODELS.filter((m) =>
+  PROVIDER_LABEL_TO_KEY[m.provider]
+).map((m) => {
+  const pricing = getModelPricing(m.apiModel);
+  return {
+    id: m.id,
+    provider: PROVIDER_LABEL_TO_KEY[m.provider],
+    label: m.label,
+    inputCostPer1M: pricing.inputPer1M / 100,
+    outputCostPer1M: pricing.outputPer1M / 100,
+  };
+});
 
 export function getModel(id: string): ModelInfo | undefined {
-  return MODEL_CATALOG.find((m) => m.id === id);
+  const resolved = resolveModelOrDefault(id);
+  return MODEL_CATALOG.find((m) => m.id === resolved.catalogId);
 }
 
 export function getModelsForProvider(provider: LLMProvider): ModelInfo[] {

@@ -1,4 +1,5 @@
-import { getModel, type LLMProvider } from "./providers";
+import { resolveModelOrDefault } from "./resolve-model";
+import type { LLMProvider } from "./providers";
 import type { TokenParam } from "@/lib/catalogs";
 
 export interface ChatMessage {
@@ -24,11 +25,11 @@ export interface CallModelResult {
   provider: LLMProvider;
 }
 
-const FALLBACK_MODELS: Record<LLMProvider, string> = {
+const FALLBACK_CATALOG_IDS: Record<LLMProvider, string> = {
   openai: "gpt-5-mini",
-  anthropic: "claude-haiku-4-5-20260201",
-  google: "gemini-3.0-flash",
-  mistral: "mistral-small-latest",
+  anthropic: "claude-haiku-4-5",
+  google: "gemini-3-flash",
+  mistral: "mistral-small",
 };
 
 async function callOpenAI(
@@ -263,16 +264,15 @@ export async function callModel(
   try {
     return await callProvider(params);
   } catch (primaryError) {
-    const fallbackModel = FALLBACK_MODELS[params.provider];
-    if (fallbackModel === params.model) throw primaryError;
-
-    const fallbackInfo = getModel(fallbackModel);
-    if (!fallbackInfo) throw primaryError;
+    const fallbackCatalogId = FALLBACK_CATALOG_IDS[params.provider];
+    const fallback = resolveModelOrDefault(fallbackCatalogId);
+    if (fallback.apiModel === params.model) throw primaryError;
 
     return callProvider({
       ...params,
-      model: fallbackModel,
-      provider: fallbackInfo.provider,
+      model: fallback.apiModel,
+      provider: fallback.provider,
+      tokenParam: fallback.tokenParam,
     });
   }
 }

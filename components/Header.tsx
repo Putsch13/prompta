@@ -5,9 +5,11 @@ import { usePathname } from "next/navigation";
 import { Menu, Search, X, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AuthNav } from "@/components/AuthNav";
+import { WalletBalanceBadge } from "@/components/wallet/WalletBalanceBadge";
 
 const NAV = [
   { href: "/explore", label: "Explorer" },
+  { href: "/wallet", label: "Mon wallet", authOnly: true },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/admin", label: "Admin", adminOnly: true },
 ];
@@ -16,6 +18,7 @@ export function Header() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -30,8 +33,10 @@ export function Header() {
       } = await supabase.auth.getUser();
       if (!user) {
         setIsAdmin(false);
+        setIsLoggedIn(false);
         return;
       }
+      setIsLoggedIn(true);
       const { data: profile } = await supabase
         .from("profiles")
         .select("is_admin")
@@ -42,7 +47,11 @@ export function Header() {
     loadAdmin();
   }, [pathname]);
 
-  const links = NAV.filter((l) => !l.adminOnly || isAdmin);
+  const links = NAV.filter(
+    (l) =>
+      (!l.adminOnly || isAdmin) &&
+      (!("authOnly" in l && l.authOnly) || isLoggedIn)
+  );
 
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-card/95 backdrop-blur-md">
@@ -72,6 +81,7 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <WalletBalanceBadge />
           <Link
             href="/explore"
             prefetch

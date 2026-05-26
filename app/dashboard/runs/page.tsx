@@ -93,7 +93,7 @@ export default function RunsHistoryPage() {
       body: JSON.stringify({
         listingId: run.listing_id,
         versionId: run.version_id,
-        model: run.model ?? "gpt-4o",
+        model: run.model ?? "gpt-5.4",
         variables: {},
       }),
     });

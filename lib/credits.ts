@@ -1,5 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { costToCredits, CREDIT_VALUE_CENTS } from "@/lib/billing/credits";
+import { billedCentsFromCost, marginCentsFromCost } from "@/lib/billing/profitability";
+import { recordPlatformRunEconomics } from "@/lib/billing/circuit-breaker";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -92,12 +94,51 @@ export async function holdCreditsForRun(
   return true;
 }
 
+/** Libère un hold sans débit (run échoué ou annulé). */
+export async function releaseCreditHold(
+  userId: string,
+  estimatedCostCents: number,
+  runId: string
+): Promise<void> {
+  const admin = createAdminClient();
+  const heldCredits = costToCredits(estimatedCostCents) * CREDIT_VALUE_CENTS;
+
+  const { data } = await admin
+    .from("user_credits")
+    .select("balance_cents, held_cents")
+    .eq("user_id", userId)
+    .maybeSingle() as { data: { balance_cents: number; held_cents?: number } | null };
+
+  const balance = data?.balance_cents ?? 0;
+  const held = (data as { held_cents?: number } | null)?.held_cents ?? 0;
+  const newHeld = Math.max(0, held - heldCredits);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin.from("user_credits") as any).upsert({
+    user_id: userId,
+    balance_cents: balance,
+    held_cents: newHeld,
+    updated_at: new Date().toISOString(),
+  });
+
+  if (heldCredits > 0) {
+    await (admin.from("credit_transactions") as any).insert({
+      user_id: userId,
+      amount_cents: heldCredits,
+      kind: "hold_release",
+      description: "Annulation pré-autorisation (run échoué)",
+      run_id: runId,
+    });
+  }
+}
+
 /** Régularise après run : débit réel + libération du hold. */
 export async function settleCreditsForRun(
   userId: string,
   actualCostCents: number,
   estimatedCostCents: number,
-  runId: string
+  runId: string,
+  runType: "prompt" | "agent" = "prompt"
 ): Promise<void> {
   const admin = createAdminClient();
   const actualCredits = costToCredits(actualCostCents) * CREDIT_VALUE_CENTS;
@@ -140,6 +181,18 @@ export async function settleCreditsForRun(
     description: "Exécution (coût réel)",
     run_id: runId,
   });
+
+  const billedCents = billedCentsFromCost(actualCostCents);
+  const marginCents = marginCentsFromCost(actualCostCents);
+
+  await recordPlatformRunEconomics({
+    userId,
+    runId,
+    runType,
+    actualCostCents,
+    billedCents,
+    marginCents,
+  }).catch((err) => console.warn("[settleCreditsForRun] economics", err));
 }
 
 /** Débit simple (legacy / petits runs). */

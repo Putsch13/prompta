@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { ComposioActionPicker } from "@/components/builder/ComposioActionPicker";
-import { AI_MODELS } from "@/lib/catalogs";
+import { getGatewayModels } from "@/lib/catalogs";
 import { CONNECTORS, type ConnectorAction } from "@/lib/connectors/registry";
 import type { ComposioToolEntry } from "@/lib/composio/catalog";
 import type { AgentStep } from "@/lib/agent/schema";
@@ -148,7 +148,7 @@ export function StepEditor({
             {step.type === "llm" && (
               <div className="space-y-3">
                 <CatalogSingleSelect
-                  catalog={AI_MODELS as { id: string; label: string; popular?: boolean; provider?: string }[]}
+                  catalog={getGatewayModels() as { id: string; label: string; popular?: boolean; provider?: string }[]}
                   value={step.model}
                   onChange={(model) => updateStep(i, { ...step, model })}
                   groupByKey="provider"

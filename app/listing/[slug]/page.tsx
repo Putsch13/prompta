@@ -189,6 +189,7 @@ export default async function ListingPage({ params }: Props) {
 
   const requiredSecrets = parsedEnv?.manifest.secrets ?? [];
   const requiredConnectors = parsedEnv?.manifest.connectors ?? [];
+  const agentStepCount = parsedEnv?.manifest.steps.length ?? 1;
   const meta = parsedEnv?.meta ?? (version?.env as { dependencies?: string; setup_time?: string } | null);
 
   const isFree = listing.price_cents === 0 && listing.pricing_mode !== "subscription";
@@ -388,6 +389,8 @@ export default async function ListingPage({ params }: Props) {
               <BuyButton
                 listingId={listing.id}
                 versionId={listing.current_version_id}
+                listingSlug={listing.slug}
+                listingType={listing.type as "prompt" | "agent" | "workflow"}
                 priceCents={listing.price_cents}
                 isFree={isFree}
                 alreadyPurchased={alreadyPurchased || hasSubscription}
@@ -415,18 +418,28 @@ export default async function ListingPage({ params }: Props) {
                 </p>
               )}
 
-              <div className="mt-4 flex items-center justify-between text-sm text-muted">
-                <span className="flex items-center gap-1">
-                  <Download className="h-3.5 w-3.5" />
-                  {downloadCount || 0} téléchargements
-                </span>
-                {avgRating !== null && (
+              {listing.type === "prompt" && (
+                <div className="mt-4 flex items-center justify-between text-sm text-muted">
+                  <span className="flex items-center gap-1">
+                    <Download className="h-3.5 w-3.5" />
+                    {downloadCount || 0} téléchargements
+                  </span>
+                  {avgRating !== null && (
+                    <span className="flex items-center gap-1">
+                      <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                      {avgRating.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+              )}
+              {listing.type !== "prompt" && avgRating !== null && (
+                <div className="mt-4 flex items-center justify-end text-sm text-muted">
                   <span className="flex items-center gap-1">
                     <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
                     {avgRating.toFixed(1)}
                   </span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* RunPanel — Copier / Lancer */}
@@ -441,6 +454,7 @@ export default async function ListingPage({ params }: Props) {
                 envFields={envFields}
                 requiredSecrets={requiredSecrets}
                 requiredConnectors={requiredConnectors}
+                stepCount={agentStepCount}
                 pricingMode={listing.pricing_mode}
                 subscriptionPriceCents={listing.subscription_price_cents}
                 hasSubscription={hasSubscription}

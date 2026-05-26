@@ -5,50 +5,29 @@ import { callModel } from "@/lib/llm/gateway";
 import { getUserKey, invalidateKey } from "@/lib/keys";
 import { computeRunCost, estimateMaxCost } from "@/lib/billing/run-cost";
 import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
-import { getCreditBalance, holdCreditsForRun, settleCreditsForRun } from "@/lib/credits";
-import { costToCredits } from "@/lib/billing/credits";
+import {
+  getCreditBalance,
+  holdCreditsForRun,
+  settleCreditsForRun,
+  releaseCreditHold,
+} from "@/lib/credits";
+import {
+  costToCredits,
+  CREDIT_VALUE_CENTS,
+  FREE_TIER_MODEL,
+  FREE_RUN_MAX_TOKENS,
+} from "@/lib/billing/credits";
+import { consumeFreeRunQuota } from "@/lib/billing/free-quota";
+import { getCreditCircuitStatus } from "@/lib/billing/circuit-breaker";
+import { getCachedRun, runCacheKey, setCachedRun } from "@/lib/billing/run-cache";
+import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { hasPlatformPro } from "@/lib/platform-access";
 import { trackProRun } from "@/lib/revshare";
 
 export const dynamic = "force-dynamic";
 
-const FREE_RUN_LIMIT = 20;
-
 function interpolate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? "");
-}
-
-async function checkFreeQuota(userId: string): Promise<boolean> {
-  const supabase = createAdminClient();
-  const today = new Date().toISOString().split("T")[0];
-
-  const { data: quota } = await supabase
-    .from("free_run_quota")
-    .select("runs_today, last_reset")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (!quota) {
-    await supabase.from("free_run_quota").insert({ user_id: userId, runs_today: 1, last_reset: today });
-    return true;
-  }
-
-  if (quota.last_reset !== today) {
-    await supabase
-      .from("free_run_quota")
-      .update({ runs_today: 1, last_reset: today })
-      .eq("user_id", userId);
-    return true;
-  }
-
-  if (quota.runs_today >= FREE_RUN_LIMIT) return false;
-
-  await supabase
-    .from("free_run_quota")
-    .update({ runs_today: quota.runs_today + 1 })
-    .eq("user_id", userId);
-
-  return true;
 }
 
 export async function POST(request: NextRequest) {
@@ -62,6 +41,11 @@ export async function POST(request: NextRequest) {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  const rate = checkRateLimit(`run:prompt:${user.id}`, RATE_LIMITS.run);
+  if (!rate.success) {
+    return rateLimitResponse(rate.resetAt);
   }
 
   const body = await request.json();
@@ -138,10 +122,11 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const resolved = resolveModelOrDefault(model);
-  const { provider, apiModel, tokenParam } = resolved;
+  let resolved = resolveModelOrDefault(model);
+  let { provider, apiModel, tokenParam } = resolved;
   let apiKey = await getUserKey(user.id, provider);
   let usedCredits = false;
+  let usedFreeQuota = false;
 
   const estimatedMax = estimateMaxCost({ stepCount: 1, maxTokens: 4096, maxToolCalls: 0 });
   const estimatedCredits = costToCredits(estimatedMax);
@@ -157,11 +142,19 @@ export async function POST(request: NextRequest) {
     }
 
     const creditBalance = await getCreditBalance(user.id);
-    const minCreditsCents = estimatedCredits * 2; // CREDIT_VALUE_CENTS
+    const minCreditsCents = estimatedCredits * CREDIT_VALUE_CENTS;
+
     if (!hasEntitlement && creditBalance >= minCreditsCents) {
+      const circuit = await getCreditCircuitStatus();
+      if (!circuit.allowed) {
+        return new Response(
+          JSON.stringify({ error: "circuit_breaker", message: circuit.reason }),
+          { status: 503, headers: { "Content-Type": "application/json" } }
+        );
+      }
       usedCredits = true;
     } else if (isFree && !hasEntitlement) {
-      const allowed = await checkFreeQuota(user.id);
+      const allowed = await consumeFreeRunQuota(user.id);
       if (!allowed) {
         return new Response(
           JSON.stringify({
@@ -171,6 +164,12 @@ export async function POST(request: NextRequest) {
           { status: 429, headers: { "Content-Type": "application/json" } }
         );
       }
+      usedFreeQuota = true;
+      resolved = resolveModelOrDefault(FREE_TIER_MODEL);
+      provider = resolved.provider;
+      apiModel = resolved.apiModel;
+      tokenParam = resolved.tokenParam;
+      apiKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`] ?? apiKey;
     } else if (!hasEntitlement) {
       return new Response(
         JSON.stringify({
@@ -183,6 +182,51 @@ export async function POST(request: NextRequest) {
   }
 
   const prompt = interpolate(version.prompt_body, variables);
+  const maxTokens = usedFreeQuota ? FREE_RUN_MAX_TOKENS : 4096;
+
+  const cacheKey = usedCredits
+    ? runCacheKey({ prompt, model: apiModel, maxTokens })
+    : null;
+
+  if (cacheKey) {
+    const cached = getCachedRun(cacheKey);
+    if (cached) {
+      const { data: run } = await admin
+        .from("runs")
+        .insert({
+          user_id: user.id,
+          listing_id: listingId,
+          version_id: versionId,
+          model: usedFreeQuota ? FREE_TIER_MODEL : model,
+          provider,
+          status: "completed",
+          output: cached.output,
+          cost_estimate: cached.costCents,
+        })
+        .select("id")
+        .single();
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "done", runId: run?.id, tokens: 0, cost: cached.costCents, cached: true })}\n\n`
+            )
+          );
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
+    }
+  }
 
   const { data: run } = await admin
     .from("runs")
@@ -190,7 +234,7 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       listing_id: listingId,
       version_id: versionId,
-      model,
+      model: usedFreeQuota ? FREE_TIER_MODEL : model,
       provider,
       status: "running",
     })
@@ -217,7 +261,7 @@ export async function POST(request: NextRequest) {
           model: apiModel,
           messages: [{ role: "user", content: prompt }],
           apiKey,
-          maxTokens: 4096,
+          maxTokens,
           tokenParam,
         });
 
@@ -226,7 +270,8 @@ export async function POST(request: NextRequest) {
         });
 
         if (usedCredits && run?.id) {
-          await settleCreditsForRun(user.id, cost, estimatedMax, run.id);
+          await settleCreditsForRun(user.id, cost, estimatedMax, run.id, "prompt");
+          if (cacheKey) setCachedRun(cacheKey, result.content, cost);
         }
 
         await admin
@@ -261,6 +306,9 @@ export async function POST(request: NextRequest) {
         const message = err instanceof Error ? err.message : "Erreur";
         if (message.includes("401") || message.includes("auth")) {
           await invalidateKey(user.id, provider);
+        }
+        if (usedCredits && run?.id) {
+          await releaseCreditHold(user.id, estimatedMax, run.id).catch(() => undefined);
         }
         await admin
           .from("runs")

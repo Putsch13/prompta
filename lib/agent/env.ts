@@ -57,7 +57,7 @@ export function parseListingEnv(
         steps: [
           {
             type: "llm" as const,
-            model: "gpt-4o",
+            model: "gpt-5.4",
             prompt: promptBody,
           },
         ],
@@ -78,7 +78,7 @@ export function parseListingEnv(
   return null;
 }
 
-export function promptFromBody(promptBody: string, model = "gpt-4o"): AgentManifest {
+export function promptFromBody(promptBody: string, model = "gpt-5.4"): AgentManifest {
   const vars = Array.from(
     new Set((promptBody.match(/\{\{(\w+)\}\}/g) ?? []).map((m) => m.replace(/\{\{|\}\}/g, "")))
   );

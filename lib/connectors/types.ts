@@ -27,6 +27,7 @@ export interface ExecuteContext {
   userId: string;
   accessToken?: string;
   apiKey?: string;
+  dryRun?: boolean;
 }
 
 export interface ExecuteResult {

@@ -21,9 +21,19 @@ export async function POST(request: NextRequest) {
   let processed = 0;
 
   for (const run of dueRuns ?? []) {
+    const { data: listing } = await admin
+      .from("listings")
+      .select("current_version_id")
+      .eq("id", run.listing_id)
+      .single();
+
+    if (!listing?.current_version_id) continue;
+
     await admin.from("listing_agent_runs").insert({
       user_id: run.user_id,
       listing_id: run.listing_id,
+      version_id: listing.current_version_id,
+      inputs: (run.inputs as Record<string, string>) ?? {},
       status: "pending",
     });
 

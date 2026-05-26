@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Trash2, Plus, Loader2, AlertTriangle, Check } from "lucide-react";
 import { StepEditor } from "@/components/builder/StepEditor";
+import { TemplatePicker } from "@/components/builder/TemplatePicker";
+import { AgentIdeaAssistant } from "@/components/builder/AgentIdeaAssistant";
 import { CatalogMultiSelect } from "@/components/builder/CatalogMultiSelect";
 import { CommissionNote } from "@/components/CommissionNote";
 import { buildManifest } from "@/lib/builder/manifest";
 import {
-  AI_MODELS,
+  getGatewayModels,
   TECH_RUNTIMES,
   INTEGRATIONS,
   getIntegrationsRequiringKey,
@@ -21,6 +23,10 @@ import {
   validateAgentSteps,
 } from "@/lib/builder/variables";
 import { connectorsForSteps } from "@/lib/connectors/registry";
+import type { AgentTemplate } from "@/lib/templates/agent-templates";
+import type { GeneratedSkeleton } from "@/lib/builder/generate-skeleton";
+import { estimateMaxCost } from "@/lib/billing/run-cost";
+import { costToCredits, creditsToEur } from "@/lib/billing/credits";
 import type { AgentStep } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 
@@ -115,6 +121,61 @@ export function CreateWizard({ categories }: Props) {
     pricingMode: "free" as "free" | "one_time" | "subscription",
     subscriptionPriceCents: 990,
   });
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>();
+
+  function applyTemplate(template: AgentTemplate) {
+    setSelectedTemplateId(template.id);
+    setForm((prev) => ({
+      ...prev,
+      type: template.type,
+      title: template.label,
+      description: template.description,
+      models: template.models,
+      tags: template.tags,
+      integrations: template.integrations,
+      agentSteps: template.steps,
+      envFields: template.envFields,
+      requiredSecrets: template.requiredSecrets,
+      requiredConnectors: template.requiredConnectors,
+      setupTime: template.setupTime,
+    }));
+    const allText = template.steps
+      .filter((s) => s.type === "llm")
+      .map((s) => s.prompt)
+      .join("\n");
+    const keys = extractInputVariables(allText);
+    const existing = new Set(template.envFields.map((f) => f.key));
+    setSuggestedVars(keys.filter((k) => !existing.has(k)));
+  }
+
+  function applySkeleton(skeleton: GeneratedSkeleton) {
+    setSelectedTemplateId(undefined);
+    setForm((prev) => ({
+      ...prev,
+      type: skeleton.type,
+      title: skeleton.title,
+      description: skeleton.description,
+      models: skeleton.models,
+      tags: skeleton.tags,
+      integrations: skeleton.integrations ?? prev.integrations,
+      agentSteps: skeleton.steps as AgentStep[],
+      envFields: skeleton.envFields.map((f) => ({
+        key: f.key,
+        label: f.label,
+        required: f.required,
+        type: f.type ?? "text",
+        help: f.help,
+      })),
+      requiredSecrets: (skeleton.requiredSecrets ?? ["openai"]).filter((s): s is KeyProvider =>
+        SECRET_PROVIDERS.some((p) => p.id === s)
+      ),
+    }));
+    const allText = skeleton.steps.map((s) => s.prompt).join("\n");
+    const keys = extractInputVariables(allText);
+    const existing = new Set(skeleton.envFields.map((f) => f.key));
+    setSuggestedVars(keys.filter((k) => !existing.has(k)));
+  }
 
   const loadStripeStatus = useCallback(async () => {
     const res = await fetch("/api/stripe/connect");
@@ -272,6 +333,13 @@ export function CreateWizard({ categories }: Props) {
               </button>
             ))}
           </div>
+
+          {(form.type === "agent" || form.type === "workflow") && (
+            <>
+              <TemplatePicker selectedId={selectedTemplateId} onSelect={applyTemplate} />
+              <AgentIdeaAssistant onGenerated={applySkeleton} />
+            </>
+          )}
         </div>
       )}
 
@@ -303,7 +371,7 @@ export function CreateWizard({ categories }: Props) {
           />
 
           <CatalogMultiSelect
-            catalog={AI_MODELS}
+            catalog={getGatewayModels()}
             selected={form.models}
             onChange={(ids) => updateField("models", ids)}
             label="Modèles IA compatibles"
@@ -647,12 +715,37 @@ export function CreateWizard({ categories }: Props) {
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink-soft">
                 {form.agentSteps.map((s, i) => (
                   <li key={i}>
-                    {s.type === "llm" && `Appeler ${s.model}`}
-                    {s.type === "tool" && `Exécuter ${s.tool}`}
-                    {s.type === "action" && `${s.connector} → ${s.action}`}
+                    {s.type === "llm" && `Étape ${i + 1} — ${s.model}`}
+                    {s.type === "tool" && `Étape ${i + 1} — outil ${s.tool}`}
+                    {s.type === "action" && `Étape ${i + 1} — ${s.connector} → ${s.action}`}
+                    {s.type === "code" && `Étape ${i + 1} — code sandbox`}
                   </li>
                 ))}
               </ol>
+              {form.type !== "prompt" && (
+                <p className="mt-3 border-t border-line pt-2 text-xs text-ink-faint">
+                  Coût estimé (mode crédits) :{" "}
+                  {costToCredits(
+                    estimateMaxCost({
+                      stepCount: form.agentSteps.length,
+                      maxTokens: 4000,
+                      maxToolCalls: form.agentSteps.filter((s) => s.type === "tool" || s.type === "action")
+                        .length,
+                    })
+                  )}{" "}
+                  cr. (~
+                  {creditsToEur(
+                    costToCredits(
+                      estimateMaxCost({
+                        stepCount: form.agentSteps.length,
+                        maxTokens: 4000,
+                        maxToolCalls: 2,
+                      })
+                    )
+                  ).toFixed(2)}{" "}
+                  € max)
+                </p>
+              )}
             </div>
           )}
 

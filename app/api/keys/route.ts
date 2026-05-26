@@ -62,7 +62,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Clé API invalide" }, { status: 400 });
   }
 
-  const valid = await testUserKey(user.id, provider, apiKey);
+  let valid = false;
+  try {
+    valid = await testUserKey(user.id, provider, apiKey);
+  } catch {
+    valid = false;
+  }
+
   const key = await saveUserKey(
     user.id,
     provider,

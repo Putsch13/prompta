@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptSecret, decryptSecret, maskKey } from "@/lib/crypto";
 import { callModel } from "@/lib/llm/gateway";
+import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
 
 export type KeyProvider = "openai" | "anthropic" | "google" | "mistral" | "serper";
 
@@ -97,6 +98,14 @@ export async function deleteUserKey(
   });
 }
 
+const KEY_TEST_MODELS: Record<KeyProvider, string> = {
+  openai: "gpt-5-mini",
+  anthropic: "claude-haiku-4-5",
+  google: "gemini-3-flash",
+  mistral: "mistral-small",
+  serper: "",
+};
+
 export async function testUserKey(
   userId: string,
   provider: KeyProvider,
@@ -105,45 +114,24 @@ export async function testUserKey(
   const supabase = createAdminClient();
 
   try {
-    if (provider === "openai") {
-      await callModel({
-        provider: "openai",
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: "ping" }],
-        apiKey,
-        maxTokens: 5,
-      });
-    } else if (provider === "anthropic") {
-      await callModel({
-        provider: "anthropic",
-        model: "claude-3-5-haiku-20241022",
-        messages: [{ role: "user", content: "ping" }],
-        apiKey,
-        maxTokens: 5,
-      });
-    } else if (provider === "google") {
-      await callModel({
-        provider: "google",
-        model: "gemini-2.0-flash",
-        messages: [{ role: "user", content: "ping" }],
-        apiKey,
-        maxTokens: 5,
-      });
-    } else if (provider === "mistral") {
-      await callModel({
-        provider: "mistral",
-        model: "mistral-large-latest",
-        messages: [{ role: "user", content: "ping" }],
-        apiKey,
-        maxTokens: 5,
-      });
-    } else if (provider === "serper") {
+    if (provider === "serper") {
       const res = await fetch("https://google.serper.dev/search", {
         method: "POST",
         headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ q: "test", num: 1 }),
       });
       if (!res.ok) throw new Error("Invalid Serper key");
+    } else {
+      const catalogId = KEY_TEST_MODELS[provider];
+      const resolved = resolveModelOrDefault(catalogId);
+      await callModel({
+        provider: resolved.provider,
+        model: resolved.apiModel,
+        messages: [{ role: "user", content: "ping" }],
+        apiKey,
+        maxTokens: 5,
+        tokenParam: resolved.tokenParam,
+      });
     }
 
     await supabase
