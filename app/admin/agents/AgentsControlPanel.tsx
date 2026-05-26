@@ -11,7 +11,7 @@
  *  - À valider  : approuver ou rejeter ce que les agents ont produit
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 type AgentDef = {
@@ -67,8 +67,13 @@ export default function AgentsControlPanel({
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<"agents" | "schedule" | "review">("agents");
+  const [localDefs, setLocalDefs] = useState(definitions);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocalDefs(definitions);
+  }, [definitions]);
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -97,14 +102,21 @@ export default function AgentsControlPanel({
   const toggleAgent = async (slug: string, enabled: boolean) => {
     setBusy(`toggle-${slug}`);
     try {
-      const res = await fetch(`/api/admin/agents/${slug}/toggle`, {
+      const res = await fetch(`/api/admin/agents/${encodeURIComponent(slug)}/toggle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
       });
       const data = await res.json();
-      flash(data.ok ? `✅ Agent ${enabled ? "activé" : "désactivé"}` : `❌ ${data.error}`);
-      router.refresh();
+      if (data.ok) {
+        setLocalDefs((prev) =>
+          prev.map((a) => (a.slug === slug ? { ...a, is_enabled: enabled } : a))
+        );
+        flash(`✅ Agent ${enabled ? "activé" : "désactivé"}`);
+        router.refresh();
+      } else {
+        flash(`❌ ${data.error ?? "Échec du toggle"}`);
+      }
     } catch {
       flash("❌ Erreur réseau");
     } finally {
@@ -269,7 +281,7 @@ export default function AgentsControlPanel({
       {/* ── ONGLET AGENTS ── */}
       {tab === "agents" && (
         <div className="space-y-3">
-          {definitions.map((a) => (
+          {localDefs.map((a) => (
             <div key={a.slug} className="rounded-xl border border-[#E4E1D8] bg-white p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
@@ -339,7 +351,7 @@ export default function AgentsControlPanel({
             Choisis quels jours et à quelles heures chaque agent tourne automatiquement.
             Le cron Render vérifie ce planning chaque heure.
           </p>
-          {definitions.map((a) => {
+          {localDefs.map((a) => {
             const sched = schedules.find((s) => s.agent_slug === a.slug);
             return (
               <div key={a.slug} className="rounded-xl border border-[#E4E1D8] bg-white p-4">

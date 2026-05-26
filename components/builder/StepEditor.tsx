@@ -329,17 +329,24 @@ export function StepEditor({
 
       {/* Add step modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowAddModal(false)}>
-          <div className="w-full max-w-lg rounded-2xl border border-line bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div
+            className="flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-line px-6 py-4">
               <h3 className="font-display text-lg font-bold text-ink">Ajouter une étape</h3>
               <button type="button" onClick={() => setShowAddModal(false)} className="rounded p-1 hover:bg-card2">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
+            <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-4">
             {/* Category tabs */}
-            <div className="mt-4 flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {([
                 { id: "llm", label: "LLM", icon: <MessageSquare className="h-3.5 w-3.5" /> },
                 { id: "tool", label: "Outil", icon: <Search className="h-3.5 w-3.5" /> },
@@ -400,8 +407,7 @@ export function StepEditor({
                 <div className="space-y-3">
                   <p className="text-sm text-ink-soft">Actions depuis vos apps connectées :</p>
 
-                  {/* Native connectors */}
-                  <div className="max-h-48 space-y-1 overflow-y-auto">
+                  <div className="max-h-40 space-y-1 overflow-y-auto overscroll-contain">
                     {CONNECTORS.map((c) =>
                       c.actions.map((action) => (
                         <button
@@ -419,10 +425,9 @@ export function StepEditor({
                     )}
                   </div>
 
-                  {/* Composio picker */}
                   <div className="border-t border-line pt-3">
                     <p className="mb-2 text-xs font-medium text-ink-soft">Actions Composio (800+)</p>
-                    <ComposioActionPicker onAdd={addComposioActionStep} />
+                    <ComposioActionPicker onAdd={addComposioActionStep} inline />
                   </div>
                 </div>
               )}
@@ -439,6 +444,7 @@ export function StepEditor({
                   </button>
                 </div>
               )}
+            </div>
             </div>
           </div>
         </div>

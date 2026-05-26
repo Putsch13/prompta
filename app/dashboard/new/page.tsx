@@ -1,22 +1,10 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { ensureCategories } from "@/lib/categories/bootstrap";
 import { CreateWizard } from "@/components/builder/CreateWizard";
 
-export default function NewListingPage() {
-  const [categories, setCategories] = useState<
-    { id: string; name: string; slug: string }[]
-  >([]);
+export const dynamic = "force-dynamic";
 
-  useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const { data } = await supabase.from("categories").select("id, name, slug");
-      setCategories(data ?? []);
-    }
-    load();
-  }, []);
+export default async function NewListingPage() {
+  const categories = await ensureCategories();
 
   return (
     <div>

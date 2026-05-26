@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { callModel } from "@/lib/llm/gateway";
+import type { ResolvedModel } from "@/lib/llm/resolve-model";
 
 // ─── Schema du plan généré par IA ────────────────────────────────────────────
 
@@ -98,7 +99,8 @@ Réponds UNIQUEMENT avec du JSON valide, sans markdown.`;
 
 export async function generateAgentPlan(
   description: string,
-  apiKey: string
+  apiKey: string,
+  resolved: ResolvedModel
 ): Promise<GeneratedAgentPlan> {
   if (!apiKey) {
     throw new Error("Clé API requise pour la génération de plan IA.");
@@ -139,15 +141,15 @@ Génère un plan JSON complet avec cette structure :
 }`;
 
   const result = await callModel({
-    provider: "openai",
-    model: "gpt-5.4-mini",
+    provider: resolved.provider,
+    model: resolved.apiModel,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ],
     apiKey,
     maxTokens: 3000,
-    tokenParam: "max_tokens",
+    tokenParam: resolved.tokenParam,
   });
 
   const jsonMatch = result.content.match(/\{[\s\S]*\}/);

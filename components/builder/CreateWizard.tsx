@@ -8,10 +8,12 @@ import { StepEditor } from "@/components/builder/StepEditor";
 import { TemplatePicker } from "@/components/builder/TemplatePicker";
 import { AgentIdeaAssistant } from "@/components/builder/AgentIdeaAssistant";
 import { CatalogMultiSelect } from "@/components/builder/CatalogMultiSelect";
+import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { CommissionNote } from "@/components/CommissionNote";
 import { buildManifest } from "@/lib/builder/manifest";
 import {
   getGatewayModels,
+  getBuilderModels,
   TECH_RUNTIMES,
   INTEGRATIONS,
   getIntegrationsRequiringKey,
@@ -103,6 +105,7 @@ export function CreateWizard({ categories }: Props) {
   }, []);
 
   const [objectiveText, setObjectiveText] = useState("");
+  const [builderModel, setBuilderModel] = useState("gpt-5.4-mini");
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const [generatedPlan, setGeneratedPlan] = useState<GeneratedAgentPlan | null>(null);
@@ -235,7 +238,7 @@ export function CreateWizard({ categories }: Props) {
       const res = await fetch("/api/builder/generate-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: objectiveText.trim() }),
+        body: JSON.stringify({ description: objectiveText.trim(), modelId: builderModel }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -400,6 +403,19 @@ export function CreateWizard({ categories }: Props) {
             rows={4}
             className="mt-4 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm"
           />
+          <div className="mt-4">
+            <p className="mb-1 text-xs font-medium text-ink-soft">Modèle IA pour la génération</p>
+            <CatalogSingleSelect
+              catalog={getBuilderModels() as { id: string; label: string; provider?: string }[]}
+              value={builderModel}
+              onChange={setBuilderModel}
+              groupByKey="provider"
+              placeholder="Choisir OpenAI, Anthropic, Google…"
+            />
+            <p className="mt-1 text-[11px] text-ink-faint">
+              Utilise votre clé BYOK du fournisseur choisi, ou la clé plateforme si configurée.
+            </p>
+          </div>
           {planError && <p className="mt-2 text-xs text-destructive">{planError}</p>}
           <button
             type="button"
@@ -484,7 +500,7 @@ export function CreateWizard({ categories }: Props) {
           {!generatedPlan && (form.type === "agent" || form.type === "workflow") && (
             <>
               <TemplatePicker selectedId={selectedTemplateId} onSelect={applyTemplate} />
-              <AgentIdeaAssistant onGenerated={applySkeleton} />
+              <AgentIdeaAssistant onGenerated={applySkeleton} builderModel={builderModel} />
             </>
           )}
         </div>

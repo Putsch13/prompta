@@ -58,9 +58,16 @@ export function resolveModelOrDefault(
   return {
     provider: "openai",
     apiModel: "gpt-5.4-mini",
-    tokenParam: "max_tokens",
+    tokenParam: "max_completion_tokens",
     catalogId: "gpt-5.4-mini",
   };
+}
+
+/** Infère le paramètre de tokens OpenAI pour les modèles non catalogués. */
+export function inferOpenAITokenParam(apiModel: string): TokenParam {
+  if (/^o\d|^o-/.test(apiModel)) return "max_completion_tokens";
+  if (/^gpt-[45]/.test(apiModel)) return "max_completion_tokens";
+  return "max_tokens";
 }
 
 /**

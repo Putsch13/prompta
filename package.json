@@ -15,7 +15,8 @@
     "test:e2e:ui": "playwright test --ui",
     "secrets:scan": "bash scripts/secrets-scan.sh",
     "composio:smoke": "tsx scripts/composio-smoke.ts",
-    "test:unit": "tsx --test tests/unit/*.test.ts"
+    "test:unit": "tsx --test tests/unit/*.test.ts",
+    "smoke:local": "tsx scripts/smoke-local.ts"
   },
   "dependencies": {
     "@composio/core": "^0.10.0",

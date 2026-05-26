@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getUserKey } from "@/lib/keys";
+import { getBuilderApiKey } from "@/lib/builder/api-key";
 import { generateAgentPlan } from "@/lib/builder/generate-agent-plan";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { description } = body as { description?: string };
+  const { description, modelId } = body as { description?: string; modelId?: string };
 
   if (!description || description.trim().length < 10) {
     return NextResponse.json(
@@ -25,21 +25,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let apiKey = await getUserKey(user.id, "openai");
-  if (!apiKey) {
-    apiKey = process.env.PLATFORM_OPENAI_KEY ?? null;
-  }
-
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Clé OpenAI requise (BYOK ou plateforme) pour la génération de plan." },
-      { status: 503 }
-    );
+  const keyResult = await getBuilderApiKey(user.id, modelId ?? "gpt-5.4-mini");
+  if (!keyResult.ok) {
+    return NextResponse.json({ error: keyResult.error }, { status: 503 });
   }
 
   try {
-    const plan = await generateAgentPlan(description.trim(), apiKey);
-    return NextResponse.json({ plan });
+    const plan = await generateAgentPlan(
+      description.trim(),
+      keyResult.apiKey,
+      keyResult.resolved
+    );
+    return NextResponse.json({ plan, model: keyResult.resolved.catalogId });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Erreur génération plan" },

@@ -2,14 +2,18 @@
 
 import { useState } from "react";
 import { Loader2, Wand2 } from "lucide-react";
+import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
+import { getBuilderModels } from "@/lib/catalogs";
 import type { GeneratedSkeleton } from "@/lib/builder/generate-skeleton";
 
 interface Props {
   onGenerated: (skeleton: GeneratedSkeleton) => void;
+  builderModel?: string;
 }
 
-export function AgentIdeaAssistant({ onGenerated }: Props) {
+export function AgentIdeaAssistant({ onGenerated, builderModel = "gpt-5.4-mini" }: Props) {
   const [idea, setIdea] = useState("");
+  const [modelId, setModelId] = useState(builderModel);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +27,7 @@ export function AgentIdeaAssistant({ onGenerated }: Props) {
     const res = await fetch("/api/builder/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description: idea.trim() }),
+      body: JSON.stringify({ description: idea.trim(), modelId }),
     });
     const data = await res.json();
     setLoading(false);
@@ -44,6 +48,16 @@ export function AgentIdeaAssistant({ onGenerated }: Props) {
         Décrivez votre agent en langage naturel — Prompta génère étapes, variables et connecteurs
         suggérés.
       </p>
+      <div className="mt-3">
+        <p className="mb-1 text-xs font-medium text-ink-soft">Modèle IA</p>
+        <CatalogSingleSelect
+          catalog={getBuilderModels() as { id: string; label: string; provider?: string }[]}
+          value={modelId}
+          onChange={setModelId}
+          groupByKey="provider"
+          placeholder="OpenAI, Anthropic, Google…"
+        />
+      </div>
       <textarea
         value={idea}
         onChange={(e) => setIdea(e.target.value)}

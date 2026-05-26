@@ -3,6 +3,7 @@ import { callModel } from "@/lib/llm/gateway";
 import { getAgentTemplate, AGENT_TEMPLATES } from "@/lib/templates/agent-templates";
 import type { AgentStep } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
+import type { ResolvedModel } from "@/lib/llm/resolve-model";
 
 const GeneratedSkeletonSchema = z.object({
   title: z.string().min(3),
@@ -64,7 +65,8 @@ function ruleBasedSkeleton(description: string): GeneratedSkeleton | null {
 
 export async function generateAgentSkeleton(
   description: string,
-  apiKey: string
+  apiKey: string,
+  resolved: ResolvedModel
 ): Promise<GeneratedSkeleton> {
   const fallback = ruleBasedSkeleton(description);
   if (!apiKey) {
@@ -99,15 +101,15 @@ Réponds avec ce JSON exact :
 
   try {
     const result = await callModel({
-      provider: "openai",
-      model: "gpt-5-mini",
+      provider: resolved.provider,
+      model: resolved.apiModel,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
       apiKey,
       maxTokens: 2000,
-      tokenParam: "max_tokens",
+      tokenParam: resolved.tokenParam,
     });
 
     const jsonMatch = result.content.match(/\{[\s\S]*\}/);

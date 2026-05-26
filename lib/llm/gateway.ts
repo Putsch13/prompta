@@ -1,5 +1,6 @@
 import type { LLMProvider } from "./providers";
 import type { TokenParam } from "@/lib/catalogs";
+import { inferOpenAITokenParam } from "./resolve-model";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -56,40 +57,67 @@ function parseProviderError(provider: string, status: number, body: string): Err
   return new Error(`${prefix} ${errorMessage}`);
 }
 
+function openAITokenConfig(tokenParam: TokenParam, maxTokens: number) {
+  return tokenParam === "max_completion_tokens"
+    ? { max_completion_tokens: maxTokens }
+    : { max_tokens: maxTokens };
+}
+
+function openAIUnsupportedTokenParam(body: string): boolean {
+  return (
+    body.includes("unsupported_parameter") &&
+    body.includes("max_tokens") &&
+    body.includes("max_completion_tokens")
+  );
+}
+
 async function callOpenAI(
   model: string,
   messages: ChatMessage[],
   apiKey: string,
   maxTokens = 4096,
-  tokenParam: TokenParam = "max_tokens"
+  tokenParam?: TokenParam
 ): Promise<CallModelResult> {
-  const tokenConfig =
-    tokenParam === "max_completion_tokens"
-      ? { max_completion_tokens: maxTokens }
-      : { max_tokens: maxTokens };
+  let effectiveParam = tokenParam ?? inferOpenAITokenParam(model);
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ model, messages, ...tokenConfig }),
-  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        ...openAITokenConfig(effectiveParam, maxTokens),
+      }),
+    });
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw parseProviderError("OpenAI", res.status, body);
+    if (!res.ok) {
+      const body = await res.text();
+      if (
+        attempt === 0 &&
+        effectiveParam === "max_tokens" &&
+        openAIUnsupportedTokenParam(body)
+      ) {
+        effectiveParam = "max_completion_tokens";
+        continue;
+      }
+      throw parseProviderError("OpenAI", res.status, body);
+    }
+
+    const data = await res.json();
+    return {
+      content: data.choices[0]?.message?.content ?? "",
+      inputTokens: data.usage?.prompt_tokens ?? 0,
+      outputTokens: data.usage?.completion_tokens ?? 0,
+      model,
+      provider: "openai",
+    };
   }
 
-  const data = await res.json();
-  return {
-    content: data.choices[0]?.message?.content ?? "",
-    inputTokens: data.usage?.prompt_tokens ?? 0,
-    outputTokens: data.usage?.completion_tokens ?? 0,
-    model,
-    provider: "openai",
-  };
+  throw new Error("[OpenAI] Impossible de résoudre le paramètre de tokens pour ce modèle.");
 }
 
 async function callAnthropic(
