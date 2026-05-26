@@ -4,6 +4,9 @@ import { saveUserConnectionApiKey } from "@/lib/connections";
 
 export const dynamic = "force-dynamic";
 
+/** Only these connectors can be set via API key (not OAuth). */
+const API_KEY_CONNECTORS = new Set(["telegram"]);
+
 export async function POST(req: NextRequest) {
   const supabase = createClient();
   const {
@@ -17,6 +20,13 @@ export async function POST(req: NextRequest) {
 
   if (!connectorId || !apiKey?.trim()) {
     return NextResponse.json({ error: "connectorId et apiKey requis" }, { status: 400 });
+  }
+
+  if (!API_KEY_CONNECTORS.has(connectorId)) {
+    return NextResponse.json(
+      { error: `Le connecteur "${connectorId}" nécessite OAuth, pas une clé API` },
+      { status: 400 }
+    );
   }
 
   await saveUserConnectionApiKey(user.id, connectorId, apiKey.trim());

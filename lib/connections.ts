@@ -33,6 +33,15 @@ export async function getUserConnection(
   if (!data?.access_token_enc) return null;
 
   if (data.expires_at && new Date(data.expires_at) < new Date()) {
+    // Try refreshing the token before giving up
+    if (data.refresh_token_enc) {
+      const refreshed = await tryRefreshToken(
+        userId,
+        connectorId,
+        decryptSecret(data.refresh_token_enc)
+      );
+      if (refreshed) return refreshed;
+    }
     await db()
       .from("user_connections")
       .update({ status: "expired" })
@@ -45,6 +54,60 @@ export async function getUserConnection(
     accessToken: decryptSecret(data.access_token_enc),
     refreshToken: data.refresh_token_enc ? decryptSecret(data.refresh_token_enc) : undefined,
   };
+}
+
+const REFRESH_CONFIGS: Record<string, { url: string; clientIdEnv: string; clientSecretEnv: string }> = {
+  gmail: { url: "https://oauth2.googleapis.com/token", clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET" },
+  google_sheets: { url: "https://oauth2.googleapis.com/token", clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET" },
+  slack: { url: "https://slack.com/api/oauth.v2.access", clientIdEnv: "SLACK_CLIENT_ID", clientSecretEnv: "SLACK_CLIENT_SECRET" },
+  canva: { url: "https://api.canva.com/rest/v1/oauth/token", clientIdEnv: "CANVA_CLIENT_ID", clientSecretEnv: "CANVA_CLIENT_SECRET" },
+};
+
+async function tryRefreshToken(
+  userId: string,
+  connectorId: string,
+  refreshToken: string
+): Promise<{ accessToken: string; refreshToken?: string } | null> {
+  const config = REFRESH_CONFIGS[connectorId];
+  if (!config) return null;
+
+  const clientId = process.env[config.clientIdEnv];
+  const clientSecret = process.env[config.clientSecretEnv];
+  if (!clientId || !clientSecret) return null;
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    });
+
+    const res = await fetch(config.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const newAccessToken = data.access_token;
+    if (!newAccessToken) return null;
+
+    const newRefreshToken = data.refresh_token ?? refreshToken;
+    const expiresIn = data.expires_in;
+
+    await saveUserConnection(userId, connectorId, {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : undefined,
+    });
+
+    return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  } catch {
+    return null;
+  }
 }
 
 export async function saveComposioConnection(

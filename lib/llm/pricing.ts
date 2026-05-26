@@ -1,6 +1,7 @@
 /**
  * Tarifs fournisseurs — valeurs à mettre à jour quand un fournisseur change ses prix.
  * Prix en cents USD par 1M tokens (input / output).
+ * IDs = vrais apiModel IDs (pas de slugs inventés).
  */
 
 export interface ModelPricing {
@@ -8,21 +9,32 @@ export interface ModelPricing {
   outputPer1M: number;
 }
 
-/** Tarifs modèles (catalogue mai 2026) — cents USD par 1M tokens */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  "gpt-5.5-turbo": { inputPer1M: 500, outputPer1M: 1500 },
-  "gpt-5.4-turbo": { inputPer1M: 400, outputPer1M: 1200 },
+  // OpenAI GPT-5.x
+  "gpt-5.5": { inputPer1M: 500, outputPer1M: 1500 },
+  "gpt-5.4": { inputPer1M: 400, outputPer1M: 1200 },
   "gpt-5.4-mini": { inputPer1M: 150, outputPer1M: 600 },
+  "gpt-5.4-nano": { inputPer1M: 50, outputPer1M: 200 },
   "gpt-5-mini": { inputPer1M: 100, outputPer1M: 400 },
   "gpt-5-nano": { inputPer1M: 50, outputPer1M: 200 },
+  // OpenAI GPT-4.1 (legacy)
+  "gpt-4.1": { inputPer1M: 200, outputPer1M: 800 },
+  "gpt-4.1-mini": { inputPer1M: 40, outputPer1M: 160 },
+  "gpt-4.1-nano": { inputPer1M: 10, outputPer1M: 40 },
+  // OpenAI reasoning
   o3: { inputPer1M: 2000, outputPer1M: 8000 },
   "o3-mini": { inputPer1M: 1100, outputPer1M: 4400 },
-  "claude-opus-4-7-20260501": { inputPer1M: 1500, outputPer1M: 7500 },
-  "claude-opus-4-6-20260315": { inputPer1M: 1200, outputPer1M: 6000 },
-  "claude-sonnet-4-6-20260401": { inputPer1M: 300, outputPer1M: 1500 },
-  "claude-haiku-4-5-20260201": { inputPer1M: 80, outputPer1M: 400 },
-  "gemini-3.1-pro": { inputPer1M: 200, outputPer1M: 800 },
-  "gemini-3.0-flash": { inputPer1M: 50, outputPer1M: 200 },
+  "o4-mini": { inputPer1M: 1100, outputPer1M: 4400 },
+  // Anthropic
+  "claude-opus-4-7": { inputPer1M: 1500, outputPer1M: 7500 },
+  "claude-opus-4-6": { inputPer1M: 1200, outputPer1M: 6000 },
+  "claude-sonnet-4-6": { inputPer1M: 300, outputPer1M: 1500 },
+  "claude-haiku-4-5": { inputPer1M: 80, outputPer1M: 400 },
+  // Google
+  "gemini-3.5-flash": { inputPer1M: 50, outputPer1M: 200 },
+  "gemini-2.5-pro": { inputPer1M: 200, outputPer1M: 800 },
+  "gemini-2.5-flash": { inputPer1M: 50, outputPer1M: 200 },
+  // Mistral
   "mistral-large-latest": { inputPer1M: 200, outputPer1M: 600 },
   "mistral-medium-latest": { inputPer1M: 150, outputPer1M: 450 },
   "mistral-small-latest": { inputPer1M: 50, outputPer1M: 150 },

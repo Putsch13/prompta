@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2, Plus, Loader2, AlertTriangle, Check } from "lucide-react";
+import { Trash2, Plus, Loader2, AlertTriangle, Check, Wand2 } from "lucide-react";
 import { StepEditor } from "@/components/builder/StepEditor";
 import { TemplatePicker } from "@/components/builder/TemplatePicker";
 import { AgentIdeaAssistant } from "@/components/builder/AgentIdeaAssistant";
@@ -25,13 +25,14 @@ import {
 import { connectorsForSteps } from "@/lib/connectors/registry";
 import type { AgentTemplate } from "@/lib/templates/agent-templates";
 import type { GeneratedSkeleton } from "@/lib/builder/generate-skeleton";
+import type { GeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
 import { estimateMaxCost } from "@/lib/billing/run-cost";
 import { costToCredits, creditsToEur } from "@/lib/billing/credits";
-import type { AgentStep } from "@/lib/agent/schema";
+import type { AgentStep, AgentKind, ExecutionMode } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 
 const STEPS = [
-  "Type",
+  "Objectif",
   "Bases",
   "Contenu",
   "Environnement",
@@ -101,8 +102,15 @@ export function CreateWizard({ categories }: Props) {
       .catch(() => undefined);
   }, []);
 
+  const [objectiveText, setObjectiveText] = useState("");
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [generatedPlan, setGeneratedPlan] = useState<GeneratedAgentPlan | null>(null);
+
   const [form, setForm] = useState({
     type: "prompt" as "prompt" | "agent" | "workflow",
+    kind: undefined as AgentKind | undefined,
+    executionMode: undefined as ExecutionMode | undefined,
     title: "",
     categoryId: "",
     description: "",
@@ -177,6 +185,71 @@ export function CreateWizard({ categories }: Props) {
     setSuggestedVars(keys.filter((k) => !existing.has(k)));
   }
 
+  function applyPlan(plan: GeneratedAgentPlan) {
+    setGeneratedPlan(plan);
+    const agentSteps: AgentStep[] = plan.steps
+      .filter((s) => s.type === "llm" || s.type === "action" || s.type === "tool" || s.type === "code")
+      .map((s) => {
+        if (s.type === "llm") {
+          return { type: "llm" as const, model: form.models[0], prompt: s.description, outputKey: s.outputKey };
+        }
+        if (s.type === "action" && s.connectorId && s.actionSlug) {
+          return { type: "action" as const, connector: s.connectorId, action: s.actionSlug, params: {}, outputKey: s.outputKey };
+        }
+        if (s.type === "tool") {
+          const toolId = (s.actionSlug === "web_search" || s.actionSlug === "http_fetch" || s.actionSlug === "file_read")
+            ? s.actionSlug : "web_search";
+          return { type: "tool" as const, tool: toolId as "web_search" | "http_fetch" | "file_read", params: {}, outputKey: s.outputKey };
+        }
+        return { type: "llm" as const, model: form.models[0], prompt: s.description, outputKey: s.outputKey };
+      });
+
+    const connectorIds = plan.requiredConnectors.map((c) => c.connectorId);
+
+    setForm((prev) => ({
+      ...prev,
+      type: plan.kind,
+      kind: plan.kind,
+      title: plan.title,
+      description: plan.description,
+      agentSteps,
+      envFields: plan.variables.map((v) => ({
+        key: v.key,
+        label: v.label,
+        required: v.required,
+        type: (v.type === "text" || v.type === "number" || v.type === "file") ? v.type as "text" | "number" | "file" : "text" as const,
+      })),
+      requiredConnectors: connectorIds,
+    }));
+    setSelectedTemplateId(undefined);
+  }
+
+  async function handleGeneratePlan() {
+    if (objectiveText.trim().length < 10) {
+      setPlanError("Décrivez votre objectif en quelques phrases (min. 10 caractères).");
+      return;
+    }
+    setPlanLoading(true);
+    setPlanError(null);
+    try {
+      const res = await fetch("/api/builder/generate-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: objectiveText.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPlanError(data.error || "Erreur de génération");
+        return;
+      }
+      applyPlan(data.plan);
+    } catch {
+      setPlanError("Erreur réseau. Réessayez.");
+    } finally {
+      setPlanLoading(false);
+    }
+  }
+
   const loadStripeStatus = useCallback(async () => {
     const res = await fetch("/api/stripe/connect");
     if (res.ok) {
@@ -226,6 +299,8 @@ export function CreateWizard({ categories }: Props) {
   function buildCurrentManifest() {
     return buildManifest({
       type: form.type,
+      kind: form.kind,
+      executionMode: form.executionMode,
       promptBody: form.promptBody,
       steps: form.agentSteps,
       envFields: form.envFields,
@@ -314,27 +389,99 @@ export function CreateWizard({ categories }: Props) {
 
       {step === 0 && (
         <div>
-          <h2 className="font-display text-xl font-bold text-ink">Type de contenu</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {(["prompt", "agent", "workflow"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => updateField("type", t)}
-                className={`rounded-xl border p-4 text-left ${
-                  form.type === t ? "border-accent bg-accent-light" : "border-line"
-                }`}
-              >
-                <p className="font-medium capitalize text-ink">{t}</p>
-                <p className="mt-1 text-xs text-ink-soft">
-                  {t === "prompt" && "Un appel modèle simple"}
-                  {t === "agent" && "Chaîne + outils orchestrés"}
-                  {t === "workflow" && "Séquence d'étapes LLM"}
-                </p>
-              </button>
-            ))}
+          <h2 className="font-display text-xl font-bold text-ink">Quel est votre objectif ?</h2>
+          <p className="mt-2 text-sm text-ink-soft">
+            Décrivez en langage naturel ce que vous voulez automatiser. Prompta générera un plan avec les étapes, outils et connexions nécessaires.
+          </p>
+          <textarea
+            value={objectiveText}
+            onChange={(e) => setObjectiveText(e.target.value)}
+            placeholder="Ex. Quand je reçois un email de réclamation, analyser le sentiment, chercher le client dans HubSpot et rédiger une réponse empathique…"
+            rows={4}
+            className="mt-4 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm"
+          />
+          {planError && <p className="mt-2 text-xs text-destructive">{planError}</p>}
+          <button
+            type="button"
+            onClick={handleGeneratePlan}
+            disabled={planLoading}
+            className="mt-3 flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {planLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+            {planLoading ? "Analyse en cours…" : "Générer le plan"}
+          </button>
+
+          {generatedPlan && (
+            <div className="mt-6 rounded-xl border border-accent/30 bg-accent/5 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-ink">{generatedPlan.title}</p>
+                  <p className="mt-0.5 text-xs text-ink-soft">{generatedPlan.description}</p>
+                </div>
+                <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent capitalize">
+                  {generatedPlan.kind}
+                </span>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                {generatedPlan.steps.map((s, i) => (
+                  <div key={s.id} className="flex items-start gap-2 text-xs">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[10px] font-bold text-accent">
+                      {i + 1}
+                    </span>
+                    <div>
+                      <span className="font-medium text-ink">{s.name}</span>
+                      <span className="ml-1 rounded bg-line/80 px-1 py-0.5 text-[10px] text-ink-faint">{s.type}</span>
+                      {s.connectorId && (
+                        <span className="ml-1 rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-600">{s.connectorId}</span>
+                      )}
+                      {s.requiresApproval && (
+                        <span className="ml-1 rounded bg-amber-50 px-1 py-0.5 text-[10px] text-amber-600">approbation</span>
+                      )}
+                      <p className="text-ink-soft">{s.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {generatedPlan.requiredConnectors.length > 0 && (
+                <div className="mt-3 border-t border-line pt-2">
+                  <p className="text-xs font-medium text-ink-soft">Connexions requises :</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {generatedPlan.requiredConnectors.map((c) => (
+                      <span key={c.connectorId} className="rounded-full border border-line px-2 py-0.5 text-xs text-ink">{c.connectorId}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-6 border-t border-line pt-4">
+            <p className="text-xs font-medium text-ink-soft">Ou choisissez manuellement le type :</p>
+            <div className="mt-2 grid gap-3 sm:grid-cols-3">
+              {(["prompt", "agent", "workflow"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => {
+                    updateField("type", t);
+                    updateField("kind", t);
+                    setGeneratedPlan(null);
+                  }}
+                  className={`rounded-xl border p-3 text-left transition-all ${
+                    form.type === t && !generatedPlan ? "border-accent bg-accent-light" : "border-line hover:border-accent/50"
+                  }`}
+                >
+                  <p className="text-sm font-medium capitalize text-ink">{t}</p>
+                  <p className="mt-0.5 text-[11px] text-ink-soft">
+                    {t === "prompt" && "Un appel modèle simple"}
+                    {t === "agent" && "Chaîne + outils orchestrés"}
+                    {t === "workflow" && "Séquence d'étapes déterministe"}
+                  </p>
+                </button>
+              ))}
+            </div>
           </div>
 
-          {(form.type === "agent" || form.type === "workflow") && (
+          {!generatedPlan && (form.type === "agent" || form.type === "workflow") && (
             <>
               <TemplatePicker selectedId={selectedTemplateId} onSelect={applyTemplate} />
               <AgentIdeaAssistant onGenerated={applySkeleton} />

@@ -4,7 +4,7 @@ import {
   listUserKeys,
   saveUserKey,
   deleteUserKey,
-  testUserKey,
+  validateProviderKey,
   type KeyProvider,
 } from "@/lib/keys";
 
@@ -43,30 +43,33 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { provider, apiKey, action } = body as {
+  const { provider, apiKey, action, saveEvenIfInvalid } = body as {
     provider: KeyProvider;
     apiKey?: string;
     action?: "test" | "rotate";
+    saveEvenIfInvalid?: boolean;
   };
 
   if (!VALID_PROVIDERS.includes(provider)) {
     return NextResponse.json({ error: "Provider invalide" }, { status: 400 });
   }
 
-  if (action === "test" && apiKey) {
-    const valid = await testUserKey(user.id, provider, apiKey);
-    return NextResponse.json({ valid });
-  }
-
   if (!apiKey || apiKey.length < 8) {
     return NextResponse.json({ error: "Clé API invalide" }, { status: 400 });
   }
 
-  let valid = false;
-  try {
-    valid = await testUserKey(user.id, provider, apiKey);
-  } catch {
-    valid = false;
+  const validation = await validateProviderKey(provider, apiKey);
+
+  if (action === "test") {
+    return NextResponse.json({ validation });
+  }
+
+  if (!validation.valid && !saveEvenIfInvalid) {
+    return NextResponse.json({
+      validation,
+      saved: false,
+      message: validation.message,
+    });
   }
 
   const key = await saveUserKey(
@@ -74,10 +77,14 @@ export async function POST(request: NextRequest) {
     provider,
     apiKey,
     action === "rotate" ? "rotated" : "added",
-    valid
+    validation.valid
   );
 
-  return NextResponse.json({ key, valid });
+  return NextResponse.json({
+    key,
+    saved: true,
+    validation,
+  });
 }
 
 export async function DELETE(request: NextRequest) {

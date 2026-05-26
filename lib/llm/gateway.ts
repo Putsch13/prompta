@@ -1,4 +1,3 @@
-import { resolveModelOrDefault } from "./resolve-model";
 import type { LLMProvider } from "./providers";
 import type { TokenParam } from "@/lib/catalogs";
 
@@ -25,12 +24,37 @@ export interface CallModelResult {
   provider: LLMProvider;
 }
 
-const FALLBACK_CATALOG_IDS: Record<LLMProvider, string> = {
-  openai: "gpt-5-mini",
-  anthropic: "claude-haiku-4-5",
-  google: "gemini-3-flash",
-  mistral: "mistral-small",
-};
+/**
+ * Non-retryable status codes and error codes — exported for use by callers
+ * that need to distinguish retryable vs. fatal provider errors.
+ */
+export const NON_RETRYABLE_STATUSES = [401, 403, 429];
+export const NON_RETRYABLE_ERROR_CODES = [
+  "invalid_api_key",
+  "authentication_error",
+  "insufficient_quota",
+  "billing_not_active",
+  "permission_denied",
+  "rate_limit_exceeded",
+];
+
+function parseProviderError(provider: string, status: number, body: string): Error {
+  let errorMessage = `${provider}: ${status}`;
+  let errorCode = "";
+  try {
+    const errJson = JSON.parse(body);
+    errorMessage = errJson.error?.message ?? body;
+    errorCode = errJson.error?.code ?? errJson.error?.type ?? "";
+  } catch {
+    errorMessage = body;
+  }
+
+  const prefix = `[${provider}] ${status}`;
+  if (errorCode) {
+    return new Error(`${prefix} (${errorCode}) ${errorMessage}`);
+  }
+  return new Error(`${prefix} ${errorMessage}`);
+}
 
 async function callOpenAI(
   model: string,
@@ -54,21 +78,8 @@ async function callOpenAI(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    let errorMessage = `OpenAI: ${res.status}`;
-    try {
-      const errJson = JSON.parse(err);
-      errorMessage = errJson.error?.message ?? err;
-    } catch {
-      errorMessage = err;
-    }
-    if (res.status === 404) {
-      throw new Error(`Modèle "${model}" non trouvé sur OpenAI. Vérifiez l'identifiant.`);
-    }
-    if (res.status === 401) {
-      throw new Error("Clé API OpenAI invalide ou expirée.");
-    }
-    throw new Error(errorMessage);
+    const body = await res.text();
+    throw parseProviderError("OpenAI", res.status, body);
   }
 
   const data = await res.json();
@@ -108,21 +119,8 @@ async function callAnthropic(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    let errorMessage = `Anthropic: ${res.status}`;
-    try {
-      const errJson = JSON.parse(err);
-      errorMessage = errJson.error?.message ?? err;
-    } catch {
-      errorMessage = err;
-    }
-    if (res.status === 404) {
-      throw new Error(`Modèle "${model}" non trouvé sur Anthropic. Vérifiez l'identifiant.`);
-    }
-    if (res.status === 401) {
-      throw new Error("Clé API Anthropic invalide ou expirée.");
-    }
-    throw new Error(errorMessage);
+    const body = await res.text();
+    throw parseProviderError("Anthropic", res.status, body);
   }
 
   const data = await res.json();
@@ -166,21 +164,8 @@ async function callGoogle(
   );
 
   if (!res.ok) {
-    const err = await res.text();
-    let errorMessage = `Google: ${res.status}`;
-    try {
-      const errJson = JSON.parse(err);
-      errorMessage = errJson.error?.message ?? err;
-    } catch {
-      errorMessage = err;
-    }
-    if (res.status === 404) {
-      throw new Error(`Modèle "${model}" non trouvé sur Google AI. Vérifiez l'identifiant.`);
-    }
-    if (res.status === 401 || res.status === 403) {
-      throw new Error("Clé API Google AI invalide ou expirée.");
-    }
-    throw new Error(errorMessage);
+    const body = await res.text();
+    throw parseProviderError("Google", res.status, body);
   }
 
   const data = await res.json();
@@ -212,21 +197,8 @@ async function callMistral(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    let errorMessage = `Mistral: ${res.status}`;
-    try {
-      const errJson = JSON.parse(err);
-      errorMessage = errJson.error?.message ?? err;
-    } catch {
-      errorMessage = err;
-    }
-    if (res.status === 404) {
-      throw new Error(`Modèle "${model}" non trouvé sur Mistral. Vérifiez l'identifiant.`);
-    }
-    if (res.status === 401) {
-      throw new Error("Clé API Mistral invalide ou expirée.");
-    }
-    throw new Error(errorMessage);
+    const body = await res.text();
+    throw parseProviderError("Mistral", res.status, body);
   }
 
   const data = await res.json();
@@ -258,26 +230,22 @@ async function callProvider(
   }
 }
 
+/**
+ * Appelle un modèle LLM. Ne fait JAMAIS de fallback sur :
+ * - 401 (clé invalide)
+ * - 403 (permission refusée)
+ * - 429 (rate limit / quota)
+ * - insufficient_quota, billing_not_active, invalid_api_key
+ *
+ * Fallback autorisé UNIQUEMENT sur model_not_found / 404.
+ */
 export async function callModel(
   params: CallModelParams
 ): Promise<CallModelResult> {
-  try {
-    return await callProvider(params);
-  } catch (primaryError) {
-    const fallbackCatalogId = FALLBACK_CATALOG_IDS[params.provider];
-    const fallback = resolveModelOrDefault(fallbackCatalogId);
-    if (fallback.apiModel === params.model) throw primaryError;
-
-    return callProvider({
-      ...params,
-      model: fallback.apiModel,
-      provider: fallback.provider,
-      tokenParam: fallback.tokenParam,
-    });
-  }
+  return callProvider(params);
 }
 
-/** Streaming simulé en V1 — découpe la réponse en chunks, pas de vrai SSE provider. */
+/** Streaming simulé en V1 — découpe la réponse en chunks. */
 export async function* streamModel(
   params: CallModelParams
 ): AsyncGenerator<string, CallModelResult, undefined> {

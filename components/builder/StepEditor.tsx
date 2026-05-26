@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronUp, Copy, Plus, Trash2, X, Zap, Code, MessageSquare, Search } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { ComposioActionPicker } from "@/components/builder/ComposioActionPicker";
 import { getGatewayModels } from "@/lib/catalogs";
@@ -26,11 +27,22 @@ interface Props {
   envFields?: EnvFieldRef[];
 }
 
+type StepCategory = "llm" | "tool" | "action" | "code";
+
 function stepBadge(step: AgentStep): string {
   if (step.type === "llm") return "LLM";
   if (step.type === "tool") return TOOLS.find((t) => t.id === step.tool)?.badge ?? "Outil";
-  if (step.type === "action") return CONNECTORS.find((c) => c.id === step.connector)?.label ?? "Action";
+  if (step.type === "action") return CONNECTORS.find((c) => c.id === step.connector)?.label ?? step.connector;
   return "Code";
+}
+
+function stepIcon(type: StepCategory) {
+  switch (type) {
+    case "llm": return <MessageSquare className="h-4 w-4" />;
+    case "tool": return <Search className="h-4 w-4" />;
+    case "action": return <Zap className="h-4 w-4" />;
+    case "code": return <Code className="h-4 w-4" />;
+  }
 }
 
 function insertAtCursor(current: string, insert: string, textareaId: string): string {
@@ -47,6 +59,9 @@ export function StepEditor({
   defaultModel = "gpt-5.4",
   envFields = [],
 }: Props) {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addCategory, setAddCategory] = useState<StepCategory>("llm");
+
   function updateStep(index: number, step: AgentStep) {
     const next = [...steps];
     next[index] = step;
@@ -72,43 +87,51 @@ export function StepEditor({
     onChange(next);
   }
 
+  function addStep(step: AgentStep) {
+    onChange([...steps, step]);
+    setShowAddModal(false);
+  }
+
   function addLlmStep() {
-    onChange([...steps, { type: "llm", model: defaultModel, prompt: "" }]);
+    addStep({ type: "llm", model: defaultModel, prompt: "", outputKey: `step_${steps.length}_output` });
   }
 
   function addToolStep(tool: "web_search" | "http_fetch" | "file_read") {
     const params: Record<string, string> =
       tool === "web_search" ? { query: "" } : tool === "http_fetch" ? { url: "" } : {};
-    onChange([...steps, { type: "tool", tool, params }]);
+    addStep({ type: "tool", tool, params, outputKey: `step_${steps.length}_output` });
   }
 
   function addActionStep(connectorId: string, action: ConnectorAction) {
     const params: Record<string, string> = {};
     for (const input of action.inputs) params[input.key] = "";
-    onChange([
-      ...steps,
-      { type: "action", connector: connectorId, action: action.id, params },
-    ]);
+    addStep({ type: "action", connector: connectorId, action: action.id, params, outputKey: `step_${steps.length}_output` });
   }
 
   function addComposioActionStep(toolkit: string, tool: ComposioToolEntry) {
     const params: Record<string, string> = {};
     for (const input of tool.inputs) params[input.key] = "";
-    onChange([
-      ...steps,
-      { type: "action", connector: toolkit, action: tool.slug, params },
-    ]);
+    addStep({ type: "action", connector: toolkit, action: tool.slug, params, outputKey: `step_${steps.length}_output` });
+  }
+
+  function addCodeStep() {
+    addStep({ type: "code", language: "python", source: "# Votre code ici\nresult = {}\n", outputKey: `step_${steps.length}_output` });
   }
 
   return (
     <div className="space-y-4">
+      {/* Pipeline visualization */}
       {steps.length > 1 && (
         <div className="flex flex-wrap items-center gap-1 rounded-lg bg-card2 px-3 py-2 text-xs text-ink-soft">
           {steps.map((s, i) => (
             <span key={i} className="flex items-center gap-1">
               {i > 0 && <span className="text-ink-faint">→</span>}
-              <span className="rounded bg-card px-2 py-0.5 font-medium">
+              <span className="flex items-center gap-1 rounded bg-card px-2 py-0.5 font-medium">
+                {stepIcon(s.type)}
                 {i + 1}. {stepBadge(s)}
+                {s.outputKey && (
+                  <span className="ml-1 font-mono text-[10px] text-ink-faint">{s.outputKey}</span>
+                )}
               </span>
             </span>
           ))}
@@ -121,14 +144,18 @@ export function StepEditor({
         </p>
       )}
 
+      {/* Step cards */}
       {steps.map((step, i) => {
         const textareaId = `step-prompt-${i}`;
         return (
           <div key={i} className="rounded-xl border border-line bg-card2 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <span className="rounded-full bg-accent-light px-2.5 py-0.5 text-xs font-bold text-accent">
-                Étape {i + 1} — {stepBadge(step)}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5 rounded-full bg-accent-light px-2.5 py-0.5 text-xs font-bold text-accent">
+                  {stepIcon(step.type)}
+                  Étape {i + 1} — {stepBadge(step)}
+                </span>
+              </div>
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => moveStep(i, -1)} disabled={i === 0} className="rounded p-1 disabled:opacity-30" title="Monter">
                   <ChevronUp className="h-4 w-4" />
@@ -143,6 +170,17 @@ export function StepEditor({
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
+            </div>
+
+            {/* outputKey */}
+            <div className="mb-3 flex items-center gap-2">
+              <label className="text-xs text-ink-faint whitespace-nowrap">Clé de sortie :</label>
+              <input
+                value={step.outputKey ?? `step_${i}_output`}
+                onChange={(e) => updateStep(i, { ...step, outputKey: e.target.value })}
+                className="h-7 w-48 rounded border border-line bg-card px-2 font-mono text-xs"
+                placeholder={`step_${i}_output`}
+              />
             </div>
 
             {step.type === "llm" && (
@@ -172,21 +210,24 @@ export function StepEditor({
                     </button>
                   ))}
                   {i > 0 &&
-                    Array.from({ length: i }, (_, j) => (
-                      <button
-                        key={j}
-                        type="button"
-                        onClick={() =>
-                          updateStep(i, {
-                            ...step,
-                            prompt: insertAtCursor(step.prompt, `{{step_${j}_output}}`, textareaId),
-                          })
-                        }
-                        className="rounded border border-line px-2 py-1 text-xs hover:bg-card"
-                      >
-                        + Sortie étape {j + 1}
-                      </button>
-                    ))}
+                    Array.from({ length: i }, (_, j) => {
+                      const prevKey = steps[j].outputKey ?? `step_${j}_output`;
+                      return (
+                        <button
+                          key={j}
+                          type="button"
+                          onClick={() =>
+                            updateStep(i, {
+                              ...step,
+                              prompt: insertAtCursor(step.prompt, `{{${prevKey}}}`, textareaId),
+                            })
+                          }
+                          className="rounded border border-accent/30 px-2 py-1 text-xs text-accent hover:bg-accent-light"
+                        >
+                          + {prevKey}
+                        </button>
+                      );
+                    })}
                 </div>
 
                 <textarea
@@ -197,10 +238,6 @@ export function StepEditor({
                   className="w-full rounded-lg border border-line bg-card px-3 py-2 font-mono text-sm"
                   placeholder="Décrivez ce que cette étape doit faire. Utilisez les boutons ci-dessus pour insérer des variables."
                 />
-
-                <p className="text-xs text-ink-faint">
-                  Entrée : variables + sorties des étapes précédentes · Sortie : étape {i + 1}
-                </p>
               </div>
             )}
 
@@ -212,7 +249,7 @@ export function StepEditor({
                     const tool = e.target.value as "web_search" | "http_fetch" | "file_read";
                     const params: Record<string, string> =
                       tool === "web_search" ? { query: "" } : tool === "http_fetch" ? { url: "" } : {};
-                    updateStep(i, { type: "tool", tool, params });
+                    updateStep(i, { type: "tool", tool, params, outputKey: step.outputKey });
                   }}
                   className="h-10 w-full rounded-lg border border-line bg-card px-3 text-sm"
                 >
@@ -229,6 +266,7 @@ export function StepEditor({
                         updateStep(i, { ...step, params: { ...step.params, [key]: e.target.value } })
                       }
                       className="h-10 w-full rounded-lg border border-line bg-card px-3 font-mono text-sm"
+                      placeholder={`{{variable}} ou {{step_N_output}}`}
                     />
                   </div>
                 ))}
@@ -237,10 +275,11 @@ export function StepEditor({
 
             {step.type === "action" && (
               <div className="space-y-3">
-                <p className="text-sm font-medium text-ink">
-                  {CONNECTORS.find((c) => c.id === step.connector)?.label} —{" "}
-                  {CONNECTORS.find((c) => c.id === step.connector)?.actions.find((a) => a.id === step.action)?.label}
-                </p>
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">{step.connector}</span>
+                  <span className="text-xs text-ink-faint">→</span>
+                  <span className="rounded bg-card px-2 py-0.5 font-mono text-xs text-ink">{step.action}</span>
+                </div>
                 {Object.entries(step.params).map(([key, val]) => (
                   <div key={key}>
                     <label className="mb-1 block text-xs text-ink-soft">{key}</label>
@@ -256,33 +295,151 @@ export function StepEditor({
                 ))}
               </div>
             )}
+
+            {step.type === "code" && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs text-ink-soft">
+                  <Code className="h-3.5 w-3.5" />
+                  Python (sandbox E2B)
+                </div>
+                <textarea
+                  value={step.source}
+                  onChange={(e) => updateStep(i, { ...step, source: e.target.value })}
+                  rows={8}
+                  className="w-full rounded-lg border border-line bg-gray-900 px-3 py-2 font-mono text-sm text-green-300"
+                  placeholder="# Code Python exécuté dans un sandbox sécurisé"
+                />
+              </div>
+            )}
           </div>
         );
       })}
 
-      <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={addLlmStep} className="flex items-center gap-1 rounded-lg border border-line px-3 py-2 text-sm hover:bg-card2">
-          <Plus className="h-4 w-4" /> Étape LLM
-        </button>
-        {TOOLS.map((t) => (
-          <button key={t.id} type="button" onClick={() => addToolStep(t.id)} className="flex items-center gap-1 rounded-lg border border-line px-3 py-2 text-sm hover:bg-card2">
-            <Plus className="h-4 w-4" /> {t.label}
-          </button>
-        ))}
-        {CONNECTORS.slice(0, 5).map((c) =>
-          c.actions.slice(0, 1).map((action) => (
-            <button
-              key={`${c.id}-${action.id}`}
-              type="button"
-              onClick={() => addActionStep(c.id, action)}
-              className="flex items-center gap-1 rounded-lg border border-accent/30 px-3 py-2 text-sm text-accent hover:bg-accent-light"
-            >
-              <Plus className="h-4 w-4" /> {c.label}
-            </button>
-          ))
-        )}
-        <ComposioActionPicker onAdd={addComposioActionStep} />
-      </div>
+      {/* Add step button → modal */}
+      <button
+        type="button"
+        onClick={() => { setShowAddModal(true); setAddCategory("llm"); }}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line py-3 text-sm text-ink-soft transition-colors hover:border-accent hover:text-accent"
+      >
+        <Plus className="h-4 w-4" /> Ajouter une étape
+      </button>
+
+      {/* Add step modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowAddModal(false)}>
+          <div className="w-full max-w-lg rounded-2xl border border-line bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-lg font-bold text-ink">Ajouter une étape</h3>
+              <button type="button" onClick={() => setShowAddModal(false)} className="rounded p-1 hover:bg-card2">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Category tabs */}
+            <div className="mt-4 flex gap-2">
+              {([
+                { id: "llm", label: "LLM", icon: <MessageSquare className="h-3.5 w-3.5" /> },
+                { id: "tool", label: "Outil", icon: <Search className="h-3.5 w-3.5" /> },
+                { id: "action", label: "Action", icon: <Zap className="h-3.5 w-3.5" /> },
+                { id: "code", label: "Code", icon: <Code className="h-3.5 w-3.5" /> },
+              ] as const).map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setAddCategory(cat.id)}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    addCategory === cat.id
+                      ? "bg-accent text-white"
+                      : "border border-line text-ink hover:bg-card2"
+                  }`}
+                >
+                  {cat.icon} {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Category content */}
+            <div className="mt-4">
+              {addCategory === "llm" && (
+                <div>
+                  <p className="text-sm text-ink-soft">Ajoutez un appel à un modèle IA (GPT, Claude, Gemini…)</p>
+                  <button
+                    type="button"
+                    onClick={addLlmStep}
+                    className="mt-3 flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
+                  >
+                    <Plus className="h-4 w-4" /> Étape LLM
+                  </button>
+                </div>
+              )}
+
+              {addCategory === "tool" && (
+                <div className="space-y-2">
+                  <p className="text-sm text-ink-soft">Outils intégrés au runtime Prompta :</p>
+                  {TOOLS.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => addToolStep(t.id)}
+                      className="flex w-full items-center gap-3 rounded-lg border border-line p-3 text-left transition-colors hover:border-accent hover:bg-accent-light"
+                    >
+                      <Search className="h-4 w-4 shrink-0 text-accent" />
+                      <div>
+                        <p className="text-sm font-medium text-ink">{t.label}</p>
+                        <p className="text-xs text-ink-faint">{t.badge}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {addCategory === "action" && (
+                <div className="space-y-3">
+                  <p className="text-sm text-ink-soft">Actions depuis vos apps connectées :</p>
+
+                  {/* Native connectors */}
+                  <div className="max-h-48 space-y-1 overflow-y-auto">
+                    {CONNECTORS.map((c) =>
+                      c.actions.map((action) => (
+                        <button
+                          key={`${c.id}-${action.id}`}
+                          type="button"
+                          onClick={() => addActionStep(c.id, action)}
+                          className="flex w-full items-center gap-3 rounded-lg border border-line p-2.5 text-left transition-colors hover:border-accent hover:bg-accent-light"
+                        >
+                          <Zap className="h-4 w-4 shrink-0 text-accent" />
+                          <div>
+                            <p className="text-sm font-medium text-ink">{c.label} → {action.label}</p>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Composio picker */}
+                  <div className="border-t border-line pt-3">
+                    <p className="mb-2 text-xs font-medium text-ink-soft">Actions Composio (800+)</p>
+                    <ComposioActionPicker onAdd={addComposioActionStep} />
+                  </div>
+                </div>
+              )}
+
+              {addCategory === "code" && (
+                <div>
+                  <p className="text-sm text-ink-soft">Exécutez du code Python dans un sandbox sécurisé (E2B).</p>
+                  <button
+                    type="button"
+                    onClick={addCodeStep}
+                    className="mt-3 flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
+                  >
+                    <Code className="h-4 w-4" /> Étape code Python
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

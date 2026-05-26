@@ -20,6 +20,10 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
   let processed = 0;
 
   for (const job of jobs ?? []) {
+    const startMs = Date.now();
+
+    console.info("[worker] claiming run", { runId: job.id, listingId: job.listing_id });
+
     const { data: claimed } = await admin
       .from("listing_agent_runs")
       .update({ status: "running" })
@@ -28,7 +32,12 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
       .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents")
       .maybeSingle();
 
-    if (!claimed) continue;
+    if (!claimed) {
+      console.info("[worker] run already claimed by another worker", { runId: job.id });
+      continue;
+    }
+
+    console.info("[worker] started run", { runId: claimed.id, listingId: claimed.listing_id });
 
     try {
       const { data: listing } = await admin
@@ -99,16 +108,32 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
         })
         .eq("id", claimed.id);
 
+      const durationMs = Date.now() - startMs;
+      console.info("[worker] completed run", {
+        runId: claimed.id,
+        status: result.status,
+        stepsCompleted: result.stepsCompleted,
+        durationMs,
+      });
+
       processed++;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur worker";
+      const durationMs = Date.now() - startMs;
+
+      console.error("[worker] failed run", {
+        runId: claimed.id,
+        errorCode: err instanceof Error ? err.constructor.name : "unknown",
+        message: message.slice(0, 500),
+        durationMs,
+      });
 
       if (claimed.used_credits && claimed.credit_hold_estimate_cents != null) {
         await releaseAgentRunCredits(
           claimed.user_id,
           claimed.id,
           Number(claimed.credit_hold_estimate_cents)
-        ).catch(() => undefined);
+        ).catch((e) => console.error("[worker] release hold failed", { runId: claimed.id, err: e }));
       }
 
       await admin

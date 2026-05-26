@@ -12,7 +12,7 @@
 import { checkBudget, recordSpend, estimateCost, getBudget } from "./budget";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = process.env.AGENT_MODEL || "claude-sonnet-4-6";
 
 export type ClaudeResult = {
   text: string;

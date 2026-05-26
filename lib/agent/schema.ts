@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+// ─── Inputs ──────────────────────────────────────────────────────────────────
 export const AgentInputSchema = z.object({
   key: z.string(),
   label: z.string(),
@@ -8,31 +9,43 @@ export const AgentInputSchema = z.object({
   help: z.string().optional(),
 });
 
+// ─── Steps ───────────────────────────────────────────────────────────────────
 export const AgentStepSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("llm"),
     model: z.string(),
     prompt: z.string(),
+    outputKey: z.string().optional(),
   }),
   z.object({
     type: z.literal("tool"),
     tool: z.enum(["web_search", "http_fetch", "file_read"]),
     params: z.record(z.string(), z.string()).default({}),
+    outputKey: z.string().optional(),
   }),
   z.object({
     type: z.literal("action"),
     connector: z.string(),
     action: z.string(),
     params: z.record(z.string(), z.string()).default({}),
+    outputKey: z.string().optional(),
   }),
   z.object({
     type: z.literal("code"),
     language: z.enum(["python"]).default("python"),
     source: z.string(),
+    outputKey: z.string().optional(),
   }),
 ]);
 
+// ─── Kind / execution mode (Ticket 10) ──────────────────────────────────────
+export const AgentKindSchema = z.enum(["prompt", "workflow", "agent"]);
+export const ExecutionModeSchema = z.enum(["deterministic", "semi_autonomous", "autonomous"]);
+
+// ─── Manifest ────────────────────────────────────────────────────────────────
 export const AgentManifestSchema = z.object({
+  kind: AgentKindSchema.optional(),
+  executionMode: ExecutionModeSchema.optional(),
   inputs: z.array(AgentInputSchema).default([]),
   secrets: z.array(z.string()).default([]),
   connectors: z.array(z.string()).default([]),
@@ -50,5 +63,7 @@ export const AgentManifestSchema = z.object({
   outputs: z.array(z.string()).default(["result"]),
 });
 
+export type AgentKind = z.infer<typeof AgentKindSchema>;
+export type ExecutionMode = z.infer<typeof ExecutionModeSchema>;
 export type AgentManifest = z.infer<typeof AgentManifestSchema>;
 export type AgentStep = z.infer<typeof AgentStepSchema>;

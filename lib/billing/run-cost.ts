@@ -30,7 +30,7 @@ export function estimateMaxCost(params: {
   maxToolCalls: number;
 }): number {
   const { stepCount, maxTokens, maxToolCalls } = params;
-  const worstModel = getModelPricing("gpt-5.5-turbo");
+  const worstModel = getModelPricing("gpt-5.5");
   const llmCost =
     (maxTokens / 1_000_000) * (worstModel.inputPer1M + worstModel.outputPer1M) * stepCount;
   const toolCost = maxToolCalls * 2;

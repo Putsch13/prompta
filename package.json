@@ -12,7 +12,8 @@
     "validate:signature-agent": "tsx scripts/validate-signature-agent.ts",
     "worker": "tsx worker/run-worker.ts",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "secrets:scan": "bash scripts/secrets-scan.sh"
   },
   "dependencies": {
     "@composio/core": "^0.10.0",

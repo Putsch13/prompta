@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Loader2, RotateCcw, Settings } from "lucide-react";
+import { RunStepTimeline } from "@/components/run/RunStepTimeline";
 
 interface RunRow {
   id: string;
@@ -194,7 +195,7 @@ export default function RunsHistoryPage() {
                       Réessayer
                     </button>
                   )}
-                  {run.output && (
+                  {(run.output || run.kind === "agent") && (
                     <button
                       onClick={() => setExpanded(expanded === run.id ? null : run.id)}
                       className="text-xs text-accent hover:underline"
@@ -208,6 +209,9 @@ export default function RunsHistoryPage() {
                 <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-card2 p-3 text-xs whitespace-pre-wrap">
                   {run.output}
                 </pre>
+              )}
+              {expanded === run.id && run.kind === "agent" && (
+                <RunStepTimeline runId={run.id} />
               )}
               {run.error_message && (
                 <p className="mt-2 text-xs text-destructive">{run.error_message}</p>

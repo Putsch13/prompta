@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Copy, Play, Check, AlertTriangle, Settings } from "lucide-react";
 import { UserSetupWizard } from "@/components/onboarding/UserSetupWizard";
 import { ConnectionsMasque } from "@/components/run/ConnectionsMasque";
+import { RunStepTimeline } from "@/components/run/RunStepTimeline";
 import { estimateMaxCost } from "@/lib/billing/run-cost";
 import { costToCredits, creditsToEur } from "@/lib/billing/credits";
 
@@ -172,19 +173,50 @@ export function RunPanel({
     setRunning(false);
   }
 
+  const [runMode, setRunMode] = useState<string | null>(null);
+
   async function handleAgentRun() {
     if (!versionId) return;
-    if (!hasAllSecrets()) {
-      setShowWizard(true);
-      return;
-    }
 
+    setError(null);
     setRunning(true);
     setAgentOutput("");
-    setAgentStatus("pending");
+    setAgentStatus("checking");
     setStepsCompleted(null);
     setRunId(null);
-    setError(null);
+
+    // Preflight: check if user can run
+    try {
+      const pfRes = await fetch("/api/run/agent/preflight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, versionId }),
+      });
+      if (pfRes.ok) {
+        const pf = await pfRes.json();
+        setRunMode(pf.mode);
+        if (!pf.canRun) {
+          if (pf.missingConnectors?.length > 0) {
+            setConnectionsReady(false);
+            setError(pf.reason ?? "Connexion manquante");
+            setRunning(false);
+            return;
+          }
+          if (pf.missingKeys?.length > 0 && pf.creditBalance <= 0) {
+            setShowWizard(true);
+            setRunning(false);
+            return;
+          }
+          setError(pf.reason ?? "Impossible de lancer l'agent");
+          setRunning(false);
+          return;
+        }
+      }
+    } catch {
+      // Preflight failed — let the run endpoint handle it
+    }
+
+    setAgentStatus("pending");
 
     try {
       const res = await fetch("/api/run/agent", {
@@ -433,13 +465,21 @@ export function RunPanel({
                 : "Lancer l'agent"}
           </button>
 
-          {!canAccess && !isFree && (
+          {!canAccess && !isFree && !runMode && (
             <p className="mt-2 text-center text-xs text-ink-soft">
               Abonnez-vous ou achetez pour lancer cet agent.
             </p>
           )}
 
-          {hasAllSecrets() ? (
+          {runMode === "byok" ? (
+            <p className="mt-2 text-center text-xs text-green-600">Mode : vos clés API (BYOK)</p>
+          ) : runMode === "credits" ? (
+            <p className="mt-2 text-center text-xs text-blue-600">
+              Mode : crédits Prompta (≈ {estimatedCredits} crédits)
+            </p>
+          ) : runMode === "free_quota" ? (
+            <p className="mt-2 text-center text-xs text-ink-soft">Mode : quota gratuit</p>
+          ) : hasAllSecrets() ? (
             <p className="mt-2 text-center text-xs text-ink-soft">Mode BYOK — vos clés API</p>
           ) : (
             <p className="mt-2 text-center text-xs text-ink-soft">
@@ -512,6 +552,14 @@ export function RunPanel({
                 </div>
               )}
             </div>
+          )}
+
+          {runId && (
+            <RunStepTimeline
+              runId={runId}
+              pollWhileRunning={running || agentStatus === "running" || agentStatus === "queued" || agentStatus === "pending"}
+              isRunning={running || agentStatus === "running" || agentStatus === "queued" || agentStatus === "pending"}
+            />
           )}
 
           {agentOutput && (

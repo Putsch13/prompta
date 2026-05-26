@@ -1,4 +1,4 @@
-import type { AgentManifest, AgentStep } from "@/lib/agent/schema";
+import type { AgentManifest, AgentStep, AgentKind, ExecutionMode } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 import { connectorsForSteps } from "@/lib/connectors/registry";
 
@@ -12,6 +12,8 @@ export interface EnvFieldInput {
 
 export interface BuildManifestParams {
   type: "prompt" | "agent" | "workflow";
+  kind?: AgentKind;
+  executionMode?: ExecutionMode;
   promptBody: string;
   steps: AgentStep[];
   envFields: EnvFieldInput[];
@@ -36,7 +38,15 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
     }
   }
 
+  const inferredKind = params.kind ?? params.type;
+  const inferredMode: ExecutionMode | undefined = params.executionMode ??
+    (inferredKind === "prompt" ? "deterministic"
+      : inferredKind === "workflow" ? "deterministic"
+      : "semi_autonomous");
+
   return {
+    kind: inferredKind,
+    executionMode: inferredMode,
     inputs: params.envFields
       .filter((f) => f.key.trim())
       .map((f) => ({

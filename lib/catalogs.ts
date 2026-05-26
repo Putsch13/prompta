@@ -25,15 +25,15 @@ export interface IntegrationEntry extends CatalogEntry {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODELES IA — Mai 2026 (IDs API réels)
+// MODELES IA — Mai 2026 (IDs API vérifiés sur les docs officielles)
 // ─────────────────────────────────────────────────────────────────────────────
 export const AI_MODELS: ModelEntry[] = [
-  // OpenAI — Famille GPT-5.x (gpt-4o/gpt-4o-mini retirés)
+  // OpenAI — GPT-5.x (IDs réels : pas de suffixe -turbo)
   {
     id: "gpt-5.5",
     label: "GPT-5.5",
     provider: "OpenAI",
-    apiModel: "gpt-5.5-turbo",
+    apiModel: "gpt-5.5",
     tokenParam: "max_tokens",
     popular: true,
   },
@@ -41,7 +41,7 @@ export const AI_MODELS: ModelEntry[] = [
     id: "gpt-5.4",
     label: "GPT-5.4",
     provider: "OpenAI",
-    apiModel: "gpt-5.4-turbo",
+    apiModel: "gpt-5.4",
     tokenParam: "max_tokens",
     popular: true,
   },
@@ -50,6 +50,14 @@ export const AI_MODELS: ModelEntry[] = [
     label: "GPT-5.4 mini",
     provider: "OpenAI",
     apiModel: "gpt-5.4-mini",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  {
+    id: "gpt-5.4-nano",
+    label: "GPT-5.4 nano",
+    provider: "OpenAI",
+    apiModel: "gpt-5.4-nano",
     tokenParam: "max_tokens",
     popular: false,
   },
@@ -66,6 +74,31 @@ export const AI_MODELS: ModelEntry[] = [
     label: "GPT-5 nano",
     provider: "OpenAI",
     apiModel: "gpt-5-nano",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  // OpenAI — GPT-4.1 (legacy, encore disponible)
+  {
+    id: "gpt-4.1",
+    label: "GPT-4.1",
+    provider: "OpenAI",
+    apiModel: "gpt-4.1",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  {
+    id: "gpt-4.1-mini",
+    label: "GPT-4.1 mini",
+    provider: "OpenAI",
+    apiModel: "gpt-4.1-mini",
+    tokenParam: "max_tokens",
+    popular: false,
+  },
+  {
+    id: "gpt-4.1-nano",
+    label: "GPT-4.1 nano",
+    provider: "OpenAI",
+    apiModel: "gpt-4.1-nano",
     tokenParam: "max_tokens",
     popular: false,
   },
@@ -86,13 +119,21 @@ export const AI_MODELS: ModelEntry[] = [
     tokenParam: "max_completion_tokens",
     popular: false,
   },
+  {
+    id: "o4-mini",
+    label: "o4-mini",
+    provider: "OpenAI",
+    apiModel: "o4-mini",
+    tokenParam: "max_completion_tokens",
+    popular: false,
+  },
 
-  // Anthropic — Famille Claude 4.x (Claude 3.x retirés)
+  // Anthropic — Famille Claude 4.x (IDs alias officiels)
   {
     id: "claude-opus-4-7",
     label: "Claude Opus 4.7",
     provider: "Anthropic",
-    apiModel: "claude-opus-4-7-20260501",
+    apiModel: "claude-opus-4-7",
     tokenParam: "max_tokens",
     popular: true,
   },
@@ -100,7 +141,7 @@ export const AI_MODELS: ModelEntry[] = [
     id: "claude-opus-4-6",
     label: "Claude Opus 4.6",
     provider: "Anthropic",
-    apiModel: "claude-opus-4-6-20260315",
+    apiModel: "claude-opus-4-6",
     tokenParam: "max_tokens",
     popular: false,
   },
@@ -108,7 +149,7 @@ export const AI_MODELS: ModelEntry[] = [
     id: "claude-sonnet-4-6",
     label: "Claude Sonnet 4.6",
     provider: "Anthropic",
-    apiModel: "claude-sonnet-4-6-20260401",
+    apiModel: "claude-sonnet-4-6",
     tokenParam: "max_tokens",
     popular: true,
   },
@@ -116,27 +157,35 @@ export const AI_MODELS: ModelEntry[] = [
     id: "claude-haiku-4-5",
     label: "Claude Haiku 4.5",
     provider: "Anthropic",
-    apiModel: "claude-haiku-4-5-20260201",
+    apiModel: "claude-haiku-4-5",
     tokenParam: "max_tokens",
     popular: false,
   },
 
-  // Google — Famille Gemini 3.x
+  // Google — Gemini (IDs vérifiés mai 2026)
   {
-    id: "gemini-3.1-pro",
-    label: "Gemini 3.1 Pro",
+    id: "gemini-3.5-flash",
+    label: "Gemini 3.5 Flash",
     provider: "Google",
-    apiModel: "gemini-3.1-pro",
+    apiModel: "gemini-3.5-flash",
     tokenParam: "max_tokens",
     popular: true,
   },
   {
-    id: "gemini-3-flash",
-    label: "Gemini 3 Flash",
+    id: "gemini-2.5-pro",
+    label: "Gemini 2.5 Pro",
     provider: "Google",
-    apiModel: "gemini-3.0-flash",
+    apiModel: "gemini-2.5-pro",
     tokenParam: "max_tokens",
     popular: true,
+  },
+  {
+    id: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash",
+    provider: "Google",
+    apiModel: "gemini-2.5-flash",
+    tokenParam: "max_tokens",
+    popular: false,
   },
 
   // Mistral
@@ -164,63 +213,41 @@ export const AI_MODELS: ModelEntry[] = [
     tokenParam: "max_tokens",
     popular: false,
   },
-
-  // Meta (via Together/Fireworks)
-  {
-    id: "llama-4",
-    label: "Llama 4",
-    provider: "Meta",
-    apiModel: "meta-llama/Llama-4-70b",
-    tokenParam: "max_tokens",
-    popular: false,
-  },
-
-  // DeepSeek
-  {
-    id: "deepseek-v3",
-    label: "DeepSeek V3",
-    provider: "DeepSeek",
-    apiModel: "deepseek-chat",
-    tokenParam: "max_tokens",
-    popular: false,
-  },
-  {
-    id: "deepseek-r1",
-    label: "DeepSeek R1",
-    provider: "DeepSeek",
-    apiModel: "deepseek-reasoner",
-    tokenParam: "max_tokens",
-    popular: false,
-  },
-
-  // xAI
-  {
-    id: "grok-3",
-    label: "Grok 3",
-    provider: "xAI",
-    apiModel: "grok-3",
-    tokenParam: "max_tokens",
-    popular: false,
-  },
 ];
 
-// Mapping des anciens IDs vers les nouveaux (pour migration)
+// Mapping des anciens IDs vers les nouveaux (pour migration + compat)
 export const LEGACY_MODEL_MAP: Record<string, string> = {
-  "gpt-4o": "gpt-5.4",
-  "gpt-4o-mini": "gpt-5-mini",
-  "gpt-4.1": "gpt-5.4",
+  // Legacy OpenAI
+  "gpt-4o": "gpt-4.1",
+  "gpt-4o-mini": "gpt-4.1-mini",
+  "gpt-4.1": "gpt-4.1",
   "o1": "o3",
+  // Anciens slugs inventés (code Prompta pré-fix)
+  "gpt-5.5-turbo": "gpt-5.5",
+  "gpt-5.4-turbo": "gpt-5.4",
+  // Anthropic legacy
   "claude-opus": "claude-opus-4-7",
   "claude-sonnet": "claude-sonnet-4-6",
   "claude-haiku": "claude-haiku-4-5",
-  "gemini-2.5-pro": "gemini-3.1-pro",
-  "gemini-2.0-flash": "gemini-3-flash",
-  "llama-3.3": "llama-4",
   "claude-sonnet-4-20250514": "claude-sonnet-4-6",
   "claude-3-5-haiku-20241022": "claude-haiku-4-5",
   "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
   "claude-3-opus-20240229": "claude-opus-4-7",
-  grok: "grok-3",
+  "claude-opus-4-7-20260501": "claude-opus-4-7",
+  "claude-opus-4-6-20260315": "claude-opus-4-6",
+  "claude-sonnet-4-6-20260401": "claude-sonnet-4-6",
+  "claude-haiku-4-5-20260201": "claude-haiku-4-5",
+  "claude-haiku-4-5-20251001": "claude-haiku-4-5",
+  // Google legacy
+  "gemini-2.5-pro": "gemini-2.5-pro",
+  "gemini-2.0-flash": "gemini-2.5-flash",
+  "gemini-3.0-flash": "gemini-2.5-flash",
+  "gemini-3.1-pro": "gemini-2.5-pro",
+  "gemini-3-flash": "gemini-3.5-flash",
+  "gemini-3-flash-preview": "gemini-3.5-flash",
+  // Autres
+  "llama-3.3": "gpt-5.4-mini",
+  grok: "gpt-5.4-mini",
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -102,15 +102,28 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
       return false;
     }
 
+    const validation = data.validation;
+    const isValid = validation?.valid ?? data.valid ?? false;
+
     setSavedKeys((prev) => ({ ...prev, [provider]: apiKey }));
-    setKeyStates((prev) => ({
-      ...prev,
-      [provider]: data.valid ? "saved" : "invalid",
-    }));
-    if (!data.valid) {
+
+    if (!data.saved && !isValid) {
+      setKeyStates((prev) => ({ ...prev, [provider]: "invalid" }));
       setKeyErrors((prev) => ({
         ...prev,
-        [provider]: "Clé enregistrée mais non validée par le fournisseur — re-testable",
+        [provider]: validation?.message ?? "Clé refusée par le fournisseur",
+      }));
+      return false;
+    }
+
+    setKeyStates((prev) => ({
+      ...prev,
+      [provider]: isValid ? "saved" : "invalid",
+    }));
+    if (!isValid) {
+      setKeyErrors((prev) => ({
+        ...prev,
+        [provider]: validation?.message ?? "Clé enregistrée mais non validée",
       }));
     }
     return true;

@@ -43,6 +43,20 @@ services:
         sync: false
       - key: PLATFORM_OPENAI_KEY
         sync: false
+      - key: PLATFORM_ANTHROPIC_KEY
+        sync: false
+      - key: PLATFORM_GOOGLE_KEY
+        sync: false
+      - key: PLATFORM_MISTRAL_KEY
+        sync: false
+      - key: PLATFORM_SERPER_KEY
+        sync: false
+      - key: COMPOSIO_API_KEY
+        sync: false
+      - key: AGENT_MODEL
+        sync: false
+      - key: PLATFORM_DAILY_COST_CAP_CENTS
+        sync: false
 
   - type: worker
     name: prompta-worker
@@ -51,10 +65,9 @@ services:
     buildCommand: npm install
     startCommand: npm run worker
     envVars:
-      - fromService:
-          type: web
-          name: prompta
-          envVarKey: SUPABASE_SERVICE_ROLE_KEY
+      - key: NODE_ENV
+        value: production
+      # Supabase
       - fromService:
           type: web
           name: prompta
@@ -62,4 +75,64 @@ services:
       - fromService:
           type: web
           name: prompta
+          envVarKey: SUPABASE_SERVICE_ROLE_KEY
+      # Chiffrement clés BYOK
+      - fromService:
+          type: web
+          name: prompta
           envVarKey: ENCRYPTION_KEY
+      # Clés plateforme (runs crédits)
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: PLATFORM_OPENAI_KEY
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: PLATFORM_ANTHROPIC_KEY
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: PLATFORM_GOOGLE_KEY
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: PLATFORM_MISTRAL_KEY
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: PLATFORM_SERPER_KEY
+      # Agents admin
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: ANTHROPIC_API_KEY
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: AGENT_MODEL
+      # Connecteurs
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: COMPOSIO_API_KEY
+      # Sandbox
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: E2B_API_KEY
+      # Billing
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: PLATFORM_DAILY_COST_CAP_CENTS
+      # App URL (pour callbacks)
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: NEXT_PUBLIC_APP_URL
+      # Cron secret
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: CRON_SECRET

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { isComposioEnabled, toComposioToolkitSlug } from "@/lib/composio/client";
 import { startComposioAuth } from "@/lib/composio/connect";
+import { createSignedState } from "@/lib/connectors/oauth-state";
 
 export const dynamic = "force-dynamic";
 
@@ -82,8 +83,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
     );
   }
 
-  const state = Buffer.from(JSON.stringify({ userId: user.id, connectorId })).toString("base64url");
-  cookies().set("oauth_state", state, { httpOnly: true, secure: true, maxAge: 600, path: "/" });
+  const state = createSignedState({ userId: user.id, connectorId });
+  const isProduction = process.env.NODE_ENV === "production";
+  cookies().set("oauth_state", state, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: "lax",
+    maxAge: 600,
+    path: "/",
+  });
 
   const redirectUri = `${appUrl}/api/connectors/${connectorId}/callback`;
   const url = new URL(config.authUrl);

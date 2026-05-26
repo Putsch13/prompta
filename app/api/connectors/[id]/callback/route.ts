@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 import { saveUserConnection } from "@/lib/connections";
+import { verifySignedState } from "@/lib/connectors/oauth-state";
 
 export const dynamic = "force-dynamic";
 
@@ -41,14 +43,28 @@ export async function GET(req: NextRequest, { params }: Params) {
   const failRedirect = `${appUrl}/dashboard/connexions?error=oauth`;
 
   if (!code || !state || state !== storedState) {
-    return NextResponse.redirect(failRedirect);
+    return NextResponse.redirect(`${failRedirect}&reason=state_mismatch`);
   }
 
-  let parsed: { userId: string; connectorId: string };
-  try {
-    parsed = JSON.parse(Buffer.from(state, "base64url").toString());
-  } catch {
-    return NextResponse.redirect(failRedirect);
+  // Verify HMAC signature + expiration
+  const parsed = verifySignedState(state);
+  if (!parsed) {
+    return NextResponse.redirect(`${failRedirect}&reason=invalid_signature`);
+  }
+
+  // Verify connectorId matches
+  if (parsed.connectorId !== connectorId) {
+    return NextResponse.redirect(`${failRedirect}&reason=connector_mismatch`);
+  }
+
+  // Verify current user matches state
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user || parsed.userId !== user.id) {
+    return NextResponse.redirect(`${failRedirect}&reason=user_mismatch`);
   }
 
   const tokenConfig = TOKEN_URL[connectorId];

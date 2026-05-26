@@ -54,14 +54,33 @@ export async function addCredits(
   });
 }
 
-/** Pré-autorisation : bloque des crédits avant un run. */
+/**
+ * Pré-autorisation : bloque des crédits avant un run.
+ * Tente d'abord la RPC atomique (FOR UPDATE), fallback JS si pas migrée.
+ */
 export async function holdCreditsForRun(
   userId: string,
   estimatedCostCents: number,
-  runId: string
+  runId: string,
+  runType: "prompt" | "agent" = "prompt"
 ): Promise<boolean> {
   const admin = createAdminClient();
   const creditsNeeded = costToCredits(estimatedCostCents) * CREDIT_VALUE_CENTS;
+
+  // Try atomic RPC first
+  const { data: rpcResult, error: rpcError } = await (admin.rpc as any)("hold_credits_for_run", {
+    p_user_id: userId,
+    p_amount_cents: creditsNeeded,
+    p_run_id: runId,
+    p_run_type: runType,
+  });
+
+  if (!rpcError) {
+    return rpcResult === true;
+  }
+
+  // Fallback: RPC not yet deployed
+  console.warn("[credits] hold RPC unavailable, using JS fallback:", rpcError.message);
 
   const { data } = await admin
     .from("user_credits")
@@ -75,7 +94,6 @@ export async function holdCreditsForRun(
 
   if (available < creditsNeeded) return false;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (admin.from("user_credits") as any).upsert({
     user_id: userId,
     balance_cents: balance,
@@ -89,19 +107,34 @@ export async function holdCreditsForRun(
     kind: "hold",
     description: "Pré-autorisation run",
     run_id: runId,
+    run_type: runType,
   });
 
   return true;
 }
 
-/** Libère un hold sans débit (run échoué ou annulé). */
+/**
+ * Libère un hold sans débit (run échoué ou annulé).
+ */
 export async function releaseCreditHold(
   userId: string,
   estimatedCostCents: number,
-  runId: string
+  runId: string,
+  runType: "prompt" | "agent" = "prompt"
 ): Promise<void> {
   const admin = createAdminClient();
   const heldCredits = costToCredits(estimatedCostCents) * CREDIT_VALUE_CENTS;
+
+  const { error: rpcError } = await (admin.rpc as any)("release_credit_hold", {
+    p_user_id: userId,
+    p_held_cents: heldCredits,
+    p_run_id: runId,
+    p_run_type: runType,
+  });
+
+  if (!rpcError) return;
+
+  console.warn("[credits] release RPC unavailable, using JS fallback:", rpcError.message);
 
   const { data } = await admin
     .from("user_credits")
@@ -113,7 +146,6 @@ export async function releaseCreditHold(
   const held = (data as { held_cents?: number } | null)?.held_cents ?? 0;
   const newHeld = Math.max(0, held - heldCredits);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (admin.from("user_credits") as any).upsert({
     user_id: userId,
     balance_cents: balance,
@@ -128,11 +160,14 @@ export async function releaseCreditHold(
       kind: "hold_release",
       description: "Annulation pré-autorisation (run échoué)",
       run_id: runId,
+      run_type: runType,
     });
   }
 }
 
-/** Régularise après run : débit réel + libération du hold. */
+/**
+ * Régularise après run : débit réel + libération du hold.
+ */
 export async function settleCreditsForRun(
   userId: string,
   actualCostCents: number,
@@ -143,6 +178,26 @@ export async function settleCreditsForRun(
   const admin = createAdminClient();
   const actualCredits = costToCredits(actualCostCents) * CREDIT_VALUE_CENTS;
   const heldCredits = costToCredits(estimatedCostCents) * CREDIT_VALUE_CENTS;
+
+  const { error: rpcError } = await (admin.rpc as any)("settle_credits_for_run", {
+    p_user_id: userId,
+    p_actual_cents: actualCredits,
+    p_held_cents: heldCredits,
+    p_run_id: runId,
+    p_run_type: runType,
+  });
+
+  if (!rpcError) {
+    // Economics tracking (non-blocking)
+    const billedCents = billedCentsFromCost(actualCostCents);
+    const marginCents = marginCentsFromCost(actualCostCents);
+    await recordPlatformRunEconomics({
+      userId, runId, runType, actualCostCents, billedCents, marginCents,
+    }).catch((err) => console.warn("[settleCreditsForRun] economics", err));
+    return;
+  }
+
+  console.warn("[credits] settle RPC unavailable, using JS fallback:", rpcError.message);
 
   const { data } = await admin
     .from("user_credits")
@@ -156,7 +211,6 @@ export async function settleCreditsForRun(
   const newHeld = Math.max(0, held - heldCredits);
   const newBalance = Math.max(0, balance - actualCredits);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (admin.from("user_credits") as any).upsert({
     user_id: userId,
     balance_cents: newBalance,
@@ -171,6 +225,7 @@ export async function settleCreditsForRun(
       kind: "hold_release",
       description: "Libération pré-autorisation",
       run_id: runId,
+      run_type: runType,
     });
   }
 
@@ -180,18 +235,13 @@ export async function settleCreditsForRun(
     kind: "run_debit",
     description: "Exécution (coût réel)",
     run_id: runId,
+    run_type: runType,
   });
 
   const billedCents = billedCentsFromCost(actualCostCents);
   const marginCents = marginCentsFromCost(actualCostCents);
-
   await recordPlatformRunEconomics({
-    userId,
-    runId,
-    runType,
-    actualCostCents,
-    billedCents,
-    marginCents,
+    userId, runId, runType, actualCostCents, billedCents, marginCents,
   }).catch((err) => console.warn("[settleCreditsForRun] economics", err));
 }
 

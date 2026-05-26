@@ -6,9 +6,11 @@ const TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secret = process.env.ENCRYPTION_KEY;
   if (!secret) {
-    throw new Error("ENCRYPTION_KEY manquante");
+    throw new Error(
+      "ENCRYPTION_KEY is required. Generate one with: openssl rand -hex 32"
+    );
   }
   return scryptSync(secret, "prompta-keys", KEY_LENGTH);
 }

@@ -1,5 +1,6 @@
 /**
  * Résout un identifiant de modèle du catalogue vers les paramètres API réels.
+ * Ne fait JAMAIS de fallback silencieux vers un modèle inventé.
  */
 
 import { AI_MODELS, LEGACY_MODEL_MAP, type TokenParam } from "@/lib/catalogs";
@@ -41,11 +42,11 @@ export function resolveModel(catalogId: string): ResolvedModel | null {
 }
 
 /**
- * Résout un modèle avec fallback sur un modèle par défaut.
+ * Résout un modèle avec fallback sur gpt-5.4-mini (modèle réel, pas inventé).
  */
 export function resolveModelOrDefault(
   catalogId: string,
-  defaultId = "gpt-5.4"
+  defaultId = "gpt-5.4-mini"
 ): ResolvedModel {
   const resolved = resolveModel(catalogId);
   if (resolved) return resolved;
@@ -53,11 +54,12 @@ export function resolveModelOrDefault(
   const defaultResolved = resolveModel(defaultId);
   if (defaultResolved) return defaultResolved;
 
+  // Dernier recours : gpt-5.4-mini est un vrai modèle OpenAI
   return {
     provider: "openai",
-    apiModel: "gpt-5.4-turbo",
+    apiModel: "gpt-5.4-mini",
     tokenParam: "max_tokens",
-    catalogId: "gpt-5.4",
+    catalogId: "gpt-5.4-mini",
   };
 }
 
