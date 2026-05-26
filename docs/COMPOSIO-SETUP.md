@@ -1,85 +1,116 @@
 # Setup Composio + test Notion E2E
 
-## Étape 1 — Compte Composio (5 min)
+## Quelle clé mettre où ?
 
-1. Va sur [https://composio.dev](https://composio.dev) → **Sign up** (gratuit, 20k tool calls/mois)
-2. Dashboard → **Settings** ou **API Keys** → copie la clé (`sk-...` ou équivalent)
-3. Dashboard → **Auth Configs** (optionnel en dev) : Composio crée les configs automatiquement au premier connect
+Composio affiche **deux types de clés** :
+
+| Clé dans Composio | Où la mettre | Usage |
+|-------------------|--------------|-------|
+| **Project API Key** (ou API Key) | `.env.local` → `COMPOSIO_API_KEY` | **Celle-ci pour Prompta** — SDK, tool calls, OAuth |
+| **Organization token** | **Nulle part pour l'instant** | Admin org multi-projets — pas utilisé par notre code |
+
+```env
+COMPOSIO_API_KEY=...   # Project API Key uniquement
+```
+
+Où la trouver : [platform.composio.dev](https://platform.composio.dev) → ton **Project** → **Settings** / **API Keys**.
+
+---
+
+## Redirect URL — pas besoin de la chercher dans le dashboard
+
+Composio **n'a pas** (ou rarement) un champ global « Redirect URLs » à remplir à la main.
+
+Le callback est passé **dans le code** à chaque connexion :
+
+```
+http://localhost:3000/api/connectors/composio/callback?toolkit=notion
+```
+
+Prompta le fait automatiquement quand l'utilisateur clique « Connecter ».  
+En prod, c'est la même URL avec ton domaine (`https://prompta.fr/api/connectors/...`).
+
+Si après OAuth tu restes sur une page Composio : retourne manuellement sur `/dashboard/connexions` — la sync se fait au chargement.
+
+---
+
+## Étape 1 — Compte Composio
+
+1. [composio.dev](https://composio.dev) → inscription
+2. Copie la **Project API Key** (pas l'org token)
 
 ## Étape 2 — `.env.local`
 
-Ajoute ou complète :
-
 ```env
-COMPOSIO_API_KEY=ta_cle_ici
+COMPOSIO_API_KEY=ta_project_api_key
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-ENCRYPTION_KEY=...   # déjà requis — openssl rand -hex 32
+ENCRYPTION_KEY=...
 ```
-
-Redémarre le serveur dev :
 
 ```bash
 npm run dev
 ```
 
-## Étape 3 — Callback OAuth Composio
+## Étape 3 — Migration Supabase 0024
 
-Dans le dashboard Composio → **Project Settings** → **Redirect URLs** (ou Auth Callback) :
+SQL Editor → exécute `supabase/migrations/0024_composio_connections.sql`
 
-```
-http://localhost:3000/api/connectors/composio/callback
-```
-
-En prod, ajoute aussi :
-
-```
-https://ton-domaine.fr/api/connectors/composio/callback
-```
-
-## Étape 4 — Migration Supabase 0024
-
-SQL Editor Supabase → exécute le fichier :
-
-`supabase/migrations/0024_composio_connections.sql`
-
-(Si 0022/0023 pas encore faits, les appliquer avant.)
-
-## Étape 5 — Vérifier que Composio répond
+## Étape 4 — Vérifier l'API
 
 ```bash
-curl -s http://localhost:3000/api/composio/toolkits | head -c 500
+curl -s http://localhost:3000/api/composio/toolkits | head -c 300
 ```
 
-Tu dois voir `"enabled":true` et une liste de toolkits.
+Attendu : `"enabled":true`
 
-## Étape 6 — Connecter Notion (utilisateur test)
+---
 
-1. Login sur Prompta
-2. `/dashboard/connexions` → **Notion** → **Connecter**
-3. Autorise dans la page Composio/Notion
-4. Retour sur Prompta → badge **OK** sur Notion
+## À partir de l'étape 5
 
-## Étape 7 — Créer un agent test (builder)
+### Étape 5 — Connecter Notion
+
+1. Login Prompta
+2. Va sur `/dashboard/connexions`
+3. Clique **Connecter** sur Notion
+4. Autorise sur la page Composio/Notion
+5. Tu reviens sur Prompta (ou va manuellement sur `/dashboard/connexions`)
+6. Notion doit afficher **OK**
+
+### Étape 6 — Créer l'agent test
 
 1. `/dashboard/new` → type **Agent**
-2. StepEditor → **Action Composio** → toolkit **notion** → choisis une action (ex. créer page)
-3. Ajoute une étape LLM avant si besoin (rédiger le contenu)
-4. Playground : renseigne les variables
-5. Publie
+2. **+ Étape LLM** (ex. GPT-5.4) — prompt qui prépare le contenu
+3. **Action Composio** → toolkit **notion** → action (ex. créer une page)
+4. Remplis les paramètres avec `{{variable}}` ou `{{step_0_output}}`
+5. Onglet **Environnement** : coche Notion si besoin
+6. **Test** (playground) → vérifie le résultat
+7. **Publie**
 
-## Étape 8 — Lancer en tant qu'utilisateur final
+Prérequis test : clé OpenAI (ou autre LLM) dans `/dashboard/connexions`.
 
-1. Ouvre la fiche listing publiée
-2. Vérifie **ConnectionsMasque** : Notion connecté
+### Étape 7 — Test utilisateur final
+
+1. Ouvre la fiche listing (URL publique)
+2. Connecte Notion si le masque le demande
 3. Lance l'agent
-4. Si agent async : `npm run worker` dans un 2e terminal
+4. **Si statut `pending`** → ouvre un 2e terminal :
+
+```bash
+npm run worker
+```
+
+### Étape 8 — Prod Render
+
+Voir `docs/RENDER-SETUP.md` : Web Service + **Background Worker** + `COMPOSIO_API_KEY`.
+
+---
 
 ## Dépannage
 
 | Problème | Solution |
 |----------|----------|
-| Bouton « Action Composio » absent | `COMPOSIO_API_KEY` manquante ou serveur pas redémarré |
-| 503 au connect | Clé Composio invalide |
-| OAuth boucle / échec | Redirect URL mal configurée dans Composio |
-| Run échoue « connexion requise » | Reconnecter Notion depuis `/dashboard/connexions` |
-| Run reste `pending` | Lancer `npm run worker` |
+| 401 / clé invalide | Utilise la **Project API Key**, pas l'org token |
+| Pas de redirect URL dans Composio | Normal — géré par le code Prompta |
+| OAuth OK mais pas « connecté » sur Prompta | Recharge `/dashboard/connexions` |
+| Run `pending` | `npm run worker` |
+| Action Composio invisible | Redémarre `npm run dev` après `.env.local` |
