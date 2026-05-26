@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, Trash2, RefreshCw, Check, AlertTriangle } from "lucide-react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { Plus, Trash2, RefreshCw, Check, AlertTriangle, ExternalLink } from "lucide-react";
 import { UserSetupWizard } from "@/components/onboarding/UserSetupWizard";
 
 interface KeyRecord {
@@ -12,6 +13,17 @@ interface KeyRecord {
   last_checked_at: string | null;
 }
 
+interface ConnectionRecord {
+  connectorId: string;
+  status: string;
+}
+
+interface ToolkitEntry {
+  id: string;
+  label: string;
+  authType: string;
+}
+
 const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
@@ -20,24 +32,56 @@ const PROVIDER_LABELS: Record<string, string> = {
   serper: "Serper.dev",
 };
 
-export default function ConnexionsPage() {
+function ConnexionsContent() {
+  const searchParams = useSearchParams();
   const [keys, setKeys] = useState<KeyRecord[]>([]);
+  const [connections, setConnections] = useState<ConnectionRecord[]>([]);
+  const [toolkits, setToolkits] = useState<ToolkitEntry[]>([]);
+  const [composioEnabled, setComposioEnabled] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [rotateProvider, setRotateProvider] = useState<string | undefined>();
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [telegramToken, setTelegramToken] = useState("");
+  const [savingTelegram, setSavingTelegram] = useState(false);
 
-  async function loadKeys() {
-    const res = await fetch("/api/keys");
-    if (res.ok) {
-      const data = await res.json();
+  async function loadAll() {
+    const [keysRes, connRes, tkRes] = await Promise.all([
+      fetch("/api/keys"),
+      fetch("/api/connectors"),
+      fetch("/api/composio/toolkits"),
+    ]);
+    if (keysRes.ok) {
+      const data = await keysRes.json();
       setKeys(data.keys ?? []);
+    }
+    if (connRes.ok) {
+      const data = await connRes.json();
+      setConnections(data.connections ?? []);
+    }
+    if (tkRes.ok) {
+      const data = await tkRes.json();
+      setComposioEnabled(Boolean(data.enabled));
+      setToolkits(
+        (data.toolkits ?? []).slice(0, 50).map((t: ToolkitEntry) => ({
+          id: t.id,
+          label: t.label,
+          authType: t.authType,
+        }))
+      );
     }
   }
 
   useEffect(() => {
-    loadKeys();
-  }, []);
+    loadAll();
+    const connected = searchParams.get("connected");
+    const error = searchParams.get("error");
+    if (connected) showToast(`${connected} connecté`);
+    if (error) showToast("Échec de connexion");
+    if (searchParams.get("connect") === "telegram") {
+      showToast("Ajoutez votre token bot Telegram ci-dessous");
+    }
+  }, [searchParams]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -47,9 +91,34 @@ export default function ConnexionsPage() {
   async function handleDelete(provider: string) {
     await fetch(`/api/keys?provider=${provider}`, { method: "DELETE" });
     setDeleteConfirm(null);
-    loadKeys();
+    loadAll();
     showToast("Clé supprimée");
   }
+
+  async function saveTelegram() {
+    if (!telegramToken.trim()) return;
+    setSavingTelegram(true);
+    try {
+      const res = await fetch("/api/connectors/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectorId: "telegram", apiKey: telegramToken.trim() }),
+      });
+      if (res.ok) {
+        setTelegramToken("");
+        loadAll();
+        showToast("Bot Telegram enregistré");
+      } else {
+        showToast("Erreur enregistrement Telegram");
+      }
+    } finally {
+      setSavingTelegram(false);
+    }
+  }
+
+  const popularToolkits = toolkits.filter((t) =>
+    ["gmail", "googlesheets", "slack", "notion", "github", "telegram", "hubspot"].includes(t.id)
+  );
 
   return (
     <div>
@@ -63,7 +132,7 @@ export default function ConnexionsPage() {
         <div>
           <h1 className="font-display text-3xl font-bold text-ink">Mes connexions</h1>
           <p className="mt-2 text-ink-soft">
-            Gérez vos clés API pour lancer des prompts et agents.
+            Clés LLM (BYOK) et comptes connectés pour vos agents.
           </p>
         </div>
         <button
@@ -74,75 +143,140 @@ export default function ConnexionsPage() {
           className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
         >
           <Plus className="h-4 w-4" />
-          Ajouter une clé
+          Ajouter une clé LLM
         </button>
       </div>
 
-      {keys.length === 0 ? (
-        <div className="rounded-xl border border-line bg-card p-12 text-center">
-          <p className="font-display text-lg font-semibold text-ink">Aucune clé configurée</p>
-          <button
-            onClick={() => setShowWizard(true)}
-            className="mt-6 rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white"
-          >
-            Configurer mes clés (1 min)
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {keys.map((key) => (
-            <div
-              key={key.id}
-              className="flex items-center justify-between rounded-xl border border-line bg-card p-4"
+      <section className="mb-10">
+        <h2 className="mb-3 font-display text-lg font-semibold text-ink">Clés API LLM</h2>
+        {keys.length === 0 ? (
+          <div className="rounded-xl border border-line bg-card p-8 text-center">
+            <p className="text-ink-soft">Aucune clé configurée</p>
+            <button
+              onClick={() => setShowWizard(true)}
+              className="mt-4 rounded-lg bg-accent px-6 py-2 text-sm font-medium text-white"
             >
-              <div className="flex items-center gap-4">
-                <div>
-                  <p className="font-medium text-ink">
-                    {PROVIDER_LABELS[key.provider] ?? key.provider}
-                  </p>
-                  <p className="font-mono text-sm text-ink-soft">sk-…{key.last4}</p>
+              Configurer mes clés
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {keys.map((key) => (
+              <div
+                key={key.id}
+                className="flex items-center justify-between rounded-xl border border-line bg-card p-4"
+              >
+                <div className="flex items-center gap-4">
+                  <div>
+                    <p className="font-medium text-ink">{PROVIDER_LABELS[key.provider] ?? key.provider}</p>
+                    <p className="font-mono text-sm text-ink-soft">sk-…{key.last4}</p>
+                  </div>
+                  {key.is_valid ? (
+                    <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                      <Check className="h-3 w-3" /> Valide
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                      <AlertTriangle className="h-3 w-3" /> Invalide
+                    </span>
+                  )}
                 </div>
-                {key.is_valid ? (
-                  <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">
-                    <Check className="h-3 w-3" /> Valide
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-                    <AlertTriangle className="h-3 w-3" /> Invalide
-                  </span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setRotateProvider(key.provider);
-                    setShowWizard(true);
-                  }}
-                  className="rounded-lg border border-line p-2 text-ink-soft hover:bg-card2"
-                  title="Rotation"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </button>
-                {deleteConfirm === key.provider ? (
+                <div className="flex gap-2">
                   <button
-                    onClick={() => handleDelete(key.provider)}
-                    className="rounded-lg bg-red-600 px-3 py-1.5 text-xs text-white"
+                    onClick={() => {
+                      setRotateProvider(key.provider);
+                      setShowWizard(true);
+                    }}
+                    className="rounded-lg border border-line p-2 text-ink-soft hover:bg-card2"
                   >
-                    Supprimer
+                    <RefreshCw className="h-4 w-4" />
                   </button>
-                ) : (
-                  <button
-                    onClick={() => setDeleteConfirm(key.provider)}
-                    className="rounded-lg border border-line p-2 text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
+                  {deleteConfirm === key.provider ? (
+                    <button
+                      onClick={() => handleDelete(key.provider)}
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs text-white"
+                    >
+                      Supprimer
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setDeleteConfirm(key.provider)}
+                      className="rounded-lg border border-line p-2 text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-1 font-display text-lg font-semibold text-ink">Apps connectées</h2>
+        <p className="mb-4 text-sm text-ink-soft">
+          {composioEnabled
+            ? "OAuth géré via Composio — connectez Gmail, Notion, Slack, etc."
+            : "Configurez COMPOSIO_API_KEY pour débloquer 800+ intégrations."}
+        </p>
+
+        <div className="mb-4 rounded-xl border border-line bg-card2 p-4">
+          <p className="text-sm font-medium text-ink">Telegram (token bot)</p>
+          <p className="mb-2 text-xs text-ink-faint">Créez un bot via @BotFather, puis collez le token ici.</p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={telegramToken}
+              onChange={(e) => setTelegramToken(e.target.value)}
+              placeholder="123456:ABC..."
+              className="h-10 flex-1 rounded-lg border border-line bg-card px-3 font-mono text-sm"
+            />
+            <button
+              onClick={saveTelegram}
+              disabled={savingTelegram}
+              className="rounded-lg bg-accent px-4 py-2 text-sm text-white disabled:opacity-50"
+            >
+              Enregistrer
+            </button>
+          </div>
+          {connections.some((c) => c.connectorId === "telegram" && c.status === "connected") && (
+            <p className="mt-2 flex items-center gap-1 text-xs text-green-600">
+              <Check className="h-3 w-3" /> Telegram connecté
+            </p>
+          )}
         </div>
-      )}
+
+        {composioEnabled && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(popularToolkits.length ? popularToolkits : toolkits.slice(0, 12)).map((tk) => {
+              const ok = connections.some(
+                (c) => c.connectorId === tk.id && c.status === "connected"
+              );
+              return (
+                <div
+                  key={tk.id}
+                  className="flex items-center justify-between rounded-xl border border-line bg-card px-4 py-3"
+                >
+                  <span className="text-sm font-medium text-ink">{tk.label}</span>
+                  {ok ? (
+                    <span className="flex items-center gap-1 text-xs text-green-600">
+                      <Check className="h-3 w-3" /> OK
+                    </span>
+                  ) : (
+                    <a
+                      href={`/api/connectors/${tk.id}/connect`}
+                      className="flex items-center gap-1 text-xs text-accent hover:underline"
+                    >
+                      Connecter <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {showWizard && (
         <UserSetupWizard
@@ -151,11 +285,19 @@ export default function ConnexionsPage() {
           onClose={() => {
             setShowWizard(false);
             setRotateProvider(undefined);
-            loadKeys();
-            showToast(rotateProvider ? "Clé mise à jour" : "Clé ajoutée avec succès");
+            loadAll();
+            showToast(rotateProvider ? "Clé mise à jour" : "Clé ajoutée");
           }}
         />
       )}
     </div>
+  );
+}
+
+export default function ConnexionsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-ink-soft">Chargement…</div>}>
+      <ConnexionsContent />
+    </Suspense>
   );
 }

@@ -2,8 +2,10 @@
 
 import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
+import { ComposioActionPicker } from "@/components/builder/ComposioActionPicker";
 import { AI_MODELS } from "@/lib/catalogs";
 import { CONNECTORS, type ConnectorAction } from "@/lib/connectors/registry";
+import type { ComposioToolEntry } from "@/lib/composio/catalog";
 import type { AgentStep } from "@/lib/agent/schema";
 
 const TOOLS = [
@@ -86,6 +88,15 @@ export function StepEditor({
     onChange([
       ...steps,
       { type: "action", connector: connectorId, action: action.id, params },
+    ]);
+  }
+
+  function addComposioActionStep(toolkit: string, tool: ComposioToolEntry) {
+    const params: Record<string, string> = {};
+    for (const input of tool.inputs) params[input.key] = "";
+    onChange([
+      ...steps,
+      { type: "action", connector: toolkit, action: tool.slug, params },
     ]);
   }
 
@@ -270,6 +281,7 @@ export function StepEditor({
             </button>
           ))
         )}
+        <ComposioActionPicker onAdd={addComposioActionStep} />
       </div>
     </div>
   );

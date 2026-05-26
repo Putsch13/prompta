@@ -28,8 +28,10 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "mistral-small-latest": { inputPer1M: 50, outputPer1M: 150 },
 };
 
+export const COMPOSIO_TOOL_CALL_CENTS = 0.03;
+
 export const TOOL_PRICING: Record<string, number> = {
-  web_search: 1, // cents par appel Serper
+  web_search: 1,
   http_fetch: 0,
   file_read: 0,
   "gmail.send": 0,
@@ -39,6 +41,7 @@ export const TOOL_PRICING: Record<string, number> = {
   "slack.send": 0,
   "telegram.send": 0,
   "canva.create": 2,
+  composio_action: COMPOSIO_TOOL_CALL_CENTS,
 };
 
 export const COMPUTE_FLAT_CENTS = 0.5;
@@ -48,5 +51,9 @@ export function getModelPricing(apiModel: string): ModelPricing {
 }
 
 export function getToolPricing(toolOrAction: string): number {
-  return TOOL_PRICING[toolOrAction] ?? 0;
+  if (TOOL_PRICING[toolOrAction] !== undefined) return TOOL_PRICING[toolOrAction];
+  if (toolOrAction.includes(".") && toolOrAction === toolOrAction.toLowerCase()) {
+    return TOOL_PRICING[toolOrAction] ?? 0;
+  }
+  return COMPOSIO_TOOL_CALL_CENTS;
 }

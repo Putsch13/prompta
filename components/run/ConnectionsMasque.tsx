@@ -30,6 +30,14 @@ interface Props {
   onReadyChange?: (ready: boolean) => void;
 }
 
+function connectorLabel(id: string, composioLabels: Record<string, string>): string {
+  return (
+    composioLabels[id] ??
+    CONNECTORS.find((c) => c.id === id)?.label ??
+    id.replace(/_/g, " ")
+  );
+}
+
 export function ConnectionsMasque({
   requiredSecrets = [],
   requiredConnectors = [],
@@ -37,6 +45,7 @@ export function ConnectionsMasque({
 }: Props) {
   const [keys, setKeys] = useState<KeyStatus[]>([]);
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
+  const [composioLabels, setComposioLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch("/api/connectors")
@@ -44,6 +53,15 @@ export function ConnectionsMasque({
       .then((d) => {
         setKeys(d.keys ?? []);
         setConnections(d.connections ?? []);
+      })
+      .catch(() => undefined);
+
+    fetch("/api/composio/toolkits")
+      .then((r) => r.json())
+      .then((d) => {
+        const map: Record<string, string> = {};
+        for (const t of d.toolkits ?? []) map[t.id] = t.label;
+        setComposioLabels(map);
       })
       .catch(() => undefined);
   }, []);
@@ -96,11 +114,14 @@ export function ConnectionsMasque({
           const meta = CONNECTORS.find((c) => c.id === id);
           const conn = connections.find((x) => x.connectorId === id);
           const ok = conn?.status === "connected";
+          const label = connectorLabel(id, composioLabels);
           return (
             <div key={id} className="flex items-center justify-between rounded-lg bg-card px-3 py-2">
               <div>
-                <p className="text-sm font-medium">{meta?.label ?? id}</p>
-                <p className="text-xs text-ink-faint">{meta?.why ?? "Connexion OAuth requise"}</p>
+                <p className="text-sm font-medium">{label}</p>
+                <p className="text-xs text-ink-faint">
+                  {meta?.why ?? "Connexion OAuth requise"}
+                </p>
               </div>
               {ok ? (
                 <span className="flex items-center gap-1 text-xs text-green-600">
@@ -123,7 +144,7 @@ export function ConnectionsMasque({
         <p className="mt-3 flex items-center gap-1 text-xs text-amber-700">
           <AlertTriangle className="h-3 w-3" />
           {missingConnectors.length > 0
-            ? `Il reste à connecter : ${missingConnectors.map((id) => CONNECTORS.find((c) => c.id === id)?.label ?? id).join(", ")}`
+            ? `Il reste à connecter : ${missingConnectors.map((id) => connectorLabel(id, composioLabels)).join(", ")}`
             : `Il reste à configurer : ${missingSecrets.map((p) => PROVIDER_LABELS[p] ?? p).join(", ")}`}
         </p>
       )}

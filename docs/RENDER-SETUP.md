@@ -42,6 +42,7 @@ Optionnel (tu peux ajouter plus tard) :
 | `ANTHROPIC_API_KEY` | Agents admin en mode live |
 | `PLATFORM_OPENAI_KEY` | Runs sans clé utilisateur |
 | `E2B_API_KEY` | Code arbitraire agents |
+| `COMPOSIO_API_KEY` | Connecteurs marketplace (Notion, Gmail, Slack…) |
 
 **Important :** pas de guillemets autour des valeurs sur Render.
 

@@ -1,49 +1,52 @@
 # Connecteurs exécutables — Architecture Prompta
 
-## Décision (Bloc C1)
+## Décision (2026) — Composio comme backend principal
 
-**Choix : abstraction native + connecteurs maison prioritaires**, avec possibilité d'intégrer **Composio** plus tard comme backend unifié.
-
-| Option | Avantages | Inconvénients |
-|--------|-----------|---------------|
-| **Composio** | 250+ apps, OAuth géré, actions prêtes | Coût par action, dépendance externe |
-| **Maison (retenu pour V1)** | Contrôle total, pas de coût tiers | Maintenance par service |
-
-**V1 implémentée :** 5 connecteurs natifs avec actions réelles côté serveur :
-- Gmail (OAuth Google)
-- Google Sheets (OAuth Google)
-- Slack (OAuth)
-- Telegram (API key / bot token)
-- Canva (OAuth — stub si clé plateforme absente)
-
-WhatsApp Business API : prévu mais non implémenté (approbation Meta requise).
-
-## Modèle de données
-
-```
-Connector { id, label, authType, actions[] }
-Action { id, label, inputs[], execute(params, connection) }
-user_connections { owner_id, connector_id, tokens chiffrés, status }
-```
+| Option | Statut |
+|--------|--------|
+| **Composio** | **Retenu** — 800+ toolkits, OAuth géré, exécution unifiée |
+| Maison (5 connecteurs) | Fallback si `COMPOSIO_API_KEY` absente |
 
 ## Flux utilisateur
 
-1. Builder ajoute une étape **Action** → connecteur ajouté aux connexions requises
-2. Utilisateur s'abonne → `ConnectionsMasque` liste clés API + OAuth
-3. Run → orchestrateur résout la connexion de **l'utilisateur** (jamais celle du builder)
+1. Builder ajoute une étape **Action Composio** (toolkit → tool)
+2. Utilisateur s'abonne → `ConnectionsMasque` liste les toolkits requis
+3. Utilisateur clique **Se connecter** → OAuth Composio (hosted)
+4. Run → `composio.tools.execute(toolSlug, { userId, arguments })`
 
 ## Variables d'environnement
 
 ```env
+COMPOSIO_API_KEY=          # Clé plateforme Prompta (composio.dev)
+NEXT_PUBLIC_APP_URL=       # Redirect OAuth callback
+ENCRYPTION_KEY=            # Chiffrement tokens natifs (fallback)
+
+# Fallback natif (optionnel, sans Composio) :
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 SLACK_CLIENT_ID=
 SLACK_CLIENT_SECRET=
-CANVA_CLIENT_ID=
-CANVA_CLIENT_SECRET=
-COMPOSIO_API_KEY=   # optionnel, phase 2
 ```
 
-## Évolution Composio (phase 2)
+## Qu'est-ce qu'un tool call ?
 
-Remplacer `lib/connectors/execute.ts` par un adaptateur Composio qui implémente la même interface `Connector`.
+| Action | Compte comme tool call Composio ? |
+|--------|-----------------------------------|
+| OAuth « Se connecter » | Non |
+| 1 étape Action agent (ex. NOTION_CREATE_PAGE) | **Oui = 1 call** |
+| Étape LLM | Non (clé utilisateur) |
+
+Facturation Composio : par **tool call exécuté**, pas par connexion.
+Plans : gratuit 20k/mois, $29 → 200k/mois.
+
+## Fichiers clés
+
+- `lib/composio/` — client, catalogue, exécution, connexion
+- `lib/connectors/execute.ts` — route Composio ou natif
+- `GET /api/composio/toolkits` — catalogue builder
+- `GET /api/composio/tools?toolkit=` — actions d'un toolkit
+- Migration `0024_composio_connections.sql`
+
+## Limitations
+
+LinkedIn post, WhatsApp Business, Instagram : restrictions API des éditeurs même via Composio.

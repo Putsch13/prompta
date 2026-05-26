@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
+import { isComposioEnabled, toComposioToolkitSlug } from "@/lib/composio/client";
+import { startComposioAuth } from "@/lib/composio/connect";
 
 export const dynamic = "force-dynamic";
 
@@ -43,25 +45,39 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", process.env.NEXT_PUBLIC_APP_URL));
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  if (!user) return NextResponse.redirect(new URL("/login", appUrl));
 
   const connectorId = params.id;
-  const config = OAUTH_CONFIG[connectorId];
 
   if (connectorId === "telegram") {
-    return NextResponse.redirect(
-      new URL("/dashboard/connexions?connect=telegram", process.env.NEXT_PUBLIC_APP_URL)
-    );
+    return NextResponse.redirect(new URL("/dashboard/connexions?connect=telegram", appUrl));
   }
 
+  if (isComposioEnabled()) {
+    try {
+      const toolkitSlug = toComposioToolkitSlug(connectorId);
+      const callbackUrl = `${appUrl}/api/connectors/composio/callback?toolkit=${encodeURIComponent(toolkitSlug)}`;
+      const redirectUrl = await startComposioAuth(user.id, toolkitSlug, callbackUrl);
+      return NextResponse.redirect(redirectUrl);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur Composio";
+      return NextResponse.json({ error: message }, { status: 503 });
+    }
+  }
+
+  const config = OAUTH_CONFIG[connectorId];
   if (!config) {
-    return NextResponse.json({ error: "Connecteur inconnu" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Connecteur inconnu — configurez COMPOSIO_API_KEY pour plus d'intégrations" },
+      { status: 404 }
+    );
   }
 
   const clientId = process.env[config.clientIdEnv];
   if (!clientId) {
     return NextResponse.json(
-      { error: `Configurez ${config.clientIdEnv} sur le serveur` },
+      { error: `Configurez ${config.clientIdEnv} ou COMPOSIO_API_KEY` },
       { status: 503 }
     );
   }
@@ -69,7 +85,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const state = Buffer.from(JSON.stringify({ userId: user.id, connectorId })).toString("base64url");
   cookies().set("oauth_state", state, { httpOnly: true, secure: true, maxAge: 600, path: "/" });
 
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/connectors/${connectorId}/callback`;
+  const redirectUri = `${appUrl}/api/connectors/${connectorId}/callback`;
   const url = new URL(config.authUrl);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);

@@ -73,6 +73,27 @@ export function CreateWizard({ categories }: Props) {
   const [testInputs, setTestInputs] = useState<Record<string, string>>({});
   const [suggestedVars, setSuggestedVars] = useState<string[]>([]);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [integrationCatalog, setIntegrationCatalog] = useState(INTEGRATIONS);
+
+  useEffect(() => {
+    fetch("/api/composio/toolkits")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.enabled && Array.isArray(d.toolkits) && d.toolkits.length > 0) {
+          setIntegrationCatalog(
+            d.toolkits.map((t: { id: string; label: string; category: string; popular: boolean; authType: string; connectorId: string }) => ({
+              id: t.id,
+              label: t.label,
+              category: t.category,
+              popular: t.popular,
+              authType: t.authType as "oauth" | "api_key",
+              connectorId: t.connectorId ?? t.id,
+            }))
+          );
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   const [form, setForm] = useState({
     type: "prompt" as "prompt" | "agent" | "workflow",
@@ -351,14 +372,18 @@ export function CreateWizard({ categories }: Props) {
           />
 
           <CatalogMultiSelect
-            catalog={INTEGRATIONS}
+            catalog={integrationCatalog}
             selected={form.integrations}
             onChange={(ids) => {
               updateField("integrations", ids);
               const integrationsNeedingKeys = getIntegrationsRequiringKey(ids);
-              const connectorIds = getConnectorIdsFromIntegrations(ids);
-              if (connectorIds.length) {
-                updateField("requiredConnectors", Array.from(new Set([...form.requiredConnectors, ...connectorIds])));
+              const connectorIds = ids.filter((id) =>
+                integrationCatalog.some((i) => i.id === id && (i.connectorId || i.authType === "oauth"))
+              ).map((id) => integrationCatalog.find((i) => i.id === id)?.connectorId ?? id);
+              const legacyConnectorIds = getConnectorIdsFromIntegrations(ids);
+              const allConnectors = Array.from(new Set([...connectorIds, ...legacyConnectorIds]));
+              if (allConnectors.length) {
+                updateField("requiredConnectors", Array.from(new Set([...form.requiredConnectors, ...allConnectors])));
               }
               if (integrationsNeedingKeys.length > 0) {
                 const newSecrets = [...form.requiredSecrets];
