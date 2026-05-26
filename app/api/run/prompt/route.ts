@@ -21,6 +21,7 @@ import { consumeFreeRunQuota } from "@/lib/billing/free-quota";
 import { getCreditCircuitStatus } from "@/lib/billing/circuit-breaker";
 import { getCachedRun, runCacheKey, setCachedRun } from "@/lib/billing/run-cache";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import { isUnrestrictedUser } from "@/lib/auth/privileges";
 import { hasPlatformPro } from "@/lib/platform-access";
 import { trackProRun } from "@/lib/revshare";
 
@@ -43,9 +44,12 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const rate = checkRateLimit(`run:prompt:${user.id}`, RATE_LIMITS.run);
-  if (!rate.success) {
-    return rateLimitResponse(rate.resetAt);
+  const unrestricted = await isUnrestrictedUser(user.id);
+  if (!unrestricted) {
+    const rate = checkRateLimit(`run:prompt:${user.id}`, RATE_LIMITS.run);
+    if (!rate.success) {
+      return rateLimitResponse(rate.resetAt);
+    }
   }
 
   const body = await request.json();
@@ -141,43 +145,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const creditBalance = await getCreditBalance(user.id);
-    const minCreditsCents = estimatedCredits * CREDIT_VALUE_CENTS;
+    if (!unrestricted) {
+      const creditBalance = await getCreditBalance(user.id);
+      const minCreditsCents = estimatedCredits * CREDIT_VALUE_CENTS;
 
-    if (!hasEntitlement && creditBalance >= minCreditsCents) {
-      const circuit = await getCreditCircuitStatus();
-      if (!circuit.allowed) {
-        return new Response(
-          JSON.stringify({ error: "circuit_breaker", message: circuit.reason }),
-          { status: 503, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      usedCredits = true;
-    } else if (isFree && !hasEntitlement) {
-      const allowed = await consumeFreeRunQuota(user.id);
-      if (!allowed) {
+      if (!hasEntitlement && creditBalance >= minCreditsCents) {
+        const circuit = await getCreditCircuitStatus();
+        if (!circuit.allowed) {
+          return new Response(
+            JSON.stringify({ error: "circuit_breaker", message: circuit.reason }),
+            { status: 503, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        usedCredits = true;
+      } else if (isFree && !hasEntitlement) {
+        const allowed = await consumeFreeRunQuota(user.id);
+        if (!allowed) {
+          return new Response(
+            JSON.stringify({
+              error: "quota_exceeded",
+              message: "Quota gratuit atteint — achetez des crédits ou configurez vos clés",
+            }),
+            { status: 429, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        usedFreeQuota = true;
+        resolved = resolveModelOrDefault(FREE_TIER_MODEL);
+        provider = resolved.provider;
+        apiModel = resolved.apiModel;
+        tokenParam = resolved.tokenParam;
+        apiKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`] ?? apiKey;
+      } else if (!hasEntitlement) {
         return new Response(
           JSON.stringify({
-            error: "quota_exceeded",
-            message: "Quota gratuit atteint — achetez des crédits ou configurez vos clés",
+            error: "insufficient_credits",
+            message: `Crédits insuffisants (≈ ${estimatedCredits} crédits requis)`,
           }),
-          { status: 429, headers: { "Content-Type": "application/json" } }
+          { status: 402, headers: { "Content-Type": "application/json" } }
         );
       }
-      usedFreeQuota = true;
-      resolved = resolveModelOrDefault(FREE_TIER_MODEL);
-      provider = resolved.provider;
-      apiModel = resolved.apiModel;
-      tokenParam = resolved.tokenParam;
-      apiKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`] ?? apiKey;
-    } else if (!hasEntitlement) {
-      return new Response(
-        JSON.stringify({
-          error: "insufficient_credits",
-          message: `Crédits insuffisants (≈ ${estimatedCredits} crédits requis)`,
-        }),
-        { status: 402, headers: { "Content-Type": "application/json" } }
-      );
     }
   }
 

@@ -11,6 +11,7 @@ import {
   releaseAgentRunCredits,
 } from "@/lib/billing/agent-run-billing";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import { isUnrestrictedUser } from "@/lib/auth/privileges";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +25,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  const rate = checkRateLimit(`run:agent:${user.id}`, RATE_LIMITS.run);
-  if (!rate.success) {
-    return rateLimitResponse(rate.resetAt);
+  const unrestricted = await isUnrestrictedUser(user.id);
+  if (!unrestricted) {
+    const rate = checkRateLimit(`run:agent:${user.id}`, RATE_LIMITS.run);
+    if (!rate.success) {
+      return rateLimitResponse(rate.resetAt);
+    }
   }
 
   const body = await request.json();

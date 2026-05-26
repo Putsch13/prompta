@@ -1,6 +1,7 @@
 import { getUserConnection } from "@/lib/connections";
 import { executeComposioTool } from "@/lib/composio/execute";
 import { isComposioEnabled } from "@/lib/composio/client";
+import { getDocumentText } from "@/lib/documents/user-documents";
 import { httpFetch } from "@/lib/agent/tools";
 
 export type DataSourceType =
@@ -32,6 +33,12 @@ export async function retrieveFromSource(params: RetrieveParams): Promise<Retrie
 
   switch (params.source) {
     case "file_upload": {
+      const docId = params.query?.trim();
+      if (docId && /^[0-9a-f-]{36}$/i.test(docId)) {
+        const text = await getDocumentText(params.userId, docId);
+        sources.push({ type: "file_upload", label: `Document ${docId.slice(0, 8)}…` });
+        return { content: text.slice(0, 12000), sources };
+      }
       const text = params.fileContent ?? "";
       sources.push({ type: "file_upload", label: "Fichier uploadé" });
       return { content: text.slice(0, 12000), sources };

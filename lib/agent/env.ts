@@ -101,7 +101,10 @@ export function promptFromBody(promptBody: string, model = "gpt-5.4"): AgentMani
 export function envFieldsFromManifest(manifest: AgentManifest) {
   return manifest.inputs.map((i) => ({
     key: i.key,
+    label: i.label,
     description: i.label,
+    help: i.help,
+    type: i.type,
     required: i.required,
   }));
 }

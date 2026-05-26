@@ -21,6 +21,7 @@ export interface Database {
           is_verified: boolean;
           is_admin: boolean;
           is_persona: boolean;
+          unrestricted_usage: boolean;
           created_at: string;
         };
         Insert: {
@@ -34,6 +35,7 @@ export interface Database {
           is_verified?: boolean;
           is_admin?: boolean;
           is_persona?: boolean;
+          unrestricted_usage?: boolean;
           created_at?: string;
         };
         Update: {
@@ -47,6 +49,7 @@ export interface Database {
           is_verified?: boolean;
           is_admin?: boolean;
           is_persona?: boolean;
+          unrestricted_usage?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -92,6 +95,8 @@ export interface Database {
           content_flags: Json;
           subscription_price_cents: number;
           pricing_mode: "free" | "one_time" | "subscription";
+          hosting_fee_cents: number;
+          provisioning_mode: string;
           created_at: string;
           updated_at: string;
         };
@@ -114,6 +119,8 @@ export interface Database {
           content_flags?: Json;
           subscription_price_cents?: number;
           pricing_mode?: "free" | "one_time" | "subscription";
+          hosting_fee_cents?: number;
+          provisioning_mode?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -136,6 +143,8 @@ export interface Database {
           content_flags?: Json;
           subscription_price_cents?: number;
           pricing_mode?: "free" | "one_time" | "subscription";
+          hosting_fee_cents?: number;
+          provisioning_mode?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -1391,6 +1400,39 @@ export interface Database {
           actual_cost_cents?: number;
           billed_cents?: number;
           margin_cents?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      user_documents: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          storage_path: string;
+          mime_type: string | null;
+          size_bytes: number;
+          tags: string[];
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          storage_path: string;
+          mime_type?: string | null;
+          size_bytes?: number;
+          tags?: string[];
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          storage_path?: string;
+          mime_type?: string | null;
+          size_bytes?: number;
+          tags?: string[];
           created_at?: string;
         };
         Relationships: [];

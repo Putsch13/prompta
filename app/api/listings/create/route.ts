@@ -21,6 +21,8 @@ interface CreateListingBody {
   priceCents: number;
   pricingMode?: "free" | "one_time" | "subscription";
   subscriptionPriceCents?: number;
+  hostingFeeCents?: number;
+  provisioningMode?: "manual" | "assisted" | "managed";
   promptBody: string | null;
   manifest?: unknown;
   envFields?: unknown[];
@@ -52,6 +54,8 @@ export async function POST(request: NextRequest) {
     priceCents,
     pricingMode = "free",
     subscriptionPriceCents = 0,
+    hostingFeeCents = 0,
+    provisioningMode = "manual",
     promptBody,
     manifest,
     setupTime,
@@ -121,6 +125,8 @@ export async function POST(request: NextRequest) {
     currency: "eur",
     status,
     content_flags: contentFlags,
+    hosting_fee_cents: Math.max(0, hostingFeeCents),
+    provisioning_mode: provisioningMode,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 

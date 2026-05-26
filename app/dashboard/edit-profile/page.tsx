@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { Loader2, Check } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Check, AlertTriangle } from "lucide-react";
 
 export default function EditProfilePage() {
   const supabase = createClient();
@@ -22,6 +23,17 @@ export default function EditProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState<string | null>(null);
+
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -100,6 +112,50 @@ export default function EditProfilePage() {
 
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordMsg(null);
+    if (newPassword !== confirmPassword) {
+      setPasswordMsg("Les mots de passe ne correspondent pas.");
+      return;
+    }
+    setPasswordSaving(true);
+    const res = await fetch("/api/account/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const data = await res.json();
+    setPasswordSaving(false);
+    if (!res.ok) {
+      setPasswordMsg(data.error ?? "Erreur");
+      return;
+    }
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordMsg("Mot de passe mis à jour.");
+  }
+
+  async function handleDeleteAccount(e: React.FormEvent) {
+    e.preventDefault();
+    setDeleteError(null);
+    setDeleting(true);
+    const res = await fetch("/api/account/delete-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: deleteConfirm, password: deletePassword }),
+    });
+    const data = await res.json();
+    setDeleting(false);
+    if (!res.ok) {
+      setDeleteError(data.error ?? "Suppression échouée");
+      return;
+    }
+    router.push("/");
+    router.refresh();
   }
 
   if (loading) {
@@ -234,6 +290,99 @@ export default function EditProfilePage() {
           )}
         </button>
       </form>
+
+      <section className="mt-12 border-t border-line pt-10">
+        <h2 className="font-display text-lg font-bold text-ink">Sécurité du compte</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          Mot de passe, documents partagés avec vos agents, suppression du compte.
+        </p>
+        <Link
+          href="/dashboard/documents"
+          className="mt-3 inline-block text-sm font-medium text-accent hover:underline"
+        >
+          Gérer mes documents →
+        </Link>
+
+        <form onSubmit={handleChangePassword} className="mt-6 space-y-4 rounded-xl border border-line bg-card p-5">
+          <h3 className="text-sm font-semibold text-ink">Changer le mot de passe</h3>
+          <input
+            type="password"
+            placeholder="Mot de passe actuel"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            className="h-10 w-full rounded-lg border border-line px-3 text-sm"
+          />
+          <input
+            type="password"
+            placeholder="Nouveau mot de passe (min. 8 caractères)"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            minLength={8}
+            required
+            className="h-10 w-full rounded-lg border border-line px-3 text-sm"
+          />
+          <input
+            type="password"
+            placeholder="Confirmer le nouveau mot de passe"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            minLength={8}
+            required
+            className="h-10 w-full rounded-lg border border-line px-3 text-sm"
+          />
+          {passwordMsg && (
+            <p className={`text-sm ${passwordMsg.includes("mis à jour") ? "text-green-700" : "text-destructive"}`}>
+              {passwordMsg}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={passwordSaving}
+            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Mettre à jour le mot de passe"}
+          </button>
+        </form>
+
+        <form
+          onSubmit={handleDeleteAccount}
+          className="mt-6 space-y-4 rounded-xl border border-destructive/30 bg-destructive/5 p-5"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div>
+              <h3 className="text-sm font-semibold text-destructive">Supprimer mon compte</h3>
+              <p className="mt-1 text-xs text-ink-soft">
+                Action irréversible — profil, documents, clés et historique seront effacés.
+              </p>
+            </div>
+          </div>
+          <input
+            type="password"
+            placeholder="Mot de passe (confirmation)"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            className="h-10 w-full rounded-lg border border-line bg-card px-3 text-sm"
+          />
+          <input
+            type="text"
+            placeholder='Tapez SUPPRIMER pour confirmer'
+            value={deleteConfirm}
+            onChange={(e) => setDeleteConfirm(e.target.value)}
+            className="h-10 w-full rounded-lg border border-line bg-card px-3 text-sm"
+          />
+          {deleteError && (
+            <p className="text-sm text-destructive">{deleteError}</p>
+          )}
+          <button
+            type="submit"
+            disabled={deleting || deleteConfirm !== "SUPPRIMER"}
+            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-destructive px-4 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Supprimer définitivement"}
+          </button>
+        </form>
+      </section>
     </div>
   );
 }

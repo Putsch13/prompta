@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Loader2, RotateCcw, Settings } from "lucide-react";
-import { RunStepTimeline } from "@/components/run/RunStepTimeline";
+import { AgentRunConsole } from "@/components/run/AgentRunConsole";
 
 interface RunRow {
   id: string;
@@ -36,10 +37,26 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function RunsHistoryPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-accent" />
+        </div>
+      }
+    >
+      <RunsHistoryContent />
+    </Suspense>
+  );
+}
+
+function RunsHistoryContent() {
+  const searchParams = useSearchParams();
+  const focusRunId = searchParams.get("id");
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [relancing, setRelancing] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(focusRunId);
 
   function loadRuns() {
     fetch("/api/runs")
@@ -51,6 +68,10 @@ export default function RunsHistoryPage() {
   useEffect(() => {
     loadRuns();
   }, []);
+
+  useEffect(() => {
+    if (focusRunId) setExpanded(focusRunId);
+  }, [focusRunId]);
 
   async function handleRetry(run: RunRow) {
     if (!run.listing_id || !run.version_id) return;
@@ -205,13 +226,20 @@ export default function RunsHistoryPage() {
                   )}
                 </div>
               </div>
-              {expanded === run.id && run.output && (
+              {expanded === run.id && run.kind === "agent" && (
+                <div className="mt-3">
+                  <AgentRunConsole
+                    runId={run.id}
+                    status={run.status}
+                    pollWhileRunning={run.status === "running" || run.status === "pending"}
+                    title={run.listing?.title ?? "Agent"}
+                  />
+                </div>
+              )}
+              {expanded === run.id && run.output && run.kind !== "agent" && (
                 <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-card2 p-3 text-xs whitespace-pre-wrap">
                   {run.output}
                 </pre>
-              )}
-              {expanded === run.id && run.kind === "agent" && (
-                <RunStepTimeline runId={run.id} />
               )}
               {run.error_message && (
                 <p className="mt-2 text-xs text-destructive">{run.error_message}</p>

@@ -10,6 +10,9 @@ import { evaluateCondition } from "./condition";
 import { createPendingApproval } from "./approvals";
 import { getRelevantMemories, saveRunMemory } from "./memory";
 import { retrieveFromSource } from "@/lib/data-sources/retrieve";
+import { getUserPrivileges, UNRESTRICTED_LIMITS } from "@/lib/auth/privileges";
+import { ensureAutoResources } from "@/lib/provisioning/ensure-resources";
+import { resolveDocumentFromInputs } from "@/lib/documents/user-documents";
 import {
   logStepStarted,
   logStepSuccess,
@@ -24,6 +27,17 @@ export interface StepUsage {
   model?: string;
   tool?: string;
   connectorAction?: string;
+}
+
+export interface StepTraceEntry {
+  stepIndex: number;
+  stepType: string;
+  label: string;
+  status: "success" | "failed" | "skipped" | "running";
+  outputPreview?: string;
+  durationMs?: number;
+  model?: string;
+  actionSlug?: string;
 }
 
 export interface OrchestratorContext {
@@ -42,6 +56,7 @@ export interface OrchestratorResult {
   output: Record<string, string>;
   error?: string;
   usage?: StepUsage[];
+  stepTrace?: StepTraceEntry[];
   approvalId?: string;
 }
 
@@ -410,6 +425,27 @@ async function executeStep(
   }
 }
 
+function describeStep(step: AgentStep, index: number): string {
+  switch (step.type) {
+    case "llm":
+      return step.model;
+    case "tool":
+      return `Outil ${step.tool}`;
+    case "action":
+      return `${step.connector} → ${step.action}`;
+    case "code":
+      return "Code Python";
+    case "condition":
+      return "Condition";
+    case "approval":
+      return step.label ?? "Approbation";
+    case "retrieve":
+      return `Retrieve ${step.source}`;
+    default:
+      return `Étape ${index + 1}`;
+  }
+}
+
 export async function runAgent(
   manifestRaw: unknown,
   context: OrchestratorContext
@@ -425,27 +461,58 @@ export async function runAgent(
   }
 
   const manifest: AgentManifest = parsed.data;
+  const privileges = await getUserPrivileges(context.userId);
+  const effectiveLimits = privileges.unrestricted
+    ? { ...manifest.limits, ...UNRESTRICTED_LIMITS }
+    : manifest.limits;
+  const manifestWithLimits = { ...manifest, limits: effectiveLimits };
+
+  let runInputs = { ...context.inputs };
+  const docText = await resolveDocumentFromInputs(context.userId, runInputs).catch(() => null);
+  if (docText) {
+    runInputs.file_content = docText;
+    runInputs.document = docText;
+  }
+
+  const provisioned = await ensureAutoResources(
+    manifestWithLimits,
+    {
+      userId: context.userId,
+      agentTitle: context.listingId !== "preview" ? context.listingId : undefined,
+      dryRun: context.dryRun,
+    },
+    runInputs
+  ).catch(() => ({ inputs: runInputs, created: [], logs: [] as string[] }));
+
+  runInputs = provisioned.inputs;
+  if (provisioned.logs.length > 0) {
+    runInputs._provision_logs = provisioned.logs.join("\n");
+  }
+
+  const effectiveContext = { ...context, inputs: runInputs };
   let latestStepsCompleted = 0;
   const memoryEnabled = manifest.memory?.enabled ?? false;
   const startFromStep = (context as OrchestratorContext & { resumeFromStep?: number }).resumeFromStep ?? 0;
 
   const run = async (): Promise<OrchestratorResult> => {
-    const vars = { ...context.inputs };
+    const vars = { ...effectiveContext.inputs };
     const outputs: Record<string, string> = {};
     const usageLog: StepUsage[] = [];
+    const stepTrace: StepTraceEntry[] = [];
     let stepsCompleted = startFromStep;
     let tokensUsed = 0;
     let toolCalls = 0;
     let totalOutputBytes = 0;
     const seenHashes = new Set<string>();
 
-    const maxToolCalls = manifest.limits.max_tool_calls ?? 5;
-    const maxOutputBytes = manifest.limits.max_output_bytes ?? 51200;
+    const maxToolCalls = manifestWithLimits.limits.max_tool_calls ?? 5;
+    const maxOutputBytes = manifestWithLimits.limits.max_output_bytes ?? 51200;
 
     try {
-      for (let i = startFromStep; i < manifest.steps.length; i++) {
-        const step = manifest.steps[i];
-        if (stepsCompleted >= manifest.limits.max_steps) {
+      for (let i = startFromStep; i < manifestWithLimits.steps.length; i++) {
+        const step = manifestWithLimits.steps[i];
+        const stepStartedAt = Date.now();
+        if (stepsCompleted >= manifestWithLimits.limits.max_steps) {
           if (context.runId) {
             await logStepSkipped(
               context.runId, stepsCompleted, `step_${stepsCompleted}`,
@@ -455,12 +522,12 @@ export async function runAgent(
           throw new Error("Plafond max_steps atteint");
         }
 
-        const ctxWithMemory = { ...context, memoryEnabled };
+        const ctxWithMemory = { ...effectiveContext, memoryEnabled };
         const { content, usage } = await executeStepWithRetry(
           step,
           vars,
           ctxWithMemory,
-          manifest.limits.max_tokens,
+          manifestWithLimits.limits.max_tokens,
           i
         );
 
@@ -471,7 +538,7 @@ export async function runAgent(
 
         if (step.type === "llm" && usage) {
           tokensUsed += usage.inputTokens + usage.outputTokens;
-          if (tokensUsed > manifest.limits.max_tokens) {
+          if (tokensUsed > manifestWithLimits.limits.max_tokens) {
             throw new Error("Plafond max_tokens atteint");
           }
           usageLog.push(usage);
@@ -501,6 +568,18 @@ export async function runAgent(
 
         stepsCompleted++;
         latestStepsCompleted = stepsCompleted;
+
+        stepTrace.push({
+          stepIndex: i,
+          stepType: step.type,
+          label: describeStep(step, i),
+          status: "success",
+          outputPreview: content.slice(0, 800),
+          durationMs: Date.now() - stepStartedAt,
+          model: step.type === "llm" ? step.model : usage?.model,
+          actionSlug: step.type === "action" ? step.action : undefined,
+        });
+
         if (context.onProgress) {
           await context.onProgress(stepsCompleted);
         }
@@ -508,20 +587,20 @@ export async function runAgent(
 
       outputs.result = vars[`step_${stepsCompleted - 1}_output`] ?? "";
 
-      if (memoryEnabled && context.runId) {
+      if (memoryEnabled && effectiveContext.runId) {
         const summary = outputs.result.slice(0, 500);
         if (summary) {
           await saveRunMemory({
-            listingId: context.listingId,
-            userId: context.userId,
-            runId: context.runId,
+            listingId: effectiveContext.listingId,
+            userId: effectiveContext.userId,
+            runId: effectiveContext.runId,
             content: summary,
             key: "last_run_result",
           }).catch(() => undefined);
         }
       }
 
-      return { status: "completed", stepsCompleted, output: outputs, usage: usageLog };
+      return { status: "completed", stepsCompleted, output: outputs, usage: usageLog, stepTrace };
     } catch (err) {
       if (err instanceof Error && err.message === "awaiting_approval") {
         const approvalId = (err as Error & { approvalId?: string }).approvalId;
@@ -532,15 +611,16 @@ export async function runAgent(
           error: "En attente d'approbation humaine",
           approvalId,
           usage: usageLog,
+          stepTrace,
         };
       }
       const message = err instanceof Error ? err.message : "Erreur inconnue";
       const status = message.includes("suspendu") ? "suspended" : "failed";
-      return { status, stepsCompleted, output: outputs, error: message, usage: usageLog };
+      return { status, stepsCompleted, output: outputs, error: message, usage: usageLog, stepTrace };
     }
   };
 
-  const timeoutMs = manifest.limits.timeout_ms ?? 60000;
+  const timeoutMs = manifestWithLimits.limits.timeout_ms ?? 60000;
   const timeout = new Promise<OrchestratorResult>((_, reject) =>
     setTimeout(() => reject(new Error("Timeout agent dépassé")), timeoutMs)
   );

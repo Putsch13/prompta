@@ -91,6 +91,7 @@ Règles strictes :
 8. Les steps condition comparent des outputs précédents.
 9. Les steps approval bloquent avant une action risquée.
 10. kind = "prompt" si un seul step LLM, "workflow" si déterministe, "agent" si besoin de décisions.
+11. Chaque variable doit avoir un champ "help" avec un exemple concret (ex. ID Sheets depuis l'URL, nom d'expéditeur Gmail sans mot de passe).
 
 Catalogue d'actions disponibles :
 ${COMPOSIO_CATALOG_COMPRESSED}
@@ -115,7 +116,7 @@ Génère un plan JSON complet avec cette structure :
   "title": "...",
   "description": "...",
   "objective": "...",
-  "variables": [{ "key": "...", "label": "...", "type": "text", "required": true }],
+  "variables": [{ "key": "...", "label": "...", "type": "text", "required": true, "help": "Exemple concret + où trouver l'info" }],
   "requiredConnectors": [{ "connectorId": "gmail", "reason": "...", "requiredActions": ["read_email"] }],
   "steps": [{
     "id": "read_emails",

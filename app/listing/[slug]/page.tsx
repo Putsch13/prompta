@@ -454,6 +454,13 @@ export default async function ListingPage({ params }: Props) {
                 envFields={envFields}
                 requiredSecrets={requiredSecrets}
                 requiredConnectors={requiredConnectors}
+                provisioningMode={
+                  (listing as { provisioning_mode?: string }).provisioning_mode as
+                    | "manual"
+                    | "assisted"
+                    | "managed"
+                    | undefined ?? parsedEnv?.manifest.provisioning?.mode ?? "manual"
+                }
                 stepCount={agentStepCount}
                 pricingMode={listing.pricing_mode}
                 subscriptionPriceCents={listing.subscription_price_cents}

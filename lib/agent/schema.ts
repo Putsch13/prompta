@@ -82,6 +82,13 @@ export const AgentManifestSchema = z.object({
     })
     .default({ max_steps: 10, max_tokens: 8000, timeout_ms: 60000, max_tool_calls: 5, max_output_bytes: 51200 }),
   outputs: z.array(z.string()).default(["result"]),
+  provisioning: z
+    .object({
+      mode: z.enum(["manual", "assisted", "managed"]).default("manual"),
+      autoCreateResources: z.boolean().default(false),
+      deliverables: z.array(z.string()).default([]),
+    })
+    .optional(),
   memory: z
     .object({
       enabled: z.boolean().default(false),

@@ -10,11 +10,15 @@ import {
   Repeat,
   History,
   Coins,
+  Sparkles,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
+  contenus: Sparkles,
+  documents: FileText,
   connexions: Key,
   runs: History,
   credits: Coins,
@@ -32,6 +36,8 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Aperçu", iconKey: "dashboard", exact: true },
+  { href: "/dashboard/contenus", label: "Mes agents/prompts", iconKey: "contenus" },
+  { href: "/dashboard/documents", label: "Documents", iconKey: "documents" },
   { href: "/dashboard/connexions", label: "Connexions", iconKey: "connexions" },
   { href: "/dashboard/runs", label: "Historique runs", iconKey: "runs" },
   { href: "/dashboard/credits", label: "Crédits", iconKey: "credits" },

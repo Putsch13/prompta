@@ -5,12 +5,16 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Trash2, Plus, Loader2, AlertTriangle, Check, Wand2 } from "lucide-react";
 import { StepEditor } from "@/components/builder/StepEditor";
+import { EnvFieldInputs } from "@/components/builder/EnvFieldInputs";
 import { TemplatePicker } from "@/components/builder/TemplatePicker";
 import { AgentIdeaAssistant } from "@/components/builder/AgentIdeaAssistant";
 import { CatalogMultiSelect } from "@/components/builder/CatalogMultiSelect";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { CommissionNote } from "@/components/CommissionNote";
 import { buildManifest } from "@/lib/builder/manifest";
+import { PROVISIONING_OPTIONS, type ProvisioningMode } from "@/lib/builder/provisioning";
+import { AgentRunConsole } from "@/components/run/AgentRunConsole";
+import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 import {
   getGatewayModels,
   getBuilderModels,
@@ -78,6 +82,8 @@ export function CreateWizard({ categories }: Props) {
     output?: Record<string, string>;
     error?: string;
     stepsCompleted?: number;
+    stepTrace?: StepTraceEntry[];
+    runId?: string;
   } | null>(null);
   const [testInputs, setTestInputs] = useState<Record<string, string>>({});
   const [suggestedVars, setSuggestedVars] = useState<string[]>([]);
@@ -131,6 +137,9 @@ export function CreateWizard({ categories }: Props) {
     priceCents: 990,
     pricingMode: "free" as "free" | "one_time" | "subscription",
     subscriptionPriceCents: 990,
+    provisioningMode: "manual" as ProvisioningMode,
+    hostingEnabled: false,
+    hostingFeeCents: 490,
   });
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>();
@@ -310,6 +319,7 @@ export function CreateWizard({ categories }: Props) {
       requiredSecrets: form.requiredSecrets,
       requiredConnectors: form.requiredConnectors,
       defaultModel: form.models[0],
+      provisioningMode: form.provisioningMode,
     });
   }
 
@@ -332,6 +342,8 @@ export function CreateWizard({ categories }: Props) {
         priceCents: form.pricingMode === "free" ? 0 : form.priceCents,
         pricingMode: form.pricingMode,
         subscriptionPriceCents: form.subscriptionPriceCents,
+        hostingFeeCents: form.hostingEnabled ? form.hostingFeeCents : 0,
+        provisioningMode: form.provisioningMode,
         promptBody: form.promptBody,
         manifest,
         setupTime: form.setupTime,
@@ -777,6 +789,45 @@ export function CreateWizard({ categories }: Props) {
             </div>
           </div>
 
+          {(form.type === "agent" || form.type === "workflow") && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+              <p className="text-sm font-semibold text-ink">Expérience utilisateur final</p>
+              <p className="mt-1 text-xs text-ink-soft">
+                Choisissez combien l&apos;agent prépare à la place de l&apos;utilisateur.
+              </p>
+              <div className="mt-3 space-y-2">
+                {PROVISIONING_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.id}
+                    className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
+                      form.provisioningMode === opt.id
+                        ? "border-violet-400 bg-white"
+                        : "border-line bg-card"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="provisioningMode"
+                      checked={form.provisioningMode === opt.id}
+                      onChange={() => {
+                        updateField("provisioningMode", opt.id);
+                        if (opt.id === "managed" && !form.hostingEnabled) {
+                          updateField("hostingEnabled", true);
+                        }
+                      }}
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-ink">{opt.label}</p>
+                      <p className="text-xs text-ink-soft">{opt.description}</p>
+                      <p className="mt-1 text-[11px] text-ink-faint">{opt.forUser}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           <input
             value={form.setupTime}
             onChange={(e) => updateField("setupTime", e.target.value)}
@@ -862,6 +913,48 @@ export function CreateWizard({ categories }: Props) {
               <CommissionNote priceCents={form.subscriptionPriceCents} />
             </>
           )}
+
+          {(form.type === "agent" || form.type === "workflow") && (
+            <div className="rounded-xl border border-line bg-card2 p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={form.hostingEnabled}
+                  onChange={(e) => updateField("hostingEnabled", e.target.checked)}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="text-sm font-medium text-ink">Frais d&apos;hébergement Prompta</p>
+                  <p className="mt-1 text-xs text-ink-soft">
+                    Facturation mensuelle pour exécuter, stocker et maintenir l&apos;agent actif
+                    (recommandé en mode clé en main).
+                  </p>
+                </div>
+              </label>
+              {form.hostingEnabled && (
+                <div className="mt-3">
+                  <label className="text-xs text-ink-soft">Montant mensuel (€)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={form.hostingFeeCents / 100}
+                    onChange={(e) =>
+                      updateField(
+                        "hostingFeeCents",
+                        Math.round(parseFloat(e.target.value || "0") * 100)
+                      )
+                    }
+                    className="mt-1 h-10 w-full rounded-lg border border-line px-3"
+                  />
+                  <p className="mt-1 text-[11px] text-ink-faint">
+                    Ex. 4,90 €/mois — couvre runtime, logs, connexions et mises à jour de
+                    l&apos;agent publié.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -913,34 +1006,33 @@ export function CreateWizard({ categories }: Props) {
           )}
 
           {form.envFields.filter((f) => f.key).length > 0 && (
-            <div className="mt-4 space-y-2">
-              {form.envFields.filter((f) => f.key).map((f) => (
-                <div key={f.key}>
-                  <label className="text-xs font-medium text-ink">
-                    {f.label || f.key}
-                    {f.required && " *"}
-                  </label>
-                  {f.help && <p className="text-[11px] text-ink-faint">{f.help}</p>}
-                  {f.type === "textarea" ? (
-                    <textarea
-                      value={testInputs[f.key] ?? ""}
-                      onChange={(e) =>
-                        setTestInputs((prev) => ({ ...prev, [f.key]: e.target.value }))
-                      }
-                      rows={3}
-                      className="mt-1 w-full rounded-lg border border-line px-3 py-2 text-sm"
-                    />
-                  ) : (
-                    <input
-                      value={testInputs[f.key] ?? ""}
-                      onChange={(e) =>
-                        setTestInputs((prev) => ({ ...prev, [f.key]: e.target.value }))
-                      }
-                      className="mt-1 h-10 w-full rounded-lg border border-line px-3 text-sm"
-                    />
-                  )}
-                </div>
-              ))}
+            <EnvFieldInputs
+              fields={form.envFields}
+              values={testInputs}
+              onChange={(key, value) =>
+                setTestInputs((prev) => ({ ...prev, [key]: value }))
+              }
+              requiredConnectors={Array.from(
+                new Set([
+                  ...form.requiredConnectors,
+                  ...connectorsForSteps(form.agentSteps),
+                ])
+              )}
+              provisioningMode={form.provisioningMode}
+            />
+          )}
+
+          {(testRunning || testResult) && (
+            <div className="mt-4">
+              <AgentRunConsole
+                runId={testResult?.runId}
+                status={testRunning ? "running" : testResult?.status}
+                stepsCompleted={testResult?.stepsCompleted ?? 0}
+                totalSteps={form.agentSteps.length}
+                stepTrace={testResult?.stepTrace}
+                pollWhileRunning={testRunning}
+                title="Travail de l'agent en direct"
+              />
             </div>
           )}
 
@@ -953,27 +1045,18 @@ export function CreateWizard({ categories }: Props) {
             {testRunning ? "Exécution…" : "Lancer le test"}
           </button>
 
-          {testResult && (
-            <div className="mt-4 rounded-lg border border-line bg-card2 p-4">
-              <p className="text-sm font-medium text-ink">
-                Statut :{" "}
-                <span className={testResult.status === "completed" ? "text-green-600" : "text-red-600"}>
-                  {testResult.status}
-                </span>
-                {testResult.stepsCompleted != null && (
-                  <span className="text-ink-soft"> · {testResult.stepsCompleted} étape(s)</span>
-                )}
-              </p>
-              {testResult.output &&
-                Object.entries(testResult.output).map(([k, v]) => (
-                  <div key={k} className="mt-2">
-                    <p className="text-xs font-medium text-ink-soft">{k}</p>
-                    <pre className="max-h-32 overflow-auto font-mono text-xs whitespace-pre-wrap">{v}</pre>
-                  </div>
-                ))}
-              {testResult.error && (
-                <p className="mt-2 text-sm text-destructive">{testResult.error}</p>
-              )}
+          {testResult?.error && (
+            <p className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-destructive">
+              {testResult.error}
+            </p>
+          )}
+
+          {testResult?.status === "completed" && testResult.output?.result && (
+            <div className="mt-4 rounded-xl border border-line bg-card p-4">
+              <p className="text-xs font-bold uppercase text-ink-soft">Livrable final</p>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-sm text-ink">
+                {testResult.output.result}
+              </pre>
             </div>
           )}
         </div>

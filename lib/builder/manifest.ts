@@ -1,6 +1,8 @@
 import type { AgentManifest, AgentStep, AgentKind, ExecutionMode } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 import { connectorsForSteps } from "@/lib/connectors/registry";
+import { enrichEnvField } from "@/lib/builder/env-field-hints";
+import { managedDeliverables } from "@/lib/builder/provisioning";
 
 export interface EnvFieldInput {
   key: string;
@@ -20,6 +22,7 @@ export interface BuildManifestParams {
   requiredSecrets: KeyProvider[];
   requiredConnectors?: string[];
   defaultModel?: string;
+  provisioningMode?: "manual" | "assisted" | "managed";
 }
 
 const LONG_TOOLS = new Set(["http_fetch", "file_read"]);
@@ -44,18 +47,23 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
       : inferredKind === "workflow" ? "deterministic"
       : "semi_autonomous");
 
+  const provisioningMode = params.provisioningMode ?? "manual";
+
   return {
     kind: inferredKind,
     executionMode: inferredMode,
     inputs: params.envFields
       .filter((f) => f.key.trim())
-      .map((f) => ({
-        key: f.key,
-        label: f.label || f.key,
-        type: f.type ?? ("text" as const),
-        required: f.required,
-        help: f.help,
-      })),
+      .map((f) => {
+        const enriched = enrichEnvField(f);
+        return {
+          key: f.key,
+          label: f.label || f.key,
+          type: enriched.type ?? f.type ?? ("text" as const),
+          required: f.required,
+          help: f.help?.trim() ? f.help : enriched.help,
+        };
+      }),
     secrets: [...params.requiredSecrets],
     connectors: Array.from(
       new Set([...connectorsForSteps(steps), ...(params.requiredConnectors ?? [])])
@@ -70,6 +78,17 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
       max_output_bytes: 51200,
     },
     outputs: ["result"],
+    provisioning:
+      params.type === "prompt"
+        ? undefined
+        : {
+            mode: provisioningMode,
+            autoCreateResources: provisioningMode !== "manual",
+            deliverables:
+              provisioningMode === "managed"
+                ? managedDeliverables({ steps, inputs: [], secrets: [], connectors: [], tools: [], limits: {} as AgentManifest["limits"], outputs: [] })
+                : [],
+          },
   };
 }
 

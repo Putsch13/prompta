@@ -4,13 +4,19 @@ import { useState, useEffect, useCallback } from "react";
 import { Copy, Play, Check, AlertTriangle, Settings } from "lucide-react";
 import { UserSetupWizard } from "@/components/onboarding/UserSetupWizard";
 import { ConnectionsMasque } from "@/components/run/ConnectionsMasque";
-import { RunStepTimeline } from "@/components/run/RunStepTimeline";
+import { AgentRunConsole } from "@/components/run/AgentRunConsole";
 import { estimateMaxCost } from "@/lib/billing/run-cost";
 import { costToCredits, creditsToEur } from "@/lib/billing/credits";
 
+import { extractInputVariables } from "@/lib/builder/variables";
+import { EnvFieldInputs } from "@/components/builder/EnvFieldInputs";
+
 interface EnvField {
   key: string;
+  label?: string;
   description: string;
+  help?: string;
+  type?: "text" | "textarea" | "number" | "file" | "list";
   required: boolean;
 }
 
@@ -24,6 +30,7 @@ interface Props {
   envFields?: EnvField[];
   requiredSecrets?: string[];
   requiredConnectors?: string[];
+  provisioningMode?: "manual" | "assisted" | "managed";
   stepCount?: number;
   pricingMode?: string;
   subscriptionPriceCents?: number;
@@ -48,16 +55,16 @@ const PROVIDER_LABELS: Record<string, string> = {
   serper: "Serper.dev",
 };
 
-import { extractInputVariables } from "@/lib/builder/variables";
-
 export function RunPanel({
   listingId,
   versionId,
+  title,
   promptBody,
   models,
   envFields = [],
   requiredSecrets = [],
   requiredConnectors = [],
+  provisioningMode = "manual",
   stepCount = 3,
   pricingMode,
   subscriptionPriceCents = 0,
@@ -396,21 +403,31 @@ export function RunPanel({
             </p>
           )}
 
-          {varNames.length > 0 && (
-            <div className="mt-4 space-y-2">
-              {varNames.map((v) => (
-                <div key={v}>
-                  <label className="text-xs text-ink-soft">{v}</label>
-                  <input
-                    value={variables[v] ?? ""}
-                    onChange={(e) =>
-                      setVariables((prev) => ({ ...prev, [v]: e.target.value }))
-                    }
-                    className="mt-1 h-10 w-full rounded-lg border border-line px-3 text-sm"
-                  />
-                </div>
-              ))}
-            </div>
+          {(envFields.length > 0 || varNames.length > 0) && (
+            <EnvFieldInputs
+              fields={
+                envFields.length > 0
+                  ? envFields.map((f) => ({
+                      key: f.key,
+                      label: f.label ?? f.description,
+                      help: f.help,
+                      type: f.type,
+                      required: f.required,
+                    }))
+                  : varNames.map((key) => ({
+                      key,
+                      label: key,
+                      required: true,
+                    }))
+              }
+              values={variables}
+              onChange={(key, value) =>
+                setVariables((prev) => ({ ...prev, [key]: value }))
+              }
+              requiredConnectors={requiredConnectors}
+              provisioningMode={provisioningMode}
+              title="Variables d'entrée"
+            />
           )}
 
           <div className="mt-4">
@@ -487,79 +504,30 @@ export function RunPanel({
             </p>
           )}
 
-          {agentStatus && (
-            <div className="mt-4 rounded-lg border border-line bg-card2 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">
-                  Statut :{" "}
-                  <span
-                    className={
-                      agentStatus === "completed"
-                        ? "text-green-600"
-                        : agentStatus === "failed" || agentStatus === "suspended"
-                          ? "text-red-600"
-                          : "text-amber-600"
-                    }
-                  >
-                    {agentStatus === "pending" && "En attente…"}
-                    {agentStatus === "running" && "Exécution en cours…"}
-                    {agentStatus === "queued" && "En file d'attente…"}
-                    {agentStatus === "completed" && "Terminé ✓"}
-                    {agentStatus === "failed" && "Échoué ✗"}
-                    {agentStatus === "suspended" && "Suspendu"}
-                  </span>
-                </p>
-                <div className="flex items-center gap-2">
-                  {stepsCompleted != null && stepsCompleted > 0 && (
-                    <span className="text-xs text-ink-soft">
-                      Étape {stepsCompleted} complétée
-                    </span>
-                  )}
-                  {runId && agentStatus === "completed" && (
-                    <a
-                      href={`/dashboard/runs?id=${runId}`}
-                      className="text-xs text-accent hover:underline"
-                    >
-                      Voir le détail
-                    </a>
-                  )}
-                </div>
-              </div>
-              {(agentStatus === "pending" || agentStatus === "running" || agentStatus === "queued") && (
-                <div className="mt-2">
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-line">
-                    <div
-                      className="h-full bg-accent transition-all duration-500"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          stepsCompleted != null && stepCount > 0
-                            ? Math.round((stepsCompleted / stepCount) * 100)
-                            : agentStatus === "queued"
-                              ? 15
-                              : 40
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-ink-faint">
-                    {agentStatus === "queued"
-                      ? "En file d'attente — le worker va démarrer l'exécution…"
-                      : stepsCompleted != null && stepsCompleted > 0
-                        ? `Étape ${stepsCompleted} / ${stepCount} complétée(s)…`
-                        : "Exécution en cours…"}
-                  </p>
-                </div>
+          {(running || agentStatus) && (
+            <div className="mt-4">
+              <AgentRunConsole
+                runId={runId ?? undefined}
+                status={agentStatus}
+                stepsCompleted={stepsCompleted ?? 0}
+                totalSteps={stepCount}
+                pollWhileRunning={
+                  running ||
+                  agentStatus === "running" ||
+                  agentStatus === "queued" ||
+                  agentStatus === "pending"
+                }
+                title={`Exécution — ${title}`}
+              />
+              {runId && agentStatus === "completed" && (
+                <a
+                  href={`/dashboard/runs?id=${runId}`}
+                  className="mt-2 inline-block text-xs text-accent hover:underline"
+                >
+                  Voir dans l&apos;historique →
+                </a>
               )}
             </div>
-          )}
-
-          {runId && (
-            <RunStepTimeline
-              runId={runId}
-              pollWhileRunning={running || agentStatus === "running" || agentStatus === "queued" || agentStatus === "pending"}
-              isRunning={running || agentStatus === "running" || agentStatus === "queued" || agentStatus === "pending"}
-            />
           )}
 
           {agentOutput && (
