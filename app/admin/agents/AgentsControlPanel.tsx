@@ -94,6 +94,42 @@ export default function AgentsControlPanel({
     }
   };
 
+  const toggleAgent = async (slug: string, enabled: boolean) => {
+    setBusy(`toggle-${slug}`);
+    try {
+      const res = await fetch(`/api/admin/agents/${slug}/toggle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await res.json();
+      flash(data.ok ? `✅ Agent ${enabled ? "activé" : "désactivé"}` : `❌ ${data.error}`);
+      router.refresh();
+    } catch {
+      flash("❌ Erreur réseau");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const testAgent = async (slug: string) => {
+    setBusy(`test-${slug}`);
+    try {
+      const res = await fetch(`/api/admin/agents/${slug}/test`, { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        flash(`✅ Test OK — ${data.reason}`);
+      } else {
+        const reasons = data.reasons?.join(", ") ?? data.reason ?? data.error;
+        flash(`⚠️ Bloqué : ${reasons}`);
+      }
+    } catch {
+      flash("❌ Erreur réseau");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const reviewOutput = async (outputId: string, action: "approve" | "reject") => {
     setBusy(outputId);
     try {
@@ -259,23 +295,39 @@ export default function AgentsControlPanel({
                     Max {a.max_runs_per_day} exécution(s)/jour
                   </p>
                 </div>
-                <button
-                  onClick={() => runAgent(a.slug)}
-                  disabled={busy === a.slug || !a.is_enabled}
-                  className="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
-                  style={{
-                    background: a.is_enabled ? "#0A66C2" : "#E4E1D8",
-                    color: a.is_enabled ? "#fff" : "#9E9B90",
-                  }}
-                >
-                  {busy === a.slug ? "⏳ En cours…" : "▶ Lancer"}
-                </button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    onClick={() => toggleAgent(a.slug, !a.is_enabled)}
+                    disabled={busy === `toggle-${a.slug}`}
+                    className="rounded-lg border border-[#E4E1D8] px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                  >
+                    {a.is_enabled ? "Désactiver" : "Activer"}
+                  </button>
+                  <button
+                    onClick={() => testAgent(a.slug)}
+                    disabled={busy === `test-${a.slug}`}
+                    className="rounded-lg border border-[#E4E1D8] px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                  >
+                    {busy === `test-${a.slug}` ? "⏳" : "Test dry-run"}
+                  </button>
+                  <button
+                    onClick={() => runAgent(a.slug)}
+                    disabled={busy === a.slug || !a.is_enabled}
+                    className="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
+                    style={{
+                      background: a.is_enabled ? "#0A66C2" : "#E4E1D8",
+                      color: a.is_enabled ? "#fff" : "#9E9B90",
+                    }}
+                  >
+                    {busy === a.slug ? "⏳ En cours…" : "▶ Lancer"}
+                  </button>
+                </div>
               </div>
             </div>
           ))}
           <p className="text-xs text-[#9E9B90]">
-            💡 Active/désactive un agent et modifie sa config dans Supabase
-            (table <code>agent_definitions</code>) ou ajoute un toggle ici.
+            Activez/désactivez un agent, testez la config (dry-run), puis lancez manuellement.
+            Si bloqué : vérifiez ANTHROPIC_API_KEY, AGENT_MODEL, mode sandbox/live et le worker.
           </p>
         </div>
       )}

@@ -37,11 +37,20 @@ export const GeneratedAgentPlanSchema = z.object({
     type: z.enum(["manual", "schedule", "webhook", "email", "app_event"]),
     config: z.record(z.string(), z.any()).optional(),
   })).default([{ type: "manual" }]),
-  policies: z.object({
-    maxIterations: z.number().default(1),
-    budgetCents: z.number().optional(),
-    requireHumanApprovalForExternalActions: z.boolean().default(true),
-  }).default({ maxIterations: 1, requireHumanApprovalForExternalActions: true }),
+  policies: z
+    .object({
+      maxIterations: z.number().default(1),
+      budgetCents: z.number().optional(),
+      requireHumanApprovalForExternalActions: z.boolean().default(true),
+      memoryEnabled: z.boolean().default(false),
+    })
+    .default({ maxIterations: 1, requireHumanApprovalForExternalActions: true, memoryEnabled: false }),
+  memory: z
+    .object({
+      enabled: z.boolean().default(false),
+      maxMemories: z.number().default(10),
+    })
+    .optional(),
 });
 
 export type GeneratedAgentPlan = z.infer<typeof GeneratedAgentPlanSchema>;

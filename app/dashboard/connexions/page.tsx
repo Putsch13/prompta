@@ -2,8 +2,10 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, Trash2, RefreshCw, Check, AlertTriangle, ExternalLink } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Check, AlertTriangle } from "lucide-react";
 import { UserSetupWizard } from "@/components/onboarding/UserSetupWizard";
+import { ComposioCatalog } from "@/components/connections/ComposioCatalog";
+import type { ComposioToolkitEntry } from "@/lib/composio/catalog";
 
 interface KeyRecord {
   id: string;
@@ -18,12 +20,6 @@ interface ConnectionRecord {
   status: string;
 }
 
-interface ToolkitEntry {
-  id: string;
-  label: string;
-  authType: string;
-}
-
 const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
@@ -36,7 +32,7 @@ function ConnexionsContent() {
   const searchParams = useSearchParams();
   const [keys, setKeys] = useState<KeyRecord[]>([]);
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
-  const [toolkits, setToolkits] = useState<ToolkitEntry[]>([]);
+  const [toolkits, setToolkits] = useState<ComposioToolkitEntry[]>([]);
   const [composioEnabled, setComposioEnabled] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [rotateProvider, setRotateProvider] = useState<string | undefined>();
@@ -62,13 +58,7 @@ function ConnexionsContent() {
     if (tkRes.ok) {
       const data = await tkRes.json();
       setComposioEnabled(Boolean(data.enabled));
-      setToolkits(
-        (data.toolkits ?? []).slice(0, 50).map((t: ToolkitEntry) => ({
-          id: t.id,
-          label: t.label,
-          authType: t.authType,
-        }))
-      );
+      setToolkits(data.toolkits ?? []);
     }
   }
 
@@ -116,10 +106,6 @@ function ConnexionsContent() {
     }
   }
 
-  const popularToolkits = toolkits.filter((t) =>
-    ["gmail", "googlesheets", "slack", "notion", "github", "telegram", "hubspot"].includes(t.id)
-  );
-
   return (
     <div>
       {toast && (
@@ -132,7 +118,7 @@ function ConnexionsContent() {
         <div>
           <h1 className="font-display text-3xl font-bold text-ink">Mes connexions</h1>
           <p className="mt-2 text-ink-soft">
-            Clés LLM (BYOK) et comptes connectés pour vos agents.
+            Catalogue 360° — connectez Gmail, Notion, HubSpot, Slack, Shopify et 800+ apps via Composio.
           </p>
         </div>
         <button
@@ -148,7 +134,7 @@ function ConnexionsContent() {
       </div>
 
       <section className="mb-10">
-        <h2 className="mb-3 font-display text-lg font-semibold text-ink">Clés API LLM</h2>
+        <h2 className="mb-3 font-display text-lg font-semibold text-ink">Clés API LLM (BYOK)</h2>
         {keys.length === 0 ? (
           <div className="rounded-xl border border-line bg-card p-8 text-center">
             <p className="text-ink-soft">Aucune clé configurée</p>
@@ -214,15 +200,15 @@ function ConnexionsContent() {
       </section>
 
       <section>
-        <h2 className="mb-1 font-display text-lg font-semibold text-ink">Apps connectées</h2>
+        <h2 className="mb-1 font-display text-lg font-semibold text-ink">Apps & intégrations</h2>
         <p className="mb-4 text-sm text-ink-soft">
           {composioEnabled
-            ? "OAuth géré via Composio — connectez Gmail, Notion, Slack, etc."
-            : "Configurez COMPOSIO_API_KEY pour débloquer 800+ intégrations."}
+            ? "Recherchez, connectez et testez vos applications."
+            : "Configurez COMPOSIO_API_KEY pour débloquer le catalogue complet."}
         </p>
 
-        <div className="mb-4 rounded-xl border border-line bg-card2 p-4">
-          <p className="text-sm font-medium text-ink">Telegram (token bot)</p>
+        <div className="mb-6 rounded-xl border border-line bg-card2 p-4">
+          <p className="text-sm font-medium text-ink">Telegram (token bot — natif)</p>
           <p className="mb-2 text-xs text-ink-faint">Créez un bot via @BotFather, puis collez le token ici.</p>
           <div className="flex gap-2">
             <input
@@ -247,33 +233,11 @@ function ConnexionsContent() {
           )}
         </div>
 
-        {composioEnabled && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {(popularToolkits.length ? popularToolkits : toolkits.slice(0, 12)).map((tk) => {
-              const ok = connections.some(
-                (c) => c.connectorId === tk.id && c.status === "connected"
-              );
-              return (
-                <div
-                  key={tk.id}
-                  className="flex items-center justify-between rounded-xl border border-line bg-card px-4 py-3"
-                >
-                  <span className="text-sm font-medium text-ink">{tk.label}</span>
-                  {ok ? (
-                    <span className="flex items-center gap-1 text-xs text-green-600">
-                      <Check className="h-3 w-3" /> OK
-                    </span>
-                  ) : (
-                    <a
-                      href={`/api/connectors/${tk.id}/connect`}
-                      className="flex items-center gap-1 text-xs text-accent hover:underline"
-                    >
-                      Connecter <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-              );
-            })}
+        {composioEnabled ? (
+          <ComposioCatalog toolkits={toolkits} connections={connections} onRefresh={loadAll} />
+        ) : (
+          <div className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-ink-soft">
+            Ajoutez COMPOSIO_API_KEY dans vos variables d&apos;environnement pour afficher le catalogue.
           </div>
         )}
       </section>

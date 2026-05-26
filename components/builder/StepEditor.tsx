@@ -27,7 +27,7 @@ interface Props {
   envFields?: EnvFieldRef[];
 }
 
-type StepCategory = "llm" | "tool" | "action" | "code";
+type StepCategory = "llm" | "tool" | "action" | "code" | "condition" | "approval" | "retrieve";
 
 function stepBadge(step: AgentStep): string {
   if (step.type === "llm") return "LLM";
@@ -42,6 +42,9 @@ function stepIcon(type: StepCategory) {
     case "tool": return <Search className="h-4 w-4" />;
     case "action": return <Zap className="h-4 w-4" />;
     case "code": return <Code className="h-4 w-4" />;
+    case "condition": return <Search className="h-4 w-4" />;
+    case "approval": return <Zap className="h-4 w-4" />;
+    case "retrieve": return <Search className="h-4 w-4" />;
   }
 }
 

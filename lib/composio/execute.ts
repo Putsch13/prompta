@@ -1,11 +1,25 @@
-import { getComposioClient } from "./client";
+import { getComposioClient, isComposioEnabled } from "./client";
+import { parseComposioError, type ComposioErrorResult } from "./errors";
+import { getUserConnection } from "@/lib/connections";
+
+export class ComposioExecutionError extends Error {
+  readonly details: ComposioErrorResult;
+
+  constructor(details: ComposioErrorResult) {
+    super(details.message);
+    this.name = "ComposioExecutionError";
+    this.details = details;
+  }
+}
 
 export async function executeComposioTool(
   toolSlug: string,
   userId: string,
-  arguments_: Record<string, string>
+  arguments_: Record<string, string>,
+  options?: { toolkitSlug?: string; actionVersion?: string }
 ): Promise<{ output: string; metadata?: Record<string, unknown> }> {
   const composio = getComposioClient();
+  const toolkitSlug = options?.toolkitSlug ?? toolSlug.split("_")[0]?.toLowerCase();
 
   const parsedArgs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(arguments_)) {
@@ -17,23 +31,50 @@ export async function executeComposioTool(
     }
   }
 
-  const result = await composio.tools.execute(toolSlug, {
-    userId,
-    arguments: parsedArgs,
-  });
+  try {
+    const result = await composio.tools.execute(toolSlug, {
+      userId,
+      arguments: parsedArgs,
+      ...(options?.actionVersion ? { version: options.actionVersion } : {}),
+    });
 
-  const successful = (result as { successful?: boolean }).successful ?? true;
-  if (!successful) {
-    const err =
-      (result as { error?: string }).error ??
-      (result as { message?: string }).message ??
-      "Échec Composio";
-    throw new Error(`Composio ${toolSlug} : ${err}`);
+    const successful = (result as { successful?: boolean }).successful ?? true;
+    if (!successful) {
+      const errMsg =
+        (result as { error?: string }).error ??
+        (result as { message?: string }).message ??
+        "Échec Composio";
+      throw new ComposioExecutionError(
+        parseComposioError(new Error(errMsg), toolSlug, toolkitSlug)
+      );
+    }
+
+    const data = (result as { data?: unknown }).data ?? result;
+    const output =
+      typeof data === "string" ? data : JSON.stringify(data, null, 2).slice(0, 12000);
+
+    return {
+      output,
+      metadata: { composio: true, toolSlug, toolkitSlug, actionVersion: options?.actionVersion },
+    };
+  } catch (err) {
+    if (err instanceof ComposioExecutionError) throw err;
+    throw new ComposioExecutionError(parseComposioError(err, toolSlug, toolkitSlug));
+  }
+}
+
+export async function testComposioConnection(
+  userId: string,
+  toolkitSlug: string
+): Promise<{ connected: boolean; provider: "composio" | "native"; accountId?: string; error?: string }> {
+  if (!isComposioEnabled()) {
+    return { connected: false, provider: "native", error: "COMPOSIO_API_KEY non configurée" };
   }
 
-  const data = (result as { data?: unknown }).data ?? result;
-  const output =
-    typeof data === "string" ? data : JSON.stringify(data, null, 2).slice(0, 12000);
+  const conn = await getUserConnection(userId, toolkitSlug);
+  if (conn) {
+    return { connected: true, provider: "composio", accountId: conn.accessToken.slice(0, 12) };
+  }
 
-  return { output, metadata: { composio: true, toolSlug } };
+  return { connected: false, provider: "composio", error: `Connectez ${toolkitSlug} d'abord` };
 }

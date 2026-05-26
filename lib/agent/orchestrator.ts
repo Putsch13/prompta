@@ -6,6 +6,10 @@ import { AgentManifestSchema, type AgentManifest, type AgentStep } from "./schem
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
 import { logRunActivity } from "./activity-log";
 import { runCodeInSandbox } from "./sandbox";
+import { evaluateCondition } from "./condition";
+import { createPendingApproval } from "./approvals";
+import { getRelevantMemories, saveRunMemory } from "./memory";
+import { retrieveFromSource } from "@/lib/data-sources/retrieve";
 import {
   logStepStarted,
   logStepSuccess,
@@ -33,11 +37,12 @@ export interface OrchestratorContext {
 }
 
 export interface OrchestratorResult {
-  status: "completed" | "failed" | "suspended";
+  status: "completed" | "failed" | "suspended" | "awaiting_approval";
   stepsCompleted: number;
   output: Record<string, string>;
   error?: string;
   usage?: StepUsage[];
+  approvalId?: string;
 }
 
 function resolveJsonPath(obj: string, path: string): string {
@@ -84,6 +89,33 @@ function extractErrorCode(err: unknown): string {
   return "provider_error";
 }
 
+const RETRYABLE_CODES = new Set(["rate_limit", "timeout", "provider_error"]);
+
+async function executeStepWithRetry(
+  step: AgentStep,
+  vars: Record<string, string>,
+  ctx: OrchestratorContext,
+  maxTokens: number,
+  stepIndex: number,
+  maxAttempts = 2
+): Promise<{ content: string; usage?: StepUsage; awaitingApproval?: string }> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await executeStep(step, vars, ctx, maxTokens, stepIndex);
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof Error && err.message === "awaiting_approval") {
+        throw err;
+      }
+      const code = extractErrorCode(err);
+      if (attempt >= maxAttempts || !RETRYABLE_CODES.has(code)) throw err;
+      await new Promise((r) => setTimeout(r, 1000 * attempt));
+    }
+  }
+  throw lastErr;
+}
+
 async function executeStep(
   step: AgentStep,
   vars: Record<string, string>,
@@ -101,7 +133,13 @@ async function executeStep(
       ? `Outil ${step.tool}`
       : sType === "action"
         ? `Action ${step.action}`
-        : "Code sandbox";
+        : sType === "condition"
+          ? "Condition"
+          : sType === "approval"
+            ? `Approbation ${step.label ?? ""}`.trim()
+            : sType === "retrieve"
+              ? `Retrieve ${step.source}`
+              : "Code sandbox";
 
   const resolved = sType === "llm" ? resolveModelOrDefault(step.model) : null;
 
@@ -137,10 +175,19 @@ async function executeStep(
         await updateStepInput(stepDbId, { prompt: prompt.slice(0, 500) }).catch(() => undefined);
       }
 
+      let memoryContext = "";
+      const memEnabled = (ctx as OrchestratorContext & { memoryEnabled?: boolean }).memoryEnabled;
+      if (memEnabled && ctx.listingId) {
+        const memories = await getRelevantMemories(ctx.listingId, ctx.userId, prompt, 3);
+        if (memories.length) {
+          memoryContext = `\n\nContexte mémoire:\n${memories.join("\n---\n")}`;
+        }
+      }
+
       const result = await callModel({
         provider,
         model: apiModel,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: prompt + memoryContext }],
         apiKey,
         maxTokens: Math.min(maxTokens, 4096),
         tokenParam,
@@ -293,6 +340,65 @@ async function executeStep(
       return { content: output };
     }
 
+    if (step.type === "condition") {
+      const expr = interpolate(step.expression, vars);
+      const result = evaluateCondition(expr, vars);
+      const content = JSON.stringify({ result, expression: expr });
+      if (runId && stepDbId) {
+        await logStepSuccess(stepDbId, content, undefined, stepStartedAt).catch(() => undefined);
+      }
+      return { content };
+    }
+
+    if (step.type === "retrieve") {
+      const query = interpolate(step.query, vars);
+      if (simulated) {
+        const preview = `[APERÇU — retrieve ${step.source}]\nQuery: ${query}`;
+        if (runId && stepDbId) {
+          await logStepSuccess(stepDbId, preview, undefined, stepStartedAt).catch(() => undefined);
+        }
+        return { content: preview };
+      }
+      const retrieved = await retrieveFromSource({
+        source: step.source,
+        query,
+        maxResults: step.maxResults,
+        userId: ctx.userId,
+        fileContent: vars.file_content,
+      });
+      const content = JSON.stringify({ data: retrieved.content, sources: retrieved.sources });
+      if (runId && stepDbId) {
+        await logStepSuccess(stepDbId, content.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
+      }
+      return { content };
+    }
+
+    if (step.type === "approval") {
+      const payloadText = step.payloadTemplate
+        ? interpolate(step.payloadTemplate, vars)
+        : JSON.stringify(Object.fromEntries(Object.entries(vars).slice(0, 10)));
+      if (simulated) {
+        const preview = `[APERÇU — approbation requise]\n${payloadText.slice(0, 500)}`;
+        if (runId && stepDbId) {
+          await logStepSuccess(stepDbId, preview, undefined, stepStartedAt).catch(() => undefined);
+        }
+        return { content: preview };
+      }
+      if (!runId) throw new Error("Approbation requiert un runId");
+      const approvalId = await createPendingApproval({
+        runId,
+        stepIndex,
+        payload: { label: step.label, preview: payloadText.slice(0, 2000) },
+        expiresInMinutes: step.expiresInMinutes,
+      });
+      if (stepDbId) {
+        await logStepSuccess(stepDbId, "En attente d'approbation", undefined, stepStartedAt).catch(() => undefined);
+      }
+      const err = new Error("awaiting_approval");
+      (err as Error & { approvalId?: string }).approvalId = approvalId;
+      throw err;
+    }
+
     throw new Error("Étape inconnue");
   } catch (err) {
     if (runId && stepDbId) {
@@ -320,12 +426,14 @@ export async function runAgent(
 
   const manifest: AgentManifest = parsed.data;
   let latestStepsCompleted = 0;
+  const memoryEnabled = manifest.memory?.enabled ?? false;
+  const startFromStep = (context as OrchestratorContext & { resumeFromStep?: number }).resumeFromStep ?? 0;
 
   const run = async (): Promise<OrchestratorResult> => {
     const vars = { ...context.inputs };
     const outputs: Record<string, string> = {};
     const usageLog: StepUsage[] = [];
-    let stepsCompleted = 0;
+    let stepsCompleted = startFromStep;
     let tokensUsed = 0;
     let toolCalls = 0;
     let totalOutputBytes = 0;
@@ -335,7 +443,8 @@ export async function runAgent(
     const maxOutputBytes = manifest.limits.max_output_bytes ?? 51200;
 
     try {
-      for (const step of manifest.steps) {
+      for (let i = startFromStep; i < manifest.steps.length; i++) {
+        const step = manifest.steps[i];
         if (stepsCompleted >= manifest.limits.max_steps) {
           if (context.runId) {
             await logStepSkipped(
@@ -346,12 +455,13 @@ export async function runAgent(
           throw new Error("Plafond max_steps atteint");
         }
 
-        const { content, usage } = await executeStep(
+        const ctxWithMemory = { ...context, memoryEnabled };
+        const { content, usage } = await executeStepWithRetry(
           step,
           vars,
-          context,
+          ctxWithMemory,
           manifest.limits.max_tokens,
-          stepsCompleted
+          i
         );
 
         if (step.type === "tool" || step.type === "action") {
@@ -398,8 +508,32 @@ export async function runAgent(
 
       outputs.result = vars[`step_${stepsCompleted - 1}_output`] ?? "";
 
+      if (memoryEnabled && context.runId) {
+        const summary = outputs.result.slice(0, 500);
+        if (summary) {
+          await saveRunMemory({
+            listingId: context.listingId,
+            userId: context.userId,
+            runId: context.runId,
+            content: summary,
+            key: "last_run_result",
+          }).catch(() => undefined);
+        }
+      }
+
       return { status: "completed", stepsCompleted, output: outputs, usage: usageLog };
     } catch (err) {
+      if (err instanceof Error && err.message === "awaiting_approval") {
+        const approvalId = (err as Error & { approvalId?: string }).approvalId;
+        return {
+          status: "awaiting_approval",
+          stepsCompleted,
+          output: outputs,
+          error: "En attente d'approbation humaine",
+          approvalId,
+          usage: usageLog,
+        };
+      }
       const message = err instanceof Error ? err.message : "Erreur inconnue";
       const status = message.includes("suspendu") ? "suspended" : "failed";
       return { status, stepsCompleted, output: outputs, error: message, usage: usageLog };

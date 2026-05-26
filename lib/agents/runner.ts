@@ -34,7 +34,22 @@ export async function startAgentRun(
     .single();
 
   if (!def) return { ok: false, reason: `Agent inconnu : ${slug}` };
-  if (!def.is_enabled) return { ok: false, reason: `Agent ${slug} désactivé.` };
+  if (!def.is_enabled) return { ok: false, reason: `Agent ${slug} désactivé (agent disabled).` };
+
+  const { data: budgetRow } = await sb
+    .from("agent_budget")
+    .select("mode, is_paused")
+    .eq("id", 1)
+    .single();
+
+  if (budgetRow?.is_paused) {
+    return { ok: false, reason: "Agents en pause (daily limit reached / coupe-circuit actif)." };
+  }
+
+  const isLive = (budgetRow?.mode ?? "sandbox") === "live";
+  if (isLive && !process.env.ANTHROPIC_API_KEY) {
+    return { ok: false, reason: "missing ANTHROPIC_API_KEY — configurez la clé pour le mode live." };
+  }
 
   // 2. Limite de runs par jour
   const since = new Date();
@@ -56,12 +71,6 @@ export async function startAgentRun(
   const runner: AgentRunner | undefined = AGENT_REGISTRY[slug];
   if (!runner) return { ok: false, reason: `Pas d'implémentation pour ${slug}.` };
 
-  // 3bis. Mode courant (sandbox / live) — détermine le marquage des données
-  const { data: budgetRow } = await sb
-    .from("agent_budget")
-    .select("mode")
-    .eq("id", 1)
-    .single();
   const isSandbox = (budgetRow?.mode ?? "sandbox") === "sandbox";
 
   // 4. Créer le run (marqué sandbox si on est en mode test)

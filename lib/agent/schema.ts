@@ -36,6 +36,27 @@ export const AgentStepSchema = z.discriminatedUnion("type", [
     source: z.string(),
     outputKey: z.string().optional(),
   }),
+  z.object({
+    type: z.literal("condition"),
+    expression: z.string(),
+    outputKey: z.string().optional(),
+    ifTrueStepIds: z.array(z.string()).optional(),
+    ifFalseStepIds: z.array(z.string()).optional(),
+  }),
+  z.object({
+    type: z.literal("approval"),
+    label: z.string().optional(),
+    payloadTemplate: z.string().optional(),
+    outputKey: z.string().optional(),
+    expiresInMinutes: z.number().default(60),
+  }),
+  z.object({
+    type: z.literal("retrieve"),
+    source: z.enum(["file_upload", "google_drive", "notion", "google_sheets", "url", "gmail", "hubspot", "custom_api"]),
+    query: z.string(),
+    outputKey: z.string().optional(),
+    maxResults: z.number().default(5),
+  }),
 ]);
 
 // ─── Kind / execution mode (Ticket 10) ──────────────────────────────────────
@@ -61,6 +82,12 @@ export const AgentManifestSchema = z.object({
     })
     .default({ max_steps: 10, max_tokens: 8000, timeout_ms: 60000, max_tool_calls: 5, max_output_bytes: 51200 }),
   outputs: z.array(z.string()).default(["result"]),
+  memory: z
+    .object({
+      enabled: z.boolean().default(false),
+      maxMemories: z.number().default(10),
+    })
+    .optional(),
 });
 
 export type AgentKind = z.infer<typeof AgentKindSchema>;

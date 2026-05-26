@@ -1,7 +1,7 @@
 import type { ExecuteContext, ExecuteResult } from "./types";
 import { executeNativeConnectorAction } from "./execute-native";
 import { isComposioEnabled } from "@/lib/composio/client";
-import { executeComposioTool } from "@/lib/composio/execute";
+import { ComposioExecutionError, executeComposioTool } from "@/lib/composio/execute";
 
 /** Actions legacy maison (gmail.send, slack.send…) */
 function isNativeAction(actionId: string): boolean {
@@ -24,7 +24,16 @@ export async function executeConnectorAction(
   }
 
   if (isComposioEnabled() && !isNativeAction(actionId)) {
-    return executeComposioTool(actionId, ctx.userId, params);
+    try {
+      return await executeComposioTool(actionId, ctx.userId, params, {
+        toolkitSlug: actionId.split("_")[0]?.toLowerCase(),
+      });
+    } catch (err) {
+      if (err instanceof ComposioExecutionError) {
+        throw new Error(`[${err.details.code}] ${err.details.message}`);
+      }
+      throw err;
+    }
   }
   return executeNativeConnectorAction(actionId, params, ctx);
 }
