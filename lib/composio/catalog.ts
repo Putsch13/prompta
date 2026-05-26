@@ -50,9 +50,18 @@ let toolkitCache: { at: number; items: ComposioToolkitEntry[] } | null = null;
 const toolCache = new Map<string, { at: number; items: ComposioToolEntry[] }>();
 const CACHE_MS = 15 * 60 * 1000;
 
-function categoryLabel(raw?: string): string {
+function categoryLabel(raw?: unknown): string {
   if (!raw) return "Autre";
-  return CATEGORY_LABELS[raw.toLowerCase()] ?? raw.replace(/-/g, " ");
+  const key =
+    typeof raw === "string"
+      ? raw
+      : typeof raw === "object" && raw !== null && "slug" in raw
+        ? String((raw as { slug?: string }).slug ?? "")
+        : typeof raw === "object" && raw !== null && "name" in raw
+          ? String((raw as { name?: string }).name ?? "")
+          : String(raw);
+  if (!key) return "Autre";
+  return CATEGORY_LABELS[key.toLowerCase()] ?? key.replace(/-/g, " ");
 }
 
 function parseToolInputs(
