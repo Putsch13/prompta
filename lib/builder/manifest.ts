@@ -1,10 +1,13 @@
 import type { AgentManifest, AgentStep } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
+import { connectorsForSteps } from "@/lib/connectors/registry";
 
 export interface EnvFieldInput {
   key: string;
   label: string;
   required: boolean;
+  type?: "text" | "textarea" | "number" | "file" | "list";
+  help?: string;
 }
 
 export interface BuildManifestParams {
@@ -13,6 +16,7 @@ export interface BuildManifestParams {
   steps: AgentStep[];
   envFields: EnvFieldInput[];
   requiredSecrets: KeyProvider[];
+  requiredConnectors?: string[];
   defaultModel?: string;
 }
 
@@ -33,19 +37,27 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
   }
 
   return {
-    inputs: params.envFields.map((f) => ({
-      key: f.key,
-      label: f.label,
-      type: "text" as const,
-      required: f.required,
-    })),
+    inputs: params.envFields
+      .filter((f) => f.key.trim())
+      .map((f) => ({
+        key: f.key,
+        label: f.label || f.key,
+        type: f.type ?? ("text" as const),
+        required: f.required,
+        help: f.help,
+      })),
     secrets: [...params.requiredSecrets],
+    connectors: Array.from(
+      new Set([...connectorsForSteps(steps), ...(params.requiredConnectors ?? [])])
+    ),
     tools: Array.from(toolsUsed),
     steps,
     limits: {
       max_steps: Math.max(steps.length + 2, 10),
       max_tokens: 8000,
       timeout_ms: steps.some((s) => s.type === "tool" && LONG_TOOLS.has(s.tool)) ? 120000 : 60000,
+      max_tool_calls: 5,
+      max_output_bytes: 51200,
     },
     outputs: ["result"],
   };

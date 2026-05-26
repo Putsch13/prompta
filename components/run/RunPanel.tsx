@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Copy, Play, Check, AlertTriangle, Settings, Coins } from "lucide-react";
+import { Copy, Play, Check, AlertTriangle, Settings } from "lucide-react";
 import { UserSetupWizard } from "@/components/onboarding/UserSetupWizard";
-import { estimateCost } from "@/lib/llm/providers";
-import { RUN_CREDIT_COST_CENTS } from "@/lib/credit-packs";
+import { ConnectionsMasque } from "@/components/run/ConnectionsMasque";
+import { estimateMaxCost } from "@/lib/billing/run-cost";
+import { costToCredits, creditsToEur } from "@/lib/billing/credits";
 
 interface EnvField {
   key: string;
@@ -21,6 +22,7 @@ interface Props {
   models: string[];
   envFields?: EnvField[];
   requiredSecrets?: string[];
+  requiredConnectors?: string[];
   pricingMode?: string;
   subscriptionPriceCents?: number;
   hasSubscription?: boolean;
@@ -56,6 +58,7 @@ export function RunPanel({
   models,
   envFields = [],
   requiredSecrets = [],
+  requiredConnectors = [],
   pricingMode,
   subscriptionPriceCents = 0,
   priceCents,
@@ -83,8 +86,15 @@ export function RunPanel({
     ? extractVariables(promptBody)
     : envFields.map((f) => f.key);
 
-  const estimatedCostUsd = estimateCost(selectedModel, 500, 1500);
-  const creditCostEur = (RUN_CREDIT_COST_CENTS / 100).toFixed(2);
+  const [connectionsReady, setConnectionsReady] = useState(true);
+
+  const estimatedMax = estimateMaxCost({
+    stepCount: type === "prompt" ? 1 : 3,
+    maxTokens: 4000,
+    maxToolCalls: 2,
+  });
+  const estimatedCredits = costToCredits(estimatedMax);
+  const estimatedEur = creditsToEur(estimatedCredits).toFixed(2);
 
   const loadKeys = useCallback(async () => {
     const res = await fetch("/api/keys");
@@ -385,9 +395,15 @@ export function RunPanel({
             })}
           </div>
 
+          <ConnectionsMasque
+            requiredSecrets={secrets}
+            requiredConnectors={requiredConnectors}
+            onReadyChange={setConnectionsReady}
+          />
+
           <button
             onClick={handleAgentRun}
-            disabled={running || (!canAccess && !isFree)}
+            disabled={running || (!canAccess && !isFree) || !connectionsReady}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-medium text-white disabled:opacity-50"
           >
             <Play className="h-4 w-4" />
@@ -400,9 +416,11 @@ export function RunPanel({
             </p>
           )}
 
-          {canAccess && !hasAllSecrets() && (
-            <p className="mt-2 flex items-center justify-center gap-1 text-xs text-ink-soft">
-              <Coins className="h-3 w-3" /> Mode BYOK — configurez vos clés
+          {hasAllSecrets() ? (
+            <p className="mt-2 text-center text-xs text-ink-soft">Mode BYOK — vos clés API</p>
+          ) : (
+            <p className="mt-2 text-center text-xs text-ink-soft">
+              ≈ {estimatedCredits} crédits (~{estimatedEur} €) si mode crédits
             </p>
           )}
 
@@ -659,7 +677,9 @@ export function RunPanel({
               </div>
 
               <p className="mb-3 text-xs text-ink-faint">
-                Estimation ~{estimatedCostUsd.toFixed(4)} $ (500+1500 tokens) · ou {creditCostEur} €/run en crédits
+                {hasRequiredKey()
+                  ? "Tournera sur votre clé API (BYOK)"
+                  : `≈ ${estimatedCredits} crédits (~${estimatedEur} €) en mode crédits`}
               </p>
 
               <button

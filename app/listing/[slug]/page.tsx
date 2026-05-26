@@ -188,6 +188,7 @@ export default async function ListingPage({ params }: Props) {
     : (version?.env as { fields?: { key: string; description: string; required: boolean }[] })?.fields;
 
   const requiredSecrets = parsedEnv?.manifest.secrets ?? [];
+  const requiredConnectors = parsedEnv?.manifest.connectors ?? [];
   const meta = parsedEnv?.meta ?? (version?.env as { dependencies?: string; setup_time?: string } | null);
 
   const isFree = listing.price_cents === 0 && listing.pricing_mode !== "subscription";
@@ -436,9 +437,10 @@ export default async function ListingPage({ params }: Props) {
                 listingSlug={listing.slug}
                 title={listing.title}
                 promptBody={canSeeFullPrompt ? version?.prompt_body ?? null : null}
-                models={listing.models.length > 0 ? listing.models : ["gpt-4o"]}
+                models={listing.models.length > 0 ? listing.models : ["gpt-5.4"]}
                 envFields={envFields}
                 requiredSecrets={requiredSecrets}
+                requiredConnectors={requiredConnectors}
                 pricingMode={listing.pricing_mode}
                 subscriptionPriceCents={listing.subscription_price_cents}
                 hasSubscription={hasSubscription}

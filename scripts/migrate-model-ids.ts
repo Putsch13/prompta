@@ -5,6 +5,10 @@
  * Usage: npx tsx scripts/migrate-model-ids.ts
  */
 
+import { loadEnvFiles } from "./load-env";
+
+loadEnvFiles();
+
 import { createClient } from "@supabase/supabase-js";
 import { LEGACY_MODEL_MAP } from "../lib/catalogs";
 

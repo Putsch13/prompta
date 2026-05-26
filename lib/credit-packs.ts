@@ -1,4 +1,4 @@
-/** Forfait simple par run (~0,10 €). Voir docs/MONETISATION.md */
+/** @deprecated Utiliser costToCredits() depuis lib/billing/credits.ts */
 export const RUN_CREDIT_COST_CENTS = 10;
 
 export const CREDIT_PACKS = [

@@ -1,8 +1,18 @@
 import { callModel } from "@/lib/llm/gateway";
 import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
+import { executeConnectorAction } from "@/lib/connectors/execute";
+import { getUserConnection } from "@/lib/connections";
 import { AgentManifestSchema, type AgentManifest, type AgentStep } from "./schema";
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
 import { runCodeInSandbox } from "./sandbox";
+
+export interface StepUsage {
+  inputTokens: number;
+  outputTokens: number;
+  model?: string;
+  tool?: string;
+  connectorAction?: string;
+}
 
 export interface OrchestratorContext {
   userId: string;
@@ -17,6 +27,7 @@ export interface OrchestratorResult {
   stepsCompleted: number;
   output: Record<string, string>;
   error?: string;
+  usage?: StepUsage[];
 }
 
 function interpolate(template: string, vars: Record<string, string>): string {
@@ -26,14 +37,14 @@ function interpolate(template: string, vars: Record<string, string>): string {
 async function executeStep(
   step: AgentStep,
   vars: Record<string, string>,
-  apiKeys: Record<string, string>,
+  ctx: OrchestratorContext,
   maxTokens = 4096
-): Promise<string> {
+): Promise<{ content: string; usage?: StepUsage }> {
   if (step.type === "llm") {
     const resolved = resolveModelOrDefault(step.model);
     const { provider, apiModel, tokenParam } = resolved;
 
-    const apiKey = apiKeys[provider];
+    const apiKey = ctx.apiKeys[provider];
     if (!apiKey) throw new Error(`Clé ${provider} manquante`);
 
     const result = await callModel({
@@ -49,23 +60,58 @@ async function executeStep(
       throw new Error("Sortie interdite détectée — agent suspendu");
     }
 
-    return result.content;
+    return {
+      content: result.content,
+      usage: {
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        model: apiModel,
+      },
+    };
   }
 
   if (step.type === "tool") {
+    let content: string;
     switch (step.tool) {
       case "web_search":
-        return webSearch(
+        content = await webSearch(
           interpolate(step.params.query ?? "", vars),
-          apiKeys.serper
+          ctx.apiKeys.serper
         );
+        break;
       case "http_fetch":
-        return httpFetch(interpolate(step.params.url ?? "", vars));
+        content = await httpFetch(interpolate(step.params.url ?? "", vars));
+        break;
       case "file_read":
-        return fileRead(vars.file_content ?? "");
+        content = await fileRead(vars.file_content ?? "");
+        break;
       default:
-        throw new Error(`Outil non autorisé: ${step.tool}`);
+        throw new Error(`Outil non autorisé: ${(step as AgentStep & { tool: string }).tool}`);
     }
+    return { content, usage: { inputTokens: 0, outputTokens: 0, tool: step.tool } };
+  }
+
+  if (step.type === "action") {
+    const conn = await getUserConnection(ctx.userId, step.connector);
+    const params: Record<string, string> = {};
+    for (const [k, v] of Object.entries(step.params)) {
+      params[k] = interpolate(v, vars);
+    }
+
+    const result = await executeConnectorAction(step.action, params, {
+      userId: ctx.userId,
+      accessToken: conn?.accessToken,
+      apiKey: step.connector === "telegram" ? conn?.accessToken : undefined,
+    });
+
+    if (scanOutput(result.output)) {
+      throw new Error("Sortie connecteur interdite détectée");
+    }
+
+    return {
+      content: result.output,
+      usage: { inputTokens: 0, outputTokens: 0, connectorAction: step.action },
+    };
   }
 
   if (step.type === "code") {
@@ -74,7 +120,7 @@ async function executeStep(
     if (scanOutput(output)) {
       throw new Error("Sortie code interdite détectée");
     }
-    return output;
+    return { content: output };
   }
 
   throw new Error("Étape inconnue");
@@ -99,8 +145,15 @@ export async function runAgent(
   const run = async (): Promise<OrchestratorResult> => {
     const vars = { ...context.inputs };
     const outputs: Record<string, string> = {};
+    const usageLog: StepUsage[] = [];
     let stepsCompleted = 0;
     let tokensUsed = 0;
+    let toolCalls = 0;
+    let totalOutputBytes = 0;
+    const seenHashes = new Set<string>();
+
+    const maxToolCalls = manifest.limits.max_tool_calls ?? 5;
+    const maxOutputBytes = manifest.limits.max_output_bytes ?? 51200;
 
     try {
       for (const step of manifest.steps) {
@@ -108,26 +161,49 @@ export async function runAgent(
           throw new Error("Plafond max_steps atteint");
         }
 
-        const result = await executeStep(step, vars, context.apiKeys, manifest.limits.max_tokens);
-        if (step.type === "llm") {
-          tokensUsed += result.length / 4;
+        const { content, usage } = await executeStep(
+          step,
+          vars,
+          context,
+          manifest.limits.max_tokens
+        );
+
+        if (step.type === "tool" || step.type === "action") {
+          toolCalls++;
+          if (toolCalls > maxToolCalls) throw new Error("Plafond max_tool_calls atteint");
+        }
+
+        if (step.type === "llm" && usage) {
+          tokensUsed += usage.inputTokens + usage.outputTokens;
           if (tokensUsed > manifest.limits.max_tokens) {
             throw new Error("Plafond max_tokens atteint");
           }
+          usageLog.push(usage);
+        } else if (usage) {
+          usageLog.push(usage);
         }
 
-        vars[`step_${stepsCompleted}_output`] = result;
-        outputs[`step_${stepsCompleted}`] = result;
+        totalOutputBytes += content.length;
+        if (totalOutputBytes > maxOutputBytes) {
+          throw new Error("Plafond max_output_bytes atteint");
+        }
+
+        const hash = `${step.type}:${content.slice(0, 100)}`;
+        if (seenHashes.has(hash)) throw new Error("Boucle détectée — run arrêté");
+        seenHashes.add(hash);
+
+        vars[`step_${stepsCompleted}_output`] = content;
+        outputs[`step_${stepsCompleted}`] = content;
         stepsCompleted++;
       }
 
       outputs.result = vars[`step_${stepsCompleted - 1}_output`] ?? "";
 
-      return { status: "completed", stepsCompleted, output: outputs };
+      return { status: "completed", stepsCompleted, output: outputs, usage: usageLog };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur inconnue";
       const status = message.includes("suspendu") ? "suspended" : "failed";
-      return { status, stepsCompleted, output: outputs, error: message };
+      return { status, stepsCompleted, output: outputs, error: message, usage: usageLog };
     }
   };
 

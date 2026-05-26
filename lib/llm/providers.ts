@@ -1,3 +1,6 @@
+import { resolveModelOrDefault } from "./resolve-model";
+import { getModelPricing } from "./pricing";
+
 export type LLMProvider = "openai" | "anthropic" | "google" | "mistral";
 
 export interface ModelInfo {
@@ -30,10 +33,10 @@ export function estimateCost(
   inputTokens: number,
   outputTokens: number
 ): number {
-  const model = getModel(modelId);
-  if (!model) return 0;
+  const resolved = resolveModelOrDefault(modelId);
+  const pricing = getModelPricing(resolved.apiModel);
   return (
-    (inputTokens / 1_000_000) * model.inputCostPer1M +
-    (outputTokens / 1_000_000) * model.outputCostPer1M
+    (inputTokens / 1_000_000) * (pricing.inputPer1M / 100) +
+    (outputTokens / 1_000_000) * (pricing.outputPer1M / 100)
   );
 }

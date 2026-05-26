@@ -13,7 +13,14 @@ import {
   TECH_RUNTIMES,
   INTEGRATIONS,
   getIntegrationsRequiringKey,
+  getConnectorIdsFromIntegrations,
 } from "@/lib/catalogs";
+import {
+  extractInputVariables,
+  keyToLabel,
+  validateAgentSteps,
+} from "@/lib/builder/variables";
+import { connectorsForSteps } from "@/lib/connectors/registry";
 import type { AgentStep } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 
@@ -43,6 +50,8 @@ interface EnvField {
   key: string;
   label: string;
   required: boolean;
+  type: "text" | "textarea" | "number" | "file" | "list";
+  help?: string;
 }
 
 export function CreateWizard({ categories }: Props) {
@@ -62,6 +71,8 @@ export function CreateWizard({ categories }: Props) {
     stepsCompleted?: number;
   } | null>(null);
   const [testInputs, setTestInputs] = useState<Record<string, string>>({});
+  const [suggestedVars, setSuggestedVars] = useState<string[]>([]);
+  const [stepError, setStepError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     type: "prompt" as "prompt" | "agent" | "workflow",
@@ -76,6 +87,7 @@ export function CreateWizard({ categories }: Props) {
     agentSteps: [] as AgentStep[],
     envFields: [] as EnvField[],
     requiredSecrets: [] as KeyProvider[],
+    requiredConnectors: [] as string[],
     dependencies: "",
     setupTime: "5 min",
     priceCents: 990,
@@ -103,17 +115,30 @@ export function CreateWizard({ categories }: Props) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function suggestVariablesFromText(text: string) {
-    const matches = text.match(/\{\{(\w+)\}\}/g) ?? [];
-    const keys = Array.from(new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, ""))));
-    const existing = new Map(form.envFields.map((f) => [f.key, f]));
-    const merged = keys.map((key) => ({
-      key,
-      label: existing.get(key)?.label ?? `Variable ${key}`,
-      required: existing.get(key)?.required ?? true,
-    }));
-    const extra = form.envFields.filter((f) => !keys.includes(f.key));
-    updateField("envFields", [...merged, ...extra]);
+  function detectVariablesInText(text: string) {
+    const keys = extractInputVariables(text);
+    const existing = new Set(form.envFields.map((f) => f.key));
+    setSuggestedVars(keys.filter((k) => !existing.has(k)));
+  }
+
+  function addSuggestedVariable(key: string) {
+    updateField("envFields", [
+      ...form.envFields,
+      { key, label: keyToLabel(key), required: true, type: "text" as const },
+    ]);
+    setSuggestedVars((prev) => prev.filter((k) => k !== key));
+  }
+
+  function canContinueFromStep(current: number): boolean {
+    setStepError(null);
+    if (current === 2 && form.type !== "prompt") {
+      const issues = validateAgentSteps(form.agentSteps);
+      if (issues.length > 0) {
+        setStepError(issues[0].message);
+        return false;
+      }
+    }
+    return true;
   }
 
   function buildCurrentManifest() {
@@ -123,6 +148,7 @@ export function CreateWizard({ categories }: Props) {
       steps: form.agentSteps,
       envFields: form.envFields,
       requiredSecrets: form.requiredSecrets,
+      requiredConnectors: form.requiredConnectors,
       defaultModel: form.models[0],
     });
   }
@@ -274,7 +300,7 @@ export function CreateWizard({ categories }: Props) {
               value={form.promptBody}
               onChange={(e) => {
                 updateField("promptBody", e.target.value);
-                suggestVariablesFromText(e.target.value);
+                detectVariablesInText(e.target.value);
               }}
               placeholder="Corps du prompt — utilisez {{variable}} pour les champs dynamiques"
               rows={12}
@@ -294,10 +320,16 @@ export function CreateWizard({ categories }: Props) {
                     .filter((st) => st.type === "llm")
                     .map((st) => st.prompt)
                     .join("\n");
-                  suggestVariablesFromText(allText);
+                  detectVariablesInText(allText);
+                  const connectorIds = connectorsForSteps(s);
+                  if (connectorIds.length) {
+                    updateField("requiredConnectors", connectorIds);
+                  }
                 }}
                 defaultModel={form.models[0]}
+                envFields={form.envFields}
               />
+              {stepError && <p className="mt-2 text-sm text-destructive">{stepError}</p>}
             </div>
           )}
         </div>
@@ -324,6 +356,10 @@ export function CreateWizard({ categories }: Props) {
             onChange={(ids) => {
               updateField("integrations", ids);
               const integrationsNeedingKeys = getIntegrationsRequiringKey(ids);
+              const connectorIds = getConnectorIdsFromIntegrations(ids);
+              if (connectorIds.length) {
+                updateField("requiredConnectors", Array.from(new Set([...form.requiredConnectors, ...connectorIds])));
+              }
               if (integrationsNeedingKeys.length > 0) {
                 const newSecrets = [...form.requiredSecrets];
                 for (const int of integrationsNeedingKeys) {
@@ -343,10 +379,33 @@ export function CreateWizard({ categories }: Props) {
           />
 
           <div className="border-t border-line pt-4">
-            <p className="mb-2 text-sm font-medium text-ink">Variables d&apos;entrée</p>
+            <p className="mb-1 text-sm font-medium text-ink">Que doit fournir l&apos;utilisateur final ?</p>
+            <p className="mb-3 text-xs text-ink-soft">
+              Définissez explicitement les variables d&apos;entrée. Les sorties d&apos;étapes (
+              <code>step_N_output</code>) sont gérées automatiquement.
+            </p>
+
+            {suggestedVars.length > 0 && (
+              <div className="mb-3 rounded-lg border border-accent/30 bg-accent-light/50 p-3">
+                <p className="text-xs font-medium text-accent">Variables détectées dans vos prompts</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {suggestedVars.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => addSuggestedVariable(key)}
+                      className="rounded border border-accent px-2 py-1 text-xs text-accent hover:bg-accent-light"
+                    >
+                      + {keyToLabel(key)} ({key})
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               {form.envFields.map((f, i) => (
-                <div key={i} className="flex gap-2">
+                <div key={i} className="grid gap-2 rounded-lg border border-line p-3 sm:grid-cols-2">
                   <input
                     value={f.key}
                     onChange={(e) => {
@@ -354,8 +413,8 @@ export function CreateWizard({ categories }: Props) {
                       fields[i] = { ...fields[i], key: e.target.value };
                       updateField("envFields", fields);
                     }}
-                    placeholder="clé"
-                    className="h-10 w-28 rounded-lg border border-line px-3 font-mono text-sm"
+                    placeholder="clé (ex: secteur)"
+                    className="h-10 rounded-lg border border-line px-3 font-mono text-sm"
                   />
                   <input
                     value={f.label}
@@ -364,10 +423,35 @@ export function CreateWizard({ categories }: Props) {
                       fields[i] = { ...fields[i], label: e.target.value };
                       updateField("envFields", fields);
                     }}
-                    placeholder="Label"
-                    className="h-10 flex-1 rounded-lg border border-line px-3 text-sm"
+                    placeholder="Label visible"
+                    className="h-10 rounded-lg border border-line px-3 text-sm"
                   />
-                  <label className="flex items-center gap-1 text-xs text-ink-soft">
+                  <select
+                    value={f.type}
+                    onChange={(e) => {
+                      const fields = [...form.envFields];
+                      fields[i] = { ...fields[i], type: e.target.value as EnvField["type"] };
+                      updateField("envFields", fields);
+                    }}
+                    className="h-10 rounded-lg border border-line px-3 text-sm"
+                  >
+                    <option value="text">Texte court</option>
+                    <option value="textarea">Texte long</option>
+                    <option value="number">Nombre</option>
+                    <option value="file">Fichier</option>
+                    <option value="list">Liste</option>
+                  </select>
+                  <input
+                    value={f.help ?? ""}
+                    onChange={(e) => {
+                      const fields = [...form.envFields];
+                      fields[i] = { ...fields[i], help: e.target.value };
+                      updateField("envFields", fields);
+                    }}
+                    placeholder="Aide / exemple (optionnel)"
+                    className="h-10 rounded-lg border border-line px-3 text-sm"
+                  />
+                  <label className="flex items-center gap-1 text-xs text-ink-soft sm:col-span-2">
                     <input
                       type="checkbox"
                       checked={f.required}
@@ -387,7 +471,7 @@ export function CreateWizard({ categories }: Props) {
                         form.envFields.filter((_, j) => j !== i)
                       )
                     }
-                    className="rounded p-2 text-destructive hover:bg-red-50"
+                    className="rounded p-2 text-destructive hover:bg-red-50 sm:col-span-2 sm:justify-self-end"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -400,7 +484,7 @@ export function CreateWizard({ categories }: Props) {
               onClick={() =>
                 updateField("envFields", [
                   ...form.envFields,
-                  { key: "", label: "", required: true },
+                  { key: "", label: "", required: true, type: "text" },
                 ])
               }
               className="mt-2 flex items-center gap-1 text-sm text-accent hover:underline"
@@ -514,6 +598,11 @@ export function CreateWizard({ categories }: Props) {
                 placeholder="Prix abonnement €/mois"
                 className="h-10 w-full rounded-lg border border-line px-3"
               />
+              <p className="text-xs text-ink-soft">
+                Abonnement {(form.subscriptionPriceCents / 100).toFixed(2)} €/mois ={" "}
+                {((form.subscriptionPriceCents * 12) / 100).toFixed(0)} €/an récurrent · Achat unique{" "}
+                {(form.priceCents / 100).toFixed(2)} € = une fois
+              </p>
               <CommissionNote priceCents={form.subscriptionPriceCents} />
             </>
           )}
@@ -524,22 +613,51 @@ export function CreateWizard({ categories }: Props) {
         <div>
           <h2 className="font-display text-xl font-bold text-ink">Test (Playground)</h2>
           <p className="mt-2 text-sm text-ink-soft">
-            Lancez votre manifeste avec vos clés API. Exécution synchrone (streaming simulé en
-            V1 pour les prompts).
+            Testez votre agent avec vos clés — comme le fera l&apos;utilisateur final.
           </p>
 
-          {form.envFields.length > 0 && (
+          {form.agentSteps.length > 0 && (
+            <div className="mt-4 rounded-lg border border-line bg-card2 p-3 text-sm">
+              <p className="font-medium text-ink">Cet agent va :</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink-soft">
+                {form.agentSteps.map((s, i) => (
+                  <li key={i}>
+                    {s.type === "llm" && `Appeler ${s.model}`}
+                    {s.type === "tool" && `Exécuter ${s.tool}`}
+                    {s.type === "action" && `${s.connector} → ${s.action}`}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {form.envFields.filter((f) => f.key).length > 0 && (
             <div className="mt-4 space-y-2">
-              {form.envFields.map((f) => (
+              {form.envFields.filter((f) => f.key).map((f) => (
                 <div key={f.key}>
-                  <label className="text-xs text-ink-soft">{f.label || f.key}</label>
-                  <input
-                    value={testInputs[f.key] ?? ""}
-                    onChange={(e) =>
-                      setTestInputs((prev) => ({ ...prev, [f.key]: e.target.value }))
-                    }
-                    className="mt-1 h-10 w-full rounded-lg border border-line px-3 text-sm"
-                  />
+                  <label className="text-xs font-medium text-ink">
+                    {f.label || f.key}
+                    {f.required && " *"}
+                  </label>
+                  {f.help && <p className="text-[11px] text-ink-faint">{f.help}</p>}
+                  {f.type === "textarea" ? (
+                    <textarea
+                      value={testInputs[f.key] ?? ""}
+                      onChange={(e) =>
+                        setTestInputs((prev) => ({ ...prev, [f.key]: e.target.value }))
+                      }
+                      rows={3}
+                      className="mt-1 w-full rounded-lg border border-line px-3 py-2 text-sm"
+                    />
+                  ) : (
+                    <input
+                      value={testInputs[f.key] ?? ""}
+                      onChange={(e) =>
+                        setTestInputs((prev) => ({ ...prev, [f.key]: e.target.value }))
+                      }
+                      className="mt-1 h-10 w-full rounded-lg border border-line px-3 text-sm"
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -558,22 +676,20 @@ export function CreateWizard({ categories }: Props) {
             <div className="mt-4 rounded-lg border border-line bg-card2 p-4">
               <p className="text-sm font-medium text-ink">
                 Statut :{" "}
-                <span
-                  className={
-                    testResult.status === "completed" ? "text-green-600" : "text-red-600"
-                  }
-                >
+                <span className={testResult.status === "completed" ? "text-green-600" : "text-red-600"}>
                   {testResult.status}
                 </span>
                 {testResult.stepsCompleted != null && (
                   <span className="text-ink-soft"> · {testResult.stepsCompleted} étape(s)</span>
                 )}
               </p>
-              {testResult.output?.result && (
-                <pre className="mt-2 max-h-48 overflow-auto font-mono text-xs whitespace-pre-wrap">
-                  {testResult.output.result}
-                </pre>
-              )}
+              {testResult.output &&
+                Object.entries(testResult.output).map(([k, v]) => (
+                  <div key={k} className="mt-2">
+                    <p className="text-xs font-medium text-ink-soft">{k}</p>
+                    <pre className="max-h-32 overflow-auto font-mono text-xs whitespace-pre-wrap">{v}</pre>
+                  </div>
+                ))}
               {testResult.error && (
                 <p className="mt-2 text-sm text-destructive">{testResult.error}</p>
               )}
@@ -607,7 +723,9 @@ export function CreateWizard({ categories }: Props) {
         </button>
         {step < STEPS.length - 1 ? (
           <button
-            onClick={() => setStep((s) => s + 1)}
+            onClick={() => {
+              if (canContinueFromStep(step)) setStep((s) => s + 1);
+            }}
             className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
           >
             Continuer

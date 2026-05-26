@@ -52,6 +52,7 @@ export function parseListingEnv(
           required: f.required ?? false,
         })),
         secrets: [],
+        connectors: [],
         tools: [],
         steps: [
           {
@@ -60,7 +61,7 @@ export function parseListingEnv(
             prompt: promptBody,
           },
         ],
-        limits: { max_steps: 10, max_tokens: 8000, timeout_ms: 60000 },
+        limits: { max_steps: 10, max_tokens: 8000, timeout_ms: 60000, max_tool_calls: 5, max_output_bytes: 51200 },
         outputs: ["result"],
       },
       meta: {
@@ -89,9 +90,10 @@ export function promptFromBody(promptBody: string, model = "gpt-4o"): AgentManif
       required: true,
     })),
     secrets: [],
+    connectors: [],
     tools: [],
     steps: [{ type: "llm", model, prompt: promptBody }],
-    limits: { max_steps: 10, max_tokens: 8000, timeout_ms: 60000 },
+    limits: { max_steps: 10, max_tokens: 8000, timeout_ms: 60000, max_tool_calls: 5, max_output_bytes: 51200 },
     outputs: ["result"],
   };
 }

@@ -20,6 +20,8 @@ export interface ModelEntry extends CatalogEntry {
 export interface IntegrationEntry extends CatalogEntry {
   category: string;
   requiresKey?: boolean;
+  authType?: "oauth" | "api_key" | "none";
+  connectorId?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,46 +238,71 @@ export const TECH_RUNTIMES: CatalogEntry[] = [
 // INTEGRATIONS / CONNECTEURS
 // ─────────────────────────────────────────────────────────────────────────────
 export const INTEGRATIONS: IntegrationEntry[] = [
+  // Messagerie
+  { id: "whatsapp", label: "WhatsApp", category: "Messagerie", popular: true, authType: "oauth" },
+  { id: "telegram", label: "Telegram", category: "Messagerie", popular: true, authType: "api_key", connectorId: "telegram" },
+  { id: "slack", label: "Slack", category: "Messagerie", popular: true, authType: "oauth", connectorId: "slack" },
+  { id: "discord", label: "Discord", category: "Messagerie", popular: false, authType: "oauth" },
+  { id: "ms-teams", label: "Microsoft Teams", category: "Messagerie", popular: false, authType: "oauth" },
+  { id: "messenger", label: "Messenger", category: "Messagerie", popular: false, authType: "oauth" },
+  { id: "twilio-sms", label: "SMS (Twilio)", category: "Messagerie", popular: false, requiresKey: true, authType: "api_key" },
+  // Email
+  { id: "gmail", label: "Gmail", category: "Email", popular: true, authType: "oauth", connectorId: "gmail" },
+  { id: "outlook", label: "Outlook", category: "Email", popular: false, authType: "oauth" },
+  { id: "resend", label: "Resend", category: "Email", popular: false, requiresKey: true, authType: "api_key" },
+  { id: "sendgrid", label: "SendGrid", category: "Email", popular: false, requiresKey: true, authType: "api_key" },
   // Productivité
-  { id: "notion", label: "Notion", category: "Productivité", popular: true },
-  { id: "google-sheets", label: "Google Sheets", category: "Productivité", popular: true },
-  { id: "google-docs", label: "Google Docs", category: "Productivité", popular: false },
-  { id: "google-drive", label: "Google Drive", category: "Productivité", popular: false },
-  { id: "airtable", label: "Airtable", category: "Productivité", popular: false },
-  { id: "microsoft-365", label: "Microsoft 365", category: "Productivité", popular: false },
-  // Design
-  { id: "canva", label: "Canva", category: "Design", popular: true, requiresKey: true },
-  { id: "figma", label: "Figma", category: "Design", popular: false },
-  { id: "adobe-express", label: "Adobe Express", category: "Design", popular: false },
-  // Communication
-  { id: "slack", label: "Slack", category: "Communication", popular: true },
-  { id: "discord", label: "Discord", category: "Communication", popular: false },
-  { id: "gmail", label: "Gmail", category: "Communication", popular: false },
-  { id: "ms-teams", label: "MS Teams", category: "Communication", popular: false },
+  { id: "notion", label: "Notion", category: "Productivité", popular: true, authType: "oauth" },
+  { id: "google-sheets", label: "Google Sheets", category: "Productivité", popular: true, authType: "oauth", connectorId: "google_sheets" },
+  { id: "google-docs", label: "Google Docs", category: "Productivité", popular: false, authType: "oauth" },
+  { id: "google-drive", label: "Google Drive", category: "Productivité", popular: false, authType: "oauth" },
+  { id: "airtable", label: "Airtable", category: "Productivité", popular: false, authType: "oauth" },
+  { id: "clickup", label: "ClickUp", category: "Productivité", popular: false, authType: "oauth" },
+  { id: "trello", label: "Trello", category: "Productivité", popular: false, authType: "oauth" },
+  { id: "asana", label: "Asana", category: "Productivité", popular: false, authType: "oauth" },
+  { id: "monday", label: "Monday", category: "Productivité", popular: false, authType: "oauth" },
+  { id: "microsoft-365", label: "Microsoft 365", category: "Productivité", popular: false, authType: "oauth" },
   // CRM / Sales
-  { id: "hubspot", label: "HubSpot", category: "CRM / Sales", popular: true },
-  { id: "salesforce", label: "Salesforce", category: "CRM / Sales", popular: false },
-  { id: "pipedrive", label: "Pipedrive", category: "CRM / Sales", popular: false },
+  { id: "hubspot", label: "HubSpot", category: "CRM / Sales", popular: true, authType: "oauth" },
+  { id: "salesforce", label: "Salesforce", category: "CRM / Sales", popular: false, authType: "oauth" },
+  { id: "pipedrive", label: "Pipedrive", category: "CRM / Sales", popular: false, authType: "oauth" },
+  { id: "zoho", label: "Zoho CRM", category: "CRM / Sales", popular: false, authType: "oauth" },
+  // Design
+  { id: "canva", label: "Canva", category: "Design", popular: true, authType: "oauth", connectorId: "canva" },
+  { id: "figma", label: "Figma", category: "Design", popular: false, authType: "oauth" },
+  { id: "adobe-express", label: "Adobe Express", category: "Design", popular: false, authType: "oauth" },
   // Dev
-  { id: "github", label: "GitHub", category: "Dev", popular: true },
-  { id: "gitlab", label: "GitLab", category: "Dev", popular: false },
-  { id: "linear", label: "Linear", category: "Dev", popular: false },
-  { id: "jira", label: "Jira", category: "Dev", popular: false },
+  { id: "github", label: "GitHub", category: "Dev", popular: true, authType: "oauth" },
+  { id: "gitlab", label: "GitLab", category: "Dev", popular: false, authType: "oauth" },
+  { id: "linear", label: "Linear", category: "Dev", popular: false, authType: "oauth" },
+  { id: "jira", label: "Jira", category: "Dev", popular: false, authType: "oauth" },
   // Automatisation
-  { id: "zapier", label: "Zapier", category: "Automatisation", popular: false },
-  { id: "make", label: "Make", category: "Automatisation", popular: false },
-  { id: "n8n", label: "n8n", category: "Automatisation", popular: false },
-  // Web / e-commerce
-  { id: "shopify", label: "Shopify", category: "Web / e-commerce", popular: false },
-  { id: "wordpress", label: "WordPress", category: "Web / e-commerce", popular: false },
-  { id: "webflow", label: "Webflow", category: "Web / e-commerce", popular: false },
-  // Réseaux
-  { id: "linkedin", label: "LinkedIn", category: "Réseaux sociaux", popular: false },
-  { id: "x-twitter", label: "X (Twitter)", category: "Réseaux sociaux", popular: false },
-  { id: "instagram", label: "Instagram", category: "Réseaux sociaux", popular: false },
-  { id: "youtube", label: "YouTube", category: "Réseaux sociaux", popular: false },
-  // Recherche (nécessite clé)
-  { id: "serper", label: "Serper (Search)", category: "Recherche", popular: false, requiresKey: true },
+  { id: "zapier", label: "Zapier", category: "Automatisation", popular: false, authType: "oauth" },
+  { id: "make", label: "Make", category: "Automatisation", popular: false, authType: "oauth" },
+  { id: "n8n", label: "n8n", category: "Automatisation", popular: false, authType: "oauth" },
+  // E-commerce / Web
+  { id: "shopify", label: "Shopify", category: "E-commerce / Web", popular: false, authType: "oauth" },
+  { id: "woocommerce", label: "WooCommerce", category: "E-commerce / Web", popular: false, authType: "oauth" },
+  { id: "wordpress", label: "WordPress", category: "E-commerce / Web", popular: false, authType: "oauth" },
+  { id: "webflow", label: "Webflow", category: "E-commerce / Web", popular: false, authType: "oauth" },
+  // Réseaux sociaux
+  { id: "linkedin", label: "LinkedIn", category: "Réseaux sociaux", popular: false, authType: "oauth" },
+  { id: "x-twitter", label: "X (Twitter)", category: "Réseaux sociaux", popular: false, authType: "oauth" },
+  { id: "instagram", label: "Instagram", category: "Réseaux sociaux", popular: false, authType: "oauth" },
+  { id: "youtube", label: "YouTube", category: "Réseaux sociaux", popular: false, authType: "oauth" },
+  { id: "tiktok", label: "TikTok", category: "Réseaux sociaux", popular: false, authType: "oauth" },
+  { id: "facebook", label: "Facebook", category: "Réseaux sociaux", popular: false, authType: "oauth" },
+  // Recherche / Data
+  { id: "serper", label: "Serper (Search)", category: "Recherche / Data", popular: false, requiresKey: true, authType: "api_key" },
+  { id: "perplexity", label: "Perplexity", category: "Recherche / Data", popular: false, requiresKey: true, authType: "api_key" },
+  { id: "google-search", label: "Google Search", category: "Recherche / Data", popular: false, authType: "oauth" },
+  // Stockage
+  { id: "dropbox", label: "Dropbox", category: "Stockage", popular: false, authType: "oauth" },
+  { id: "gcs", label: "Google Cloud Storage", category: "Stockage", popular: false, authType: "oauth" },
+  { id: "aws-s3", label: "AWS S3", category: "Stockage", popular: false, requiresKey: true, authType: "api_key" },
+  // Agenda
+  { id: "google-calendar", label: "Google Calendar", category: "Agenda", popular: false, authType: "oauth" },
+  { id: "calendly", label: "Calendly", category: "Agenda", popular: false, authType: "oauth" },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -304,5 +331,14 @@ export function getPopularFirst<T extends CatalogEntry>(items: T[]): T[] {
 
 /** Trouve les intégrations qui nécessitent une clé API */
 export function getIntegrationsRequiringKey(ids: string[]): IntegrationEntry[] {
-  return INTEGRATIONS.filter((i) => ids.includes(i.id) && i.requiresKey);
+  return INTEGRATIONS.filter((i) => ids.includes(i.id) && (i.requiresKey || i.authType === "api_key"));
+}
+
+/** Connecteurs OAuth requis par les intégrations sélectionnées */
+export function getConnectorIdsFromIntegrations(ids: string[]): string[] {
+  const set = new Set<string>();
+  for (const i of INTEGRATIONS) {
+    if (ids.includes(i.id) && i.connectorId) set.add(i.connectorId);
+  }
+  return Array.from(set);
 }

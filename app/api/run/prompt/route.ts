@@ -3,9 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callModel } from "@/lib/llm/gateway";
 import { getUserKey, invalidateKey } from "@/lib/keys";
-import { estimateCost } from "@/lib/llm/providers";
+import { computeRunCost, estimateMaxCost } from "@/lib/billing/run-cost";
 import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
-import { getCreditBalance, debitCreditsForRun, RUN_CREDIT_COST_CENTS } from "@/lib/credits";
+import { getCreditBalance, holdCreditsForRun, settleCreditsForRun } from "@/lib/credits";
+import { costToCredits } from "@/lib/billing/credits";
 import { hasPlatformPro } from "@/lib/platform-access";
 import { trackProRun } from "@/lib/revshare";
 
@@ -142,6 +143,9 @@ export async function POST(request: NextRequest) {
   let apiKey = await getUserKey(user.id, provider);
   let usedCredits = false;
 
+  const estimatedMax = estimateMaxCost({ stepCount: 1, maxTokens: 4096, maxToolCalls: 0 });
+  const estimatedCredits = costToCredits(estimatedMax);
+
   if (!apiKey) {
     apiKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`] ?? null;
 
@@ -153,7 +157,8 @@ export async function POST(request: NextRequest) {
     }
 
     const creditBalance = await getCreditBalance(user.id);
-    if (!hasEntitlement && creditBalance >= RUN_CREDIT_COST_CENTS) {
+    const minCreditsCents = estimatedCredits * 2; // CREDIT_VALUE_CENTS
+    if (!hasEntitlement && creditBalance >= minCreditsCents) {
       usedCredits = true;
     } else if (isFree && !hasEntitlement) {
       const allowed = await checkFreeQuota(user.id);
@@ -168,8 +173,11 @@ export async function POST(request: NextRequest) {
       }
     } else if (!hasEntitlement) {
       return new Response(
-        JSON.stringify({ error: "configure_keys", message: "Configurez vos clés API ou souscrivez à Prompta Pro" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        JSON.stringify({
+          error: "insufficient_credits",
+          message: `Crédits insuffisants (≈ ${estimatedCredits} crédits requis)`,
+        }),
+        { status: 402, headers: { "Content-Type": "application/json" } }
       );
     }
   }
@@ -190,8 +198,8 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (usedCredits && run?.id) {
-    const debited = await debitCreditsForRun(user.id, run.id);
-    if (!debited) {
+    const held = await holdCreditsForRun(user.id, estimatedMax, run.id);
+    if (!held) {
       await admin.from("runs").update({ status: "failed", error_message: "Crédits insuffisants" }).eq("id", run.id);
       return new Response(JSON.stringify({ error: "insufficient_credits" }), {
         status: 402,
@@ -213,7 +221,13 @@ export async function POST(request: NextRequest) {
           tokenParam,
         });
 
-        const cost = estimateCost(apiModel, result.inputTokens, result.outputTokens);
+        const cost = computeRunCost({
+          steps: [{ inputTokens: result.inputTokens, outputTokens: result.outputTokens, model: apiModel }],
+        });
+
+        if (usedCredits && run?.id) {
+          await settleCreditsForRun(user.id, cost, estimatedMax, run.id);
+        }
 
         await admin
           .from("runs")
