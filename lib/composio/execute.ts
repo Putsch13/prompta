@@ -16,7 +16,7 @@ export async function executeComposioTool(
   toolSlug: string,
   userId: string,
   arguments_: Record<string, string>,
-  options?: { toolkitSlug?: string; actionVersion?: string }
+  options?: { toolkitSlug?: string; actionVersion?: string; connectedAccountId?: string }
 ): Promise<{ output: string; metadata?: Record<string, unknown> }> {
   const composio = getComposioClient();
   const toolkitSlug = options?.toolkitSlug ?? toolSlug.split("_")[0]?.toLowerCase();
@@ -32,8 +32,14 @@ export async function executeComposioTool(
   }
 
   try {
+    const conn = options?.connectedAccountId
+      ? null
+      : await getUserConnection(userId, toolkitSlug);
+    const connectedAccountId = options?.connectedAccountId ?? conn?.accessToken;
+
     const result = await composio.tools.execute(toolSlug, {
       userId,
+      ...(connectedAccountId ? { connectedAccountId } : {}),
       arguments: parsedArgs,
       ...(options?.actionVersion ? { version: options.actionVersion } : {}),
     });

@@ -71,6 +71,19 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (isComposioEnabled()) {
     try {
       const toolkitSlug = toComposioToolkitSlug(connectorId);
+      const forceReconnect = req.nextUrl.searchParams.get("force") === "true";
+
+      if (!forceReconnect) {
+        const { checkComposioConnection } = await import("@/lib/composio/connect");
+        const alreadyConnected = await checkComposioConnection(user.id, connectorId);
+        if (alreadyConnected) {
+          const dest =
+            returnUrl ??
+            `${appUrl}/dashboard/connexions?connected=${encodeURIComponent(toolkitSlug)}`;
+          return NextResponse.redirect(dest);
+        }
+      }
+
       const callbackParams = new URLSearchParams({ toolkit: toolkitSlug });
       if (returnUrl) callbackParams.set("returnUrl", returnUrl);
       const callbackUrl = `${appUrl}/api/connectors/composio/callback?${callbackParams.toString()}`;

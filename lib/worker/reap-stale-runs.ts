@@ -11,6 +11,47 @@ const STALE_CREATED_MS = 15 * 60 * 1000;  // 15 min depuis created_at (fallback 
  * Priorité : heartbeat_at si dispo, sinon started_at, sinon created_at.
  * Si steps_completed > 0 et output partiel → reprise via resume_from_step.
  */
+const STALE_PENDING_MS = 10 * 60 * 1000; // 10 min en pending = jamais pris
+
+export async function reapStalePendingRuns(): Promise<number> {
+  const admin = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = admin as any;
+  const pendingCutoff = new Date(Date.now() - STALE_PENDING_MS).toISOString();
+
+  const { data: stalePending } = await db
+    .from("listing_agent_runs")
+    .select("id, user_id, used_credits, credit_hold_estimate_cents")
+    .eq("status", "pending")
+    .lt("created_at", pendingCutoff);
+
+  if (!stalePending?.length) return 0;
+
+  for (const run of stalePending) {
+    await db
+      .from("listing_agent_runs")
+      .update({
+        status: "failed",
+        error_message:
+          "Timeout : aucun worker n'a traité ce run. Vérifiez que le worker Prompta est actif.",
+      })
+      .eq("id", run.id)
+      .eq("status", "pending");
+
+    if (run.used_credits && run.credit_hold_estimate_cents != null) {
+      await releaseAgentRunCredits(
+        run.user_id,
+        run.id,
+        Number(run.credit_hold_estimate_cents),
+      ).catch((e) => console.error("[reap:pending] release credits failed", { runId: run.id, err: e }));
+    }
+
+    console.warn("[worker:reap] stale pending run failed", { runId: run.id });
+  }
+
+  return stalePending.length;
+}
+
 export async function reapStaleRunningRuns(): Promise<number> {
   const admin = createAdminClient();
 

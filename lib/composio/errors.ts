@@ -18,7 +18,9 @@ export function parseComposioError(
   let code = "composio_error";
   let connectedAccountStatus: ComposioErrorResult["connectedAccountStatus"];
 
-  if (lower.includes("not connected") || lower.includes("no connected account") || lower.includes("connection not found")) {
+  if (lower.includes("multiple connected accounts") || lower.includes("allowmultiple")) {
+    code = "multiple_connections";
+  } else if (lower.includes("not connected") || lower.includes("no connected account") || lower.includes("connection not found")) {
     code = "connection_missing";
     connectedAccountStatus = "missing";
   } else if (lower.includes("expired") || lower.includes("token")) {
@@ -35,7 +37,9 @@ export function parseComposioError(
   const message =
     code === "connection_missing"
       ? `Connectez ${toolkitSlug ?? "l'application"} avant d'exécuter cette action.`
-      : code === "unknown_action"
+      : code === "multiple_connections"
+        ? `Plusieurs comptes ${toolkitSlug ?? "connectés"} — reconnectez l'application depuis Connexions.`
+        : code === "unknown_action"
         ? `Action inconnue : ${actionSlug}`
         : raw.slice(0, 500);
 

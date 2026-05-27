@@ -26,7 +26,7 @@ function isFakeVar(key: string): boolean {
 
 export function validateAgentManifest(
   steps: AgentStep[],
-  options?: { connectors?: string[] },
+  options?: { connectors?: string[]; inputKeys?: string[] },
 ): AgentValidationIssue[] {
   const issues: AgentValidationIssue[] = [];
   const outputKeys = new Set<string>();
@@ -205,19 +205,57 @@ export function validateAgentManifest(
     }
   }
 
-  // Connecteurs requis mais non listés dans manifest
-  if (options?.connectors) {
-    const connectorSet = new Set(options.connectors);
-    for (const step of steps) {
-      if (step.type === "action" && step.connector && !connectorSet.has(step.connector)) {
+  const producedKeys = new Set<string>();
+  const collectOutputKeys = (list: AgentStep[]) => {
+    for (const step of list) {
+      if (step.type === "parallel") {
+        for (const branch of step.branches) collectOutputKeys(branch.steps as AgentStep[]);
+      }
+      const key = step.outputKey?.trim();
+      if (key) producedKeys.add(key);
+    }
+  };
+  collectOutputKeys(steps);
+
+  if (options?.inputKeys && options.inputKeys.length > 0) {
+    const allowed = new Set([
+      ...options.inputKeys,
+      ...Array.from(producedKeys),
+      "file_content",
+      "document",
+      "input",
+    ]);
+    for (const varName of Array.from(allVarRefs)) {
+      const baseKey = varName.split(".")[0];
+      if (!allowed.has(varName) && !allowed.has(baseKey)) {
         issues.push({
           stepIndex: null,
-          severity: "warning",
-          code: "unlisted_connector",
-          message: `Connecteur "${step.connector}" utilisé dans une action mais non listé dans le manifest.`,
+          severity: "error",
+          code: "unknown_input_variable",
+          message: `Variable « ${varName} » utilisée mais non déclarée (ni input, ni outputKey d'étape).`,
         });
       }
     }
+  }
+
+  // Connecteurs requis mais non listés dans manifest
+  if (options?.connectors) {
+    const connectorSet = new Set(options.connectors);
+    const walkConnectors = (list: AgentStep[]) => {
+      for (const step of list) {
+        if (step.type === "parallel") {
+          for (const branch of step.branches) walkConnectors(branch.steps as AgentStep[]);
+        } else if (step.type === "action" && step.connector && !connectorSet.has(step.connector)) {
+          issues.push({
+            stepIndex: null,
+            severity: "warning",
+            code: "unlisted_connector",
+            message: `Connecteur "${step.connector}" utilisé dans une action mais non listé dans le manifest.`,
+          });
+        }
+      }
+    };
+    walkConnectors(steps);
   }
 
   return issues;

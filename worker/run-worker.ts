@@ -1,6 +1,6 @@
 import { validateWorkerEnv } from "@/lib/env/worker";
 import { processPendingAgentRuns } from "@/lib/worker/process-pending-runs";
-import { reapStaleRunningRuns } from "@/lib/worker/reap-stale-runs";
+import { reapStaleRunningRuns, reapStalePendingRuns } from "@/lib/worker/reap-stale-runs";
 
 const POLL_MS = 3000;
 const REAP_INTERVAL_MS = 60 * 1000;
@@ -27,9 +27,10 @@ async function loop() {
       const now = Date.now();
 
       if (now - lastReap > REAP_INTERVAL_MS) {
-        const reaped = await reapStaleRunningRuns();
-        if (reaped > 0) {
-          console.warn("[worker:reap] cleaned stale runs:", reaped);
+        const reapedRunning = await reapStaleRunningRuns();
+        const reapedPending = await reapStalePendingRuns();
+        if (reapedRunning + reapedPending > 0) {
+          console.warn("[worker:reap] cleaned stale runs:", { running: reapedRunning, pending: reapedPending });
         }
         lastReap = now;
       }

@@ -115,10 +115,17 @@ export function getConnectorAction(connectorId: string, actionId: string) {
   return c?.actions.find((a) => a.id === actionId);
 }
 
-export function connectorsForSteps(steps: { type: string; connector?: string }[]): string[] {
+export function connectorsForSteps(steps: { type: string; connector?: string; branches?: { steps: { type: string; connector?: string }[] }[] }[]): string[] {
   const ids = new Set<string>();
-  for (const s of steps) {
-    if (s.type === "action" && s.connector) ids.add(s.connector);
+  function walk(list: typeof steps) {
+    for (const s of list) {
+      if (s.type === "parallel" && s.branches) {
+        for (const branch of s.branches) walk(branch.steps as typeof steps);
+      } else if (s.type === "action" && s.connector) {
+        ids.add(s.connector);
+      }
+    }
   }
+  walk(steps);
   return Array.from(ids);
 }

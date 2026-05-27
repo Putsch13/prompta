@@ -412,23 +412,31 @@ export function CreateWizard({ categories }: Props) {
     setTestResult(null);
     setShowTestImmersive(true);
     const manifest = buildCurrentManifest();
-    const res = await fetch("/api/run/agent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        preview: true,
-        manifest,
-        inputs: testInputs,
-        async: false,
-        fullDemo: testFullDemo,
-      }),
-    });
-    const data = await res.json();
-    setTestRunning(false);
-    if (res.ok) {
-      setTestResult(data);
-    } else {
-      setTestResult({ status: "failed", error: data.error || data.message });
+    try {
+      const res = await fetch("/api/run/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          preview: true,
+          manifest,
+          inputs: testInputs,
+          async: false,
+          fullDemo: testFullDemo,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTestResult(data);
+      } else {
+        setTestResult({ status: "failed", error: data.error || data.message });
+      }
+    } catch (err) {
+      setTestResult({
+        status: "failed",
+        error: err instanceof Error ? err.message : "Erreur réseau lors du test",
+      });
+    } finally {
+      setTestRunning(false);
     }
   }
 

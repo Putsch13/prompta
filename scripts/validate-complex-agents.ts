@@ -46,6 +46,7 @@ for (const agent of COMPLEX_AGENT_CATALOG) {
 
   const issues = validateAgentManifest(parsed.data.steps, {
     connectors: parsed.data.connectors,
+    inputKeys: parsed.data.inputs.map((i) => i.key),
   });
   if (hasBlockingIssues(issues)) {
     validationFail++;

@@ -643,7 +643,7 @@ function generateSimpleAgents(
         type: "llm" as const,
         model: "gpt-5.4",
         prompt: `Étape ${s + 1} de "${spec.title}" :\n\nDonnées : ${prevRef}\n\nAnalyse et traite ces données selon le contexte de l'agent.`,
-        outputKey: `step_${s}_result`,
+        outputKey: `step_${s}_output`,
       });
     }
 

@@ -228,6 +228,7 @@ export function RunPanel({
       if (await tick()) return;
     }
     setError("Délai d'attente dépassé — l'agent peut continuer en arrière-plan");
+    setAgentStatus("failed");
     setRunning(false);
   }
 
@@ -612,13 +613,7 @@ export function RunPanel({
               stepsCompleted={stepsCompleted ?? 0}
               totalSteps={stepCount}
               stepTrace={stepTrace}
-                pollWhileRunning={
-                  running ||
-                  agentStatus === "running" ||
-                  agentStatus === "queued" ||
-                  agentStatus === "pending" ||
-                  agentStatus === "checking"
-                }
+                pollWhileRunning={running}
               errorMessage={error}
               finalOutput={agentOutput}
               approvalId={approvalId}

@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { AgentRunConsole } from "@/components/run/AgentRunConsole";
+import { ActionWorkspacePanel } from "@/components/run/ActionWorkspacePanel";
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 
 type RunStatus = string;
@@ -101,7 +102,7 @@ export function AgentRunExperience({
   onRetry,
   approvalId,
 }: Props) {
-  const [view, setView] = useState<"live" | "deliverables">("live");
+  const [view, setView] = useState<"live" | "workspace" | "deliverables">("live");
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
@@ -175,11 +176,24 @@ export function AgentRunExperience({
     }
   }, [groups, activeGroup, deliverables.length]);
 
+  const workspaceStep = useMemo(() => {
+    const fromTrace = [...displaySteps].reverse().find(
+      (s) => s.status === "running" || (s.status === "success" && s.output)
+    );
+    return fromTrace ?? null;
+  }, [displaySteps]);
+
   const isActive =
     status === "running" ||
     status === "pending" ||
     status === "queued" ||
     status === "checking";
+
+  useEffect(() => {
+    if (isActive && workspaceStep?.type === "action" && view === "live") {
+      setView("workspace");
+    }
+  }, [isActive, workspaceStep?.type, view]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0b0f14] text-white">
@@ -201,6 +215,15 @@ export function AgentRunExperience({
             }`}
           >
             <Radio className="h-3.5 w-3.5" /> Live
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("workspace")}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ${
+              view === "workspace" ? "bg-violet-500 text-white" : "bg-white/10 text-white/80 hover:bg-white/15"
+            }`}
+          >
+            <Bot className="h-3.5 w-3.5" /> Apps
           </button>
           <button
             type="button"
@@ -276,6 +299,41 @@ export function AgentRunExperience({
                 </pre>
               </div>
             )}
+          </div>
+        ) : view === "workspace" ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-4 sm:flex-row sm:p-6">
+            <aside className="w-full shrink-0 sm:w-56">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/50">Étapes apps</p>
+              <nav className="flex gap-2 overflow-x-auto sm:flex-col sm:overflow-visible">
+                {displaySteps
+                  .filter((s) => s.type === "action" || s.type === "tool" || s.type === "llm")
+                  .map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setActiveGroup(`step-${s.index}`)}
+                      className={`shrink-0 rounded-lg px-3 py-2 text-left text-xs sm:w-full ${
+                        (activeGroup === `step-${s.index}` || workspaceStep?.id === s.id)
+                          ? "bg-violet-500/30 text-white"
+                          : "bg-white/5 text-white/70 hover:bg-white/10"
+                      }`}
+                    >
+                      {s.label}
+                      <span className="ml-1 text-white/40">#{s.index + 1}</span>
+                    </button>
+                  ))}
+              </nav>
+            </aside>
+            <div className="min-h-0 flex-1">
+              <ActionWorkspacePanel
+                step={
+                  activeGroup?.startsWith("step-")
+                    ? displaySteps.find((s) => `step-${s.index}` === activeGroup) ?? workspaceStep
+                    : workspaceStep
+                }
+                isLive={isActive}
+              />
+            </div>
           </div>
         ) : (
           <>

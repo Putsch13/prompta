@@ -1,4 +1,4 @@
-import { saveComposioConnection, isComposioToolkitConnected } from "@/lib/connections";
+import { saveComposioConnection, isComposioToolkitConnected, getUserConnection } from "@/lib/connections";
 import { getComposioClient, toComposioToolkitSlug } from "./client";
 
 async function getAuthConfigId(toolkitSlug: string): Promise<string> {
@@ -25,6 +25,7 @@ export async function startComposioAuth(
 
   const connectionRequest = await composio.connectedAccounts.link(userId, authConfigId, {
     callbackUrl,
+    allowMultiple: true,
   });
 
   const redirectUrl = connectionRequest.redirectUrl;
@@ -75,9 +76,18 @@ export async function checkComposioConnection(
     toolkitSlugs: [toolkitSlug],
     statuses: ["ACTIVE"],
   });
-  const active = accounts.items?.[0];
-  if (active?.id) {
-    await saveComposioConnection(userId, toolkitSlug, active.id);
+
+  const items = accounts.items ?? [];
+  if (items.length === 0) return false;
+
+  const stored = await getUserConnection(userId, toolkitSlug);
+  const storedId = stored?.accessToken;
+  const preferred =
+    (storedId ? items.find((a) => a.id === storedId) : undefined) ??
+    items[items.length - 1];
+
+  if (preferred?.id) {
+    await saveComposioConnection(userId, toolkitSlug, preferred.id);
     return true;
   }
   return false;

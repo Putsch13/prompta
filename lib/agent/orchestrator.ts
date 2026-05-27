@@ -634,17 +634,23 @@ export async function runAgent(
 
           const branchResults = await Promise.allSettled(
             parallelStep.branches.map(async (branch, branchIdx) => {
+              const branchVars = { ...vars };
               const branchOutputs: string[] = [];
               for (let s = 0; s < branch.steps.length; s++) {
                 const subStep = branch.steps[s] as BaseAgentStep;
+                const subIndex = i * 100 + branchIdx * 10 + s;
                 const { content, usage: subUsage } = await executeStepWithRetry(
                   subStep,
-                  { ...vars },
+                  branchVars,
                   ctxWithMemory,
                   manifestWithLimits.limits.max_tokens,
-                  i * 100 + branchIdx * 10 + s
+                  subIndex
                 );
                 branchOutputs.push(content);
+                branchVars[`step_${subIndex}_output`] = content;
+                if (subStep.outputKey) {
+                  branchVars[subStep.outputKey] = content;
+                }
                 if (subUsage) usageLog.push(subUsage);
 
                 if (subStep.type === "tool" || subStep.type === "action") {

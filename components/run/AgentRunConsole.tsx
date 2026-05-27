@@ -172,19 +172,27 @@ export function AgentRunConsole({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [heartbeatAt, setHeartbeatAt] = useState<string | null>(null);
+  const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const runStatus = normalizeStatus(status);
+  const TERMINAL = new Set(["completed", "failed", "suspended", "cancelled", "timeout"]);
+  const runStatus = normalizeStatus(liveStatus ?? status);
   const isActive =
-    runStatus === "running" ||
-    runStatus === "pending" ||
-    runStatus === "queued" ||
-    pollWhileRunning;
+    !TERMINAL.has(runStatus) &&
+    (pollWhileRunning ||
+      runStatus === "running" ||
+      runStatus === "pending" ||
+      runStatus === "queued" ||
+      runStatus === "awaiting_approval");
 
   useEffect(() => {
     setLiveCompleted(stepsCompleted);
   }, [stepsCompleted]);
+
+  useEffect(() => {
+    setLiveStatus(null);
+  }, [runId, status]);
 
   useEffect(() => {
     if (!runId) {
@@ -207,6 +215,7 @@ export function AgentRunConsole({
         if (runRes.ok) {
           const run = await runRes.json();
           if (!cancelled) {
+            if (run.status) setLiveStatus(run.status === "pending" ? "queued" : run.status);
             if (run.steps_completed != null) setLiveCompleted(run.steps_completed);
             if (run.started_at) setStartedAt(run.started_at);
             if (run.heartbeat_at) setHeartbeatAt(run.heartbeat_at);
@@ -235,6 +244,7 @@ export function AgentRunConsole({
         if (cancelled) return;
         try {
           const run = JSON.parse((ev as MessageEvent).data);
+          if (run.status) setLiveStatus(run.status === "pending" ? "queued" : run.status);
           if (run.steps_completed != null) setLiveCompleted(run.steps_completed);
           if (run.started_at) setStartedAt(run.started_at);
           if (run.heartbeat_at) setHeartbeatAt(run.heartbeat_at);
