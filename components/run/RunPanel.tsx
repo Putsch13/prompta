@@ -296,9 +296,19 @@ export function RunPanel({
       const data = await res.json();
       if (!res.ok) {
         if (data.error === "configuration_incomplete") {
-          setShowWizard(true);
+          const connectorIssue = (data.issues as { code?: string }[] | undefined)?.some(
+            (i) => i.code === "missing_connector"
+          );
+          if (!connectorIssue) {
+            setShowWizard(true);
+          }
         }
-        throw new Error(data.message ?? data.error);
+        throw new Error(
+          data.message ??
+            (Array.isArray(data.issues)
+              ? data.issues.map((i: { message?: string }) => i.message).join(" · ")
+              : data.error)
+        );
       }
 
       if (data.runId) setRunId(data.runId);
@@ -316,6 +326,17 @@ export function RunPanel({
         setRunning(false);
       } else if (data.runId) {
         setAgentStatus(data.status === "queued" ? "queued" : "running");
+        if (data.status === "queued") {
+          setStepTrace([
+            {
+              stepIndex: 0,
+              stepType: "system",
+              label: "Mise en file d'exécution",
+              status: "running",
+              outputPreview: data.message ?? "Démarrage de l'agent…",
+            },
+          ]);
+        }
         pollRunStatus(data.runId);
       } else {
         setAgentStatus(data.status);

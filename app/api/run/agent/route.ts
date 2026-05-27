@@ -158,6 +158,11 @@ export async function POST(request: NextRequest) {
     { dryRun }
   );
   if (preflightIssues.length > 0) {
+    console.warn("[run/agent] preflight blocked", {
+      userId: user.id,
+      listingId,
+      issues: preflightIssues,
+    });
     return NextResponse.json(
       {
         error: "configuration_incomplete",
@@ -202,10 +207,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Traite la file en arrière-plan (web dyno Render si worker dédié absent)
+    void import("@/lib/worker/process-pending-runs")
+      .then(({ processPendingAgentRuns }) => processPendingAgentRuns(1))
+      .catch((err) =>
+        console.error("[run/agent] process queue failed:", err instanceof Error ? err.message : err)
+      );
+
     return NextResponse.json({
       runId: agentRun.id,
       status: "queued",
-      message: "Agent en file d'attente — traité par le worker",
+      message: "Agent en file d'attente — exécution en cours",
     });
   }
 

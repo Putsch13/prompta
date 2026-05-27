@@ -46,14 +46,18 @@ export async function validateAgentPreflight(
 
   if (!dryRun && manifest.connectors.length > 0) {
     const { listUserConnections } = await import("@/lib/connections");
+    const { dedupeConnectors, connectionMatchesConnector } = await import(
+      "@/lib/connectors/resolve-id"
+    );
     const connections = await listUserConnections(userId);
-    const connected = new Set(connections.map((c) => c.connectorId));
+    const connected = connections.filter((c) => c.status === "connected");
 
-    for (const connectorId of manifest.connectors) {
-      if (!connected.has(connectorId)) {
+    for (const connectorId of dedupeConnectors(manifest.connectors)) {
+      const ok = connected.some((c) => connectionMatchesConnector(c.connectorId, connectorId));
+      if (!ok) {
         issues.push({
           code: "missing_connector",
-          message: `Connecteur ${connectorId} non connecté.`,
+          message: `Connecteur ${connectorId} non connecté — liez-le dans Connexions puis actualisez.`,
         });
       }
     }
