@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { scanContent } from "@/lib/content-filter";
 import { allFindings } from "@/lib/secrets-scanner";
 import { AgentManifestSchema } from "@/lib/agent/schema";
+import { assertManifestValidForPublish } from "@/lib/builder/validate-manifest-for-publish";
 import { canSellPaid } from "@/lib/platform-access";
 
 export const dynamic = "force-dynamic";
@@ -109,6 +110,14 @@ export async function POST(request: NextRequest) {
       const manifestParsed = AgentManifestSchema.safeParse(body.manifest);
       if (!manifestParsed.success) {
         return NextResponse.json({ error: "Manifeste invalide" }, { status: 400 });
+      }
+      try {
+        assertManifestValidForPublish(manifestParsed.data);
+      } catch (err) {
+        return NextResponse.json(
+          { error: err instanceof Error ? err.message : "Manifeste invalide" },
+          { status: 400 }
+        );
       }
       envPayload = {
         manifest: manifestParsed.data,

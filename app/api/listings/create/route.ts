@@ -5,6 +5,7 @@ import { scanContent } from "@/lib/content-filter";
 import { allFindings } from "@/lib/secrets-scanner";
 import { uniqueSlug } from "@/lib/slug";
 import { AgentManifestSchema } from "@/lib/agent/schema";
+import { assertManifestValidForPublish } from "@/lib/builder/validate-manifest-for-publish";
 import { canSellPaid } from "@/lib/platform-access";
 
 export const dynamic = "force-dynamic";
@@ -91,6 +92,15 @@ export async function POST(request: NextRequest) {
   if (!manifestParsed.success) {
     return NextResponse.json(
       { error: "Manifeste invalide", details: manifestParsed.error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  try {
+    assertManifestValidForPublish(manifestParsed.data);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Manifeste invalide" },
       { status: 400 }
     );
   }

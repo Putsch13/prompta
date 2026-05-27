@@ -20,6 +20,8 @@ import {
   logStepSkipped,
   updateStepInput,
 } from "./step-logger";
+import { checkIdempotency, recordExecution } from "./idempotency";
+import { saveDeliverable } from "./deliverables";
 
 export interface StepUsage {
   inputTokens: number;
@@ -298,12 +300,38 @@ async function executeStep(
         await updateStepInput(stepDbId, params).catch(() => undefined);
       }
 
+      if (runId && !simulated) {
+        const cached = await checkIdempotency(runId, stepIndex, step.action);
+        if (cached.alreadyExecuted && cached.previousOutput != null) {
+          await logRunActivity({
+            userId: ctx.userId,
+            runId: ctx.runId,
+            listingId: ctx.listingId,
+            actionType: "action",
+            actionLabel: `${step.action} (idempotent cache)`,
+            simulated: false,
+            detail: { connector: step.connector, stepIndex },
+          });
+          if (runId && stepDbId) {
+            await logStepSuccess(stepDbId, cached.previousOutput.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
+          }
+          return {
+            content: cached.previousOutput,
+            usage: { inputTokens: 0, outputTokens: 0, connectorAction: step.action },
+          };
+        }
+      }
+
       const result = await executeConnectorAction(step.action, params, {
         userId: ctx.userId,
         accessToken: conn?.accessToken,
         apiKey: step.connector === "telegram" ? conn?.accessToken : undefined,
         dryRun: simulated,
       });
+
+      if (runId && !simulated) {
+        await recordExecution(runId, stepIndex, step.action, result.output).catch(() => undefined);
+      }
 
       await logRunActivity({
         userId: ctx.userId,
@@ -451,6 +479,47 @@ function describeStep(step: AgentStep, index: number): string {
       return `Retrieve ${step.source}`;
     default:
       return `Étape ${index + 1}`;
+  }
+}
+
+async function persistRunDeliverables(params: {
+  runId: string;
+  listingId: string;
+  userId: string;
+  outputs: Record<string, string>;
+  manifest: AgentManifest;
+}): Promise<void> {
+  const saved = new Set<string>();
+
+  async function saveOne(key: string, content: string, kind = "text") {
+    if (!content.trim() || saved.has(key)) return;
+    saved.add(key);
+    const ext = kind === "json" ? "json" : kind === "markdown" ? "md" : "txt";
+    await saveDeliverable({
+      runId: params.runId,
+      listingId: params.listingId,
+      userId: params.userId,
+      kind,
+      filename: `${key}.${ext}`,
+      mimeType: kind === "json" ? "application/json" : "text/plain",
+      content,
+      previewText: content.slice(0, 500),
+    });
+  }
+
+  if (params.outputs.result) {
+    await saveOne("result", params.outputs.result, "markdown");
+  }
+
+  for (const key of params.manifest.outputs ?? []) {
+    if (key === "result") continue;
+    const val = params.outputs[key];
+    if (val) await saveOne(key, val);
+  }
+
+  for (const [key, val] of Object.entries(params.outputs)) {
+    if (key.startsWith("step_") || key === "result") continue;
+    if (val) await saveOne(key, val);
   }
 }
 
@@ -720,6 +789,16 @@ export async function runAgent(
       }
 
       outputs.result = vars[`step_${stepsCompleted - 1}_output`] ?? "";
+
+      if (effectiveContext.runId && !effectiveContext.dryRun && effectiveContext.listingId !== "preview") {
+        await persistRunDeliverables({
+          runId: effectiveContext.runId,
+          listingId: effectiveContext.listingId,
+          userId: effectiveContext.userId,
+          outputs,
+          manifest: manifestWithLimits,
+        }).catch((e) => console.warn("[orchestrator] deliverables save failed:", e));
+      }
 
       if (memoryEnabled && effectiveContext.runId) {
         const summary = outputs.result.slice(0, 500);

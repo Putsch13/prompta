@@ -623,6 +623,7 @@ export function RunPanel({
               finalOutput={agentOutput}
               approvalId={approvalId}
               onApprove={handleApprove}
+              onRetry={() => void handleAgentRun()}
               onClose={() => setShowImmersive(false)}
             />
           )}

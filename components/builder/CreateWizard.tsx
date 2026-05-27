@@ -31,6 +31,7 @@ import {
   keyToLabel,
   validateAgentSteps,
 } from "@/lib/builder/variables";
+import { validateAgentManifest, hasBlockingIssues } from "@/lib/builder/validate-agent";
 import { connectorsForSteps } from "@/lib/connectors/registry";
 import type { AgentTemplate } from "@/lib/templates/agent-templates";
 import type { GeneratedSkeleton } from "@/lib/builder/generate-skeleton";
@@ -301,12 +302,22 @@ export function CreateWizard({ categories }: Props) {
     setSuggestedVars((prev) => prev.filter((k) => k !== key));
   }
 
+  function validateCurrentManifest(): string | null {
+    if (form.type === "prompt") return null;
+    const manifest = buildCurrentManifest();
+    const legacyIssues = validateAgentSteps(manifest.steps);
+    if (legacyIssues.length > 0) return legacyIssues[0].message;
+    const issues = validateAgentManifest(manifest.steps, { connectors: manifest.connectors });
+    const blocking = issues.find((i) => i.severity === "error");
+    return blocking?.message ?? null;
+  }
+
   function canContinueFromStep(current: number): boolean {
     setStepError(null);
     if (current === 2 && form.type !== "prompt") {
-      const issues = validateAgentSteps(form.agentSteps);
-      if (issues.length > 0) {
-        setStepError(issues[0].message);
+      const err = validateCurrentManifest();
+      if (err) {
+        setStepError(err);
         return false;
       }
     }
@@ -339,6 +350,17 @@ export function CreateWizard({ categories }: Props) {
   async function handleSubmit(publish: boolean) {
     setSaving(true);
     const manifest = buildCurrentManifest();
+    const validationErr = validateCurrentManifest();
+    if (validationErr) {
+      setStepError(validationErr);
+      setSaving(false);
+      return;
+    }
+    if (publish && hasBlockingIssues(validateAgentManifest(manifest.steps, { connectors: manifest.connectors }))) {
+      setStepError("Corrigez les erreurs du manifeste avant publication.");
+      setSaving(false);
+      return;
+    }
 
     const res = await fetch("/api/listings/create", {
       method: "POST",

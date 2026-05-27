@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Bot,
+  Download,
   FileOutput,
   LayoutList,
   Loader2,
@@ -13,6 +14,16 @@ import { AgentRunConsole } from "@/components/run/AgentRunConsole";
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 
 type RunStatus = string;
+
+interface DeliverableItem {
+  id: string;
+  kind: string;
+  filename: string;
+  mime_type: string;
+  preview_text: string | null;
+  size_bytes: number;
+  created_at: string;
+}
 
 interface DisplayStep {
   id: string;
@@ -36,6 +47,7 @@ interface Props {
   finalOutput?: string;
   onClose?: () => void;
   onApprove?: (approvalId: string) => Promise<void>;
+  onRetry?: () => void;
   approvalId?: string | null;
 }
 
@@ -63,8 +75,15 @@ function groupLabel(key: string): string {
     slack: "Slack",
     hubspot: "HubSpot",
     notion: "Notion",
+    files: "Fichiers livrables",
   };
   return labels[key] ?? key.replace(/_/g, " ");
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} o`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} Ko`;
+  return `${(n / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
 export function AgentRunExperience({
@@ -79,11 +98,14 @@ export function AgentRunExperience({
   finalOutput,
   onClose,
   onApprove,
+  onRetry,
   approvalId,
 }: Props) {
   const [view, setView] = useState<"live" | "deliverables">("live");
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
+  const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
+  const [loadingDeliverables, setLoadingDeliverables] = useState(false);
 
   const displaySteps: DisplayStep[] = useMemo(
     () =>
@@ -110,11 +132,48 @@ export function AgentRunExperience({
     return map;
   }, [displaySteps]);
 
+  const hasDeliverables = deliverables.length > 0 || groups.size > 0;
+
   useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+
+    async function loadDeliverables() {
+      setLoadingDeliverables(true);
+      try {
+        const res = await fetch(`/api/run/agent/${runId}/deliverables`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) setDeliverables(data.deliverables ?? []);
+        }
+      } finally {
+        if (!cancelled) setLoadingDeliverables(false);
+      }
+    }
+
+    loadDeliverables();
+    if (status === "completed" || status === "failed") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const interval = setInterval(loadDeliverables, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [runId, status]);
+
+  useEffect(() => {
+    if (deliverables.length > 0) {
+      setActiveGroup("files");
+      return;
+    }
     if (groups.size > 0 && !activeGroup) {
       setActiveGroup(Array.from(groups.keys())[0]);
     }
-  }, [groups, activeGroup]);
+  }, [groups, activeGroup, deliverables.length]);
 
   const isActive =
     status === "running" ||
@@ -130,6 +189,7 @@ export function AgentRunExperience({
           <p className="text-xs text-white/60">
             {isActive ? "Agent en cours…" : status === "completed" ? "Terminé" : status === "failed" ? "Échoué" : status ?? "—"}
             {totalSteps > 0 && ` · ${stepsCompleted}/${totalSteps} étapes`}
+            {deliverables.length > 0 && ` · ${deliverables.length} livrable(s)`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -145,7 +205,7 @@ export function AgentRunExperience({
           <button
             type="button"
             onClick={() => setView("deliverables")}
-            disabled={groups.size === 0}
+            disabled={!hasDeliverables && !loadingDeliverables}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40 ${
               view === "deliverables"
                 ? "bg-emerald-500 text-white"
@@ -153,6 +213,9 @@ export function AgentRunExperience({
             }`}
           >
             <FileOutput className="h-3.5 w-3.5" /> Livrables
+            {deliverables.length > 0 && (
+              <span className="rounded-full bg-white/20 px-1.5 text-[10px]">{deliverables.length}</span>
+            )}
           </button>
           {onClose && (
             <button
@@ -203,6 +266,7 @@ export function AgentRunExperience({
               pollWhileRunning={pollWhileRunning}
               title="Exécution en direct"
               errorMessage={errorMessage}
+              onRetry={onRetry}
             />
             {finalOutput && status === "completed" && (
               <div className="mt-4 shrink-0 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
@@ -217,9 +281,23 @@ export function AgentRunExperience({
           <>
             <aside className="w-full shrink-0 border-b border-white/10 lg:w-64 lg:border-b-0 lg:border-r">
               <p className="flex items-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-wide text-white/50">
-                <LayoutList className="h-3.5 w-3.5" /> Par outil
+                <LayoutList className="h-3.5 w-3.5" /> Livrables
               </p>
               <nav className="flex gap-1 overflow-x-auto px-2 pb-3 lg:flex-col lg:overflow-visible lg:px-3 lg:pb-6">
+                {deliverables.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveGroup("files")}
+                    className={`shrink-0 rounded-lg px-3 py-2 text-left text-sm lg:w-full ${
+                      activeGroup === "files"
+                        ? "bg-white/15 text-white"
+                        : "text-white/70 hover:bg-white/10"
+                    }`}
+                  >
+                    <span className="font-medium">Fichiers</span>
+                    <span className="ml-2 text-xs text-white/40">{deliverables.length}</span>
+                  </button>
+                )}
                 {Array.from(groups.entries()).map(([key, steps]) => (
                   <button
                     key={key}
@@ -238,7 +316,44 @@ export function AgentRunExperience({
               </nav>
             </aside>
             <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-              {activeGroup && groups.get(activeGroup) ? (
+              {loadingDeliverables && deliverables.length === 0 ? (
+                <div className="flex items-center gap-2 py-12 text-sm text-white/50">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Chargement des livrables…
+                </div>
+              ) : activeGroup === "files" && deliverables.length > 0 ? (
+                <div className="space-y-3">
+                  <h2 className="flex items-center gap-2 font-display text-xl font-bold">
+                    <FileOutput className="h-5 w-5 text-emerald-400" />
+                    Fichiers livrables
+                  </h2>
+                  {deliverables.map((d) => (
+                    <article
+                      key={d.id}
+                      className="rounded-xl border border-white/10 bg-white/5 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-white/90">{d.filename}</p>
+                          <p className="mt-0.5 text-xs text-white/40">
+                            {d.kind} · {formatBytes(d.size_bytes)}
+                          </p>
+                        </div>
+                        <a
+                          href={`/api/run/agent/${runId}/deliverables/${d.id}/download`}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-500/30"
+                        >
+                          <Download className="h-3.5 w-3.5" /> Télécharger
+                        </a>
+                      </div>
+                      {d.preview_text && (
+                        <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-black/30 p-3 text-xs leading-relaxed text-white/70">
+                          {d.preview_text}
+                        </pre>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              ) : activeGroup && groups.get(activeGroup) ? (
                 <div className="space-y-4">
                   <h2 className="flex items-center gap-2 font-display text-xl font-bold">
                     <Bot className="h-5 w-5 text-sky-400" />
@@ -260,7 +375,7 @@ export function AgentRunExperience({
                 </div>
               ) : (
                 <p className="py-12 text-center text-sm text-white/50">
-                  Les livrables apparaîtront ici au fur et à mesure des étapes.
+                  Les livrables apparaîtront ici à la fin du run.
                 </p>
               )}
             </main>

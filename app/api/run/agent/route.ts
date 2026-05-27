@@ -172,6 +172,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!dryRun && parsedEnv.manifest.connectors.length > 0) {
+    const { checkConnectorHealth } = await import("@/lib/connectors/connection-health");
+    const healthIssues = await checkConnectorHealth(user.id, parsedEnv.manifest.connectors);
+    if (healthIssues.length > 0) {
+      return NextResponse.json(
+        {
+          error: "configuration_incomplete",
+          message: healthIssues[0].message,
+          issues: healthIssues.map((h) => ({
+            code: "connector_health",
+            message: h.message,
+          })),
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   const runAsync =
     dryRun ? false : runAsyncParam !== undefined ? Boolean(runAsyncParam) : true;
 
