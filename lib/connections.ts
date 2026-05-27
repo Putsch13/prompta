@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { connectorLookupIds } from "@/lib/connectors/resolve-id";
 
 export interface ConnectionStatus {
   connectorId: string;
@@ -15,6 +16,21 @@ function db(): any {
 }
 
 export async function getUserConnection(
+  userId: string,
+  connectorId: string
+): Promise<{ accessToken: string; refreshToken?: string } | null> {
+  for (const id of connectorLookupIds(connectorId)) {
+    const conn = await getUserConnectionDirect(userId, id);
+    if (conn) return conn;
+  }
+  return null;
+}
+
+export async function isConnectorConnected(userId: string, connectorId: string): Promise<boolean> {
+  return (await getUserConnection(userId, connectorId)) !== null;
+}
+
+async function getUserConnectionDirect(
   userId: string,
   connectorId: string
 ): Promise<{ accessToken: string; refreshToken?: string } | null> {
@@ -115,19 +131,22 @@ export async function saveComposioConnection(
   toolkitSlug: string,
   composioAccountId: string
 ): Promise<void> {
-  await db().from("user_connections").upsert(
-    {
-      owner_id: userId,
-      connector_id: toolkitSlug,
-      provider: "composio",
-      composio_account_id: composioAccountId,
-      status: "connected",
-      access_token_enc: null,
-      refresh_token_enc: null,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "owner_id,connector_id" }
-  );
+  const ids = connectorLookupIds(toolkitSlug);
+  for (const connectorId of ids) {
+    await db().from("user_connections").upsert(
+      {
+        owner_id: userId,
+        connector_id: connectorId,
+        provider: "composio",
+        composio_account_id: composioAccountId,
+        status: "connected",
+        access_token_enc: null,
+        refresh_token_enc: null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "owner_id,connector_id" }
+    );
+  }
 }
 
 export async function isComposioToolkitConnected(

@@ -41,7 +41,19 @@ interface Params {
   params: { id: string };
 }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+function safeReturnUrl(appUrl: string, raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    const base = new URL(appUrl);
+    if (u.origin !== base.origin) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(req: NextRequest, { params }: Params) {
   const supabase = createClient();
   const {
     data: { user },
@@ -50,6 +62,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!user) return NextResponse.redirect(new URL("/login", appUrl));
 
   const connectorId = params.id;
+  const returnUrl = safeReturnUrl(appUrl, req.nextUrl.searchParams.get("returnUrl"));
 
   if (connectorId === "telegram") {
     return NextResponse.redirect(new URL("/dashboard/connexions?connect=telegram", appUrl));
@@ -58,7 +71,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (isComposioEnabled()) {
     try {
       const toolkitSlug = toComposioToolkitSlug(connectorId);
-      const callbackUrl = `${appUrl}/api/connectors/composio/callback?toolkit=${encodeURIComponent(toolkitSlug)}`;
+      const callbackParams = new URLSearchParams({ toolkit: toolkitSlug });
+      if (returnUrl) callbackParams.set("returnUrl", returnUrl);
+      const callbackUrl = `${appUrl}/api/connectors/composio/callback?${callbackParams.toString()}`;
       const redirectUrl = await startComposioAuth(user.id, toolkitSlug, callbackUrl);
       return NextResponse.redirect(redirectUrl);
     } catch (err) {
@@ -83,7 +98,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     );
   }
 
-  const state = createSignedState({ userId: user.id, connectorId });
+  const state = createSignedState({ userId: user.id, connectorId, returnUrl: returnUrl ?? undefined });
   const isProduction = process.env.NODE_ENV === "production";
   cookies().set("oauth_state", state, {
     httpOnly: true,

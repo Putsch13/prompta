@@ -4,12 +4,13 @@ import { useState, useEffect, useCallback } from "react";
 import { Copy, Play, Check, AlertTriangle, Settings } from "lucide-react";
 import { UserSetupWizard } from "@/components/onboarding/UserSetupWizard";
 import { ConnectionsMasque } from "@/components/run/ConnectionsMasque";
-import { AgentRunConsole } from "@/components/run/AgentRunConsole";
+import { AgentRunExperience } from "@/components/run/AgentRunExperience";
 import { estimateMaxCost } from "@/lib/billing/run-cost";
 import { costToCredits, creditsToEur } from "@/lib/billing/credits";
 
 import { extractInputVariables } from "@/lib/builder/variables";
 import { EnvFieldInputs } from "@/components/builder/EnvFieldInputs";
+import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 
 interface EnvField {
   key: string;
@@ -89,6 +90,9 @@ export function RunPanel({
   const [stepsCompleted, setStepsCompleted] = useState<number | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [dryRun, setDryRun] = useState(false);
+  const [stepTrace, setStepTrace] = useState<StepTraceEntry[]>([]);
+  const [approvalId, setApprovalId] = useState<string | null>(null);
+  const [showImmersive, setShowImmersive] = useState(false);
 
   const varNames = promptBody
     ? extractInputVariables(promptBody)
@@ -156,12 +160,45 @@ export function RunPanel({
       await new Promise((r) => setTimeout(r, 2000));
       polls++;
       try {
-        const res = await fetch(`/api/run/agent/${id}`);
-        if (!res.ok) continue;
-        const data = await res.json();
+        const [runRes, stepsRes] = await Promise.all([
+          fetch(`/api/run/agent/${id}`),
+          fetch(`/api/run/agent/${id}/steps`),
+        ]);
+        if (stepsRes.ok) {
+          const stepsData = await stepsRes.json();
+          const mapped: StepTraceEntry[] = (stepsData.steps ?? []).map(
+            (s: {
+              stepIndex: number;
+              stepType: string;
+              label?: string;
+              status: string;
+              outputPreview?: string;
+              durationMs?: number;
+              model?: string;
+              actionSlug?: string;
+            }) => ({
+              stepIndex: s.stepIndex,
+              stepType: s.stepType,
+              label: s.label ?? `Étape ${s.stepIndex + 1}`,
+              status: s.status,
+              outputPreview: s.outputPreview,
+              durationMs: s.durationMs,
+              model: s.model,
+              actionSlug: s.actionSlug,
+            })
+          );
+          if (mapped.length > 0) setStepTrace(mapped);
+        }
+        if (!runRes.ok) continue;
+        const data = await runRes.json();
         const status = data.status === "pending" ? "queued" : data.status;
         setAgentStatus(status);
         if (data.steps_completed != null) setStepsCompleted(data.steps_completed);
+        if (data.status === "awaiting_approval" && data.approval_id) {
+          setApprovalId(data.approval_id);
+          setRunning(false);
+          return;
+        }
         if (data.status === "completed") {
           setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
           setRunning(false);
@@ -180,6 +217,23 @@ export function RunPanel({
     setRunning(false);
   }
 
+  async function handleApprove(approvalIdParam: string) {
+    if (!runId) return;
+    const res = await fetch(`/api/run/agent/${runId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvalId: approvalIdParam, decision: "approved" }),
+    });
+    if (!res.ok) {
+      setError("Approbation échouée");
+      return;
+    }
+    setApprovalId(null);
+    setRunning(true);
+    setAgentStatus("running");
+    await pollRunStatus(runId);
+  }
+
   const [runMode, setRunMode] = useState<string | null>(null);
 
   async function handleAgentRun() {
@@ -191,6 +245,9 @@ export function RunPanel({
     setAgentStatus("checking");
     setStepsCompleted(null);
     setRunId(null);
+    setStepTrace([]);
+    setApprovalId(null);
+    setShowImmersive(true);
 
     // Preflight: check if user can run
     try {
@@ -246,11 +303,16 @@ export function RunPanel({
 
       if (data.runId) setRunId(data.runId);
       if (data.stepsCompleted != null) setStepsCompleted(data.stepsCompleted);
+      if (data.stepTrace) setStepTrace(data.stepTrace);
+      if (data.approvalId) setApprovalId(data.approvalId);
 
       if (data.status === "completed" || data.status === "failed" || data.status === "suspended") {
         setAgentStatus(data.status);
         setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
         if (data.error) setError(data.error);
+        setRunning(false);
+      } else if (data.status === "awaiting_approval") {
+        setAgentStatus("awaiting_approval");
         setRunning(false);
       } else if (data.runId) {
         setAgentStatus(data.status === "queued" ? "queued" : "running");
@@ -504,34 +566,41 @@ export function RunPanel({
             </p>
           )}
 
-          {(running || agentStatus) && (
+          {(running || agentStatus) && !showImmersive && (
             <div className="mt-4">
-              <AgentRunConsole
-                runId={runId ?? undefined}
-                status={agentStatus}
-                stepsCompleted={stepsCompleted ?? 0}
-                totalSteps={stepCount}
-                pollWhileRunning={
-                  running ||
-                  agentStatus === "running" ||
-                  agentStatus === "queued" ||
-                  agentStatus === "pending"
-                }
-                title={`Exécution — ${title}`}
-                errorMessage={error}
-              />
-              {runId && agentStatus === "completed" && (
-                <a
-                  href={`/dashboard/runs?id=${runId}`}
-                  className="mt-2 inline-block text-xs text-accent hover:underline"
-                >
-                  Voir dans l&apos;historique →
-                </a>
-              )}
+              <button
+                type="button"
+                onClick={() => setShowImmersive(true)}
+                className="text-xs text-accent hover:underline"
+              >
+                Ouvrir la console plein écran →
+              </button>
             </div>
           )}
 
-          {agentOutput && (
+          {showImmersive && (running || agentStatus) && (
+            <AgentRunExperience
+              title={title}
+              status={agentStatus}
+              runId={runId}
+              stepsCompleted={stepsCompleted ?? 0}
+              totalSteps={stepCount}
+              stepTrace={stepTrace}
+              pollWhileRunning={
+                running ||
+                agentStatus === "running" ||
+                agentStatus === "queued" ||
+                agentStatus === "pending"
+              }
+              errorMessage={error}
+              finalOutput={agentOutput}
+              approvalId={approvalId}
+              onApprove={handleApprove}
+              onClose={() => setShowImmersive(false)}
+            />
+          )}
+
+          {agentOutput && !showImmersive && (
             <div className="mt-3">
               <p className="mb-1 text-xs font-medium text-ink-soft">Résultat</p>
               <pre className="max-h-60 overflow-auto rounded-lg bg-card2 p-3 text-xs whitespace-pre-wrap">
@@ -540,7 +609,7 @@ export function RunPanel({
             </div>
           )}
 
-          {error && (
+          {error && !showImmersive && (
             <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
               <p className="text-sm text-red-700">{error}</p>
               <div className="mt-2 flex flex-wrap gap-2">

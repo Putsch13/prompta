@@ -1,4 +1,7 @@
 import { Composio } from "@composio/core";
+import { LEGACY_TOOLKIT_MAP, toComposioToolkitSlug } from "@/lib/connectors/resolve-id";
+
+export { LEGACY_TOOLKIT_MAP, toComposioToolkitSlug };
 
 let instance: Composio | null = null;
 
@@ -15,17 +18,4 @@ export function getComposioClient(): Composio {
     instance = new Composio({ apiKey });
   }
   return instance;
-}
-
-/** Slugs natifs Prompta → slugs Composio */
-export const LEGACY_TOOLKIT_MAP: Record<string, string> = {
-  google_sheets: "googlesheets",
-  gmail: "gmail",
-  slack: "slack",
-  telegram: "telegram",
-  canva: "canva",
-};
-
-export function toComposioToolkitSlug(connectorId: string): string {
-  return LEGACY_TOOLKIT_MAP[connectorId] ?? connectorId;
 }

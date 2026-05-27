@@ -1,6 +1,7 @@
 import type { AgentManifest, AgentStep, AgentKind, ExecutionMode } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 import { connectorsForSteps } from "@/lib/connectors/registry";
+import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 import { enrichEnvField } from "@/lib/builder/env-field-hints";
 import { managedDeliverables } from "@/lib/builder/provisioning";
 
@@ -65,9 +66,10 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
         };
       }),
     secrets: [...params.requiredSecrets],
-    connectors: Array.from(
-      new Set([...connectorsForSteps(steps), ...(params.requiredConnectors ?? [])])
-    ),
+    connectors: dedupeConnectors([
+      ...connectorsForSteps(steps),
+      ...(params.requiredConnectors ?? []),
+    ]),
     tools: Array.from(toolsUsed),
     steps,
     limits: {

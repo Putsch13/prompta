@@ -9,6 +9,8 @@ import { costToCredits, CREDIT_VALUE_CENTS } from "@/lib/billing/credits";
 import { estimateMaxCost } from "@/lib/billing/run-cost";
 import { getFreeRunsRemaining } from "@/lib/billing/free-quota";
 import { hasPlatformPro } from "@/lib/platform-access";
+import { isConnectorConnected } from "@/lib/connections";
+import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 
 export const dynamic = "force-dynamic";
 
@@ -127,14 +129,9 @@ export async function POST(request: NextRequest) {
   // Déterminer connecteurs manquants
   const missingConnectors: string[] = [];
   if (parsedEnv?.manifest?.connectors) {
-    for (const c of parsedEnv.manifest.connectors) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: conn } = await (admin as any).from("user_connections")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("connector_id", c)
-        .maybeSingle();
-      if (!conn) missingConnectors.push(c);
+    for (const c of dedupeConnectors(parsedEnv.manifest.connectors)) {
+      const connected = await isConnectorConnected(user.id, c);
+      if (!connected) missingConnectors.push(c);
     }
   }
 

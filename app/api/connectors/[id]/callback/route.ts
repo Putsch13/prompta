@@ -105,5 +105,8 @@ export async function GET(req: NextRequest, { params }: Params) {
   });
 
   cookies().delete("oauth_state");
-  return NextResponse.redirect(`${appUrl}/dashboard/connexions?connected=${connectorId}`);
+  const successUrl = parsed.returnUrl
+    ? `${parsed.returnUrl}${parsed.returnUrl.includes("?") ? "&" : "?"}connected=${connectorId}`
+    : `${appUrl}/dashboard/connexions?connected=${connectorId}`;
+  return NextResponse.redirect(successUrl);
 }

@@ -21,6 +21,7 @@ function hmacSign(payload: string): string {
 export function createSignedState(data: {
   userId: string;
   connectorId: string;
+  returnUrl?: string;
 }): string {
   const payload = Buffer.from(
     JSON.stringify({ ...data, ts: Date.now() })
@@ -35,7 +36,7 @@ export function createSignedState(data: {
  */
 export function verifySignedState(
   state: string
-): { userId: string; connectorId: string; ts: number } | null {
+): { userId: string; connectorId: string; ts: number; returnUrl?: string } | null {
   const dotIdx = state.indexOf(".");
   if (dotIdx === -1) return null;
 

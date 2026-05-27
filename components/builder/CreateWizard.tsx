@@ -13,8 +13,11 @@ import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { CommissionNote } from "@/components/CommissionNote";
 import { buildManifest } from "@/lib/builder/manifest";
 import { PROVISIONING_OPTIONS, type ProvisioningMode } from "@/lib/builder/provisioning";
-import { AgentRunConsole } from "@/components/run/AgentRunConsole";
+import { AgentRunExperience } from "@/components/run/AgentRunExperience";
+import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
+import { injectHumanApprovals } from "@/lib/connectors/approvals-inject";
+import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 import {
   getGatewayModels,
   getBuilderModels,
@@ -32,8 +35,6 @@ import { connectorsForSteps } from "@/lib/connectors/registry";
 import type { AgentTemplate } from "@/lib/templates/agent-templates";
 import type { GeneratedSkeleton } from "@/lib/builder/generate-skeleton";
 import type { GeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
-import { estimateMaxCost } from "@/lib/billing/run-cost";
-import { costToCredits, creditsToEur } from "@/lib/billing/credits";
 import type { AgentStep, AgentKind, ExecutionMode } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 
@@ -77,6 +78,10 @@ export function CreateWizard({ categories }: Props) {
     payoutsEnabled: boolean;
   } | null>(null);
   const [testRunning, setTestRunning] = useState(false);
+  const [testFullDemo, setTestFullDemo] = useState(false);
+  const [includeHumanApprovals, setIncludeHumanApprovals] = useState(false);
+  const [flowPreviewConfirmed, setFlowPreviewConfirmed] = useState(false);
+  const [showTestImmersive, setShowTestImmersive] = useState(false);
   const [testResult, setTestResult] = useState<{
     status: string;
     output?: Record<string, string>;
@@ -309,12 +314,16 @@ export function CreateWizard({ categories }: Props) {
   }
 
   function buildCurrentManifest() {
+    let steps = form.agentSteps;
+    if (includeHumanApprovals && form.type !== "prompt") {
+      steps = injectHumanApprovals(steps);
+    }
     return buildManifest({
       type: form.type,
       kind: form.kind,
       executionMode: form.executionMode,
       promptBody: form.promptBody,
-      steps: form.agentSteps,
+      steps,
       envFields: form.envFields,
       requiredSecrets: form.requiredSecrets,
       requiredConnectors: form.requiredConnectors,
@@ -322,6 +331,10 @@ export function CreateWizard({ categories }: Props) {
       provisioningMode: form.provisioningMode,
     });
   }
+
+  const previewSteps = includeHumanApprovals && form.type !== "prompt"
+    ? injectHumanApprovals(form.agentSteps)
+    : form.agentSteps;
 
   async function handleSubmit(publish: boolean) {
     setSaving(true);
@@ -369,8 +382,13 @@ export function CreateWizard({ categories }: Props) {
   }
 
   async function runPreview() {
+    if (!flowPreviewConfirmed && form.agentSteps.length > 0) {
+      alert("Validez d'abord l'arborescence de l'agent.");
+      return;
+    }
     setTestRunning(true);
     setTestResult(null);
+    setShowTestImmersive(true);
     const manifest = buildCurrentManifest();
     const res = await fetch("/api/run/agent", {
       method: "POST",
@@ -380,6 +398,7 @@ export function CreateWizard({ categories }: Props) {
         manifest,
         inputs: testInputs,
         async: false,
+        fullDemo: testFullDemo,
       }),
     });
     const data = await res.json();
@@ -962,48 +981,53 @@ export function CreateWizard({ categories }: Props) {
         <div>
           <h2 className="font-display text-xl font-bold text-ink">Test (Playground)</h2>
           <p className="mt-2 text-sm text-ink-soft">
-            Testez votre agent avec vos clés — comme le fera l&apos;utilisateur final.
+            Visualisez l&apos;arborescence, configurez les validations humaines, puis lancez une démo complète.
           </p>
 
           {form.agentSteps.length > 0 && (
-            <div className="mt-4 rounded-lg border border-line bg-card2 p-3 text-sm">
-              <p className="font-medium text-ink">Cet agent va :</p>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 text-ink-soft">
-                {form.agentSteps.map((s, i) => (
-                  <li key={i}>
-                    {s.type === "llm" && `Étape ${i + 1} — ${s.model}`}
-                    {s.type === "tool" && `Étape ${i + 1} — outil ${s.tool}`}
-                    {s.type === "action" && `Étape ${i + 1} — ${s.connector} → ${s.action}`}
-                    {s.type === "code" && `Étape ${i + 1} — code sandbox`}
-                  </li>
-                ))}
-              </ol>
-              {form.type !== "prompt" && (
-                <p className="mt-3 border-t border-line pt-2 text-xs text-ink-faint">
-                  Coût estimé (mode crédits) :{" "}
-                  {costToCredits(
-                    estimateMaxCost({
-                      stepCount: form.agentSteps.length,
-                      maxTokens: 4000,
-                      maxToolCalls: form.agentSteps.filter((s) => s.type === "tool" || s.type === "action")
-                        .length,
-                    })
-                  )}{" "}
-                  cr. (~
-                  {creditsToEur(
-                    costToCredits(
-                      estimateMaxCost({
-                        stepCount: form.agentSteps.length,
-                        maxTokens: 4000,
-                        maxToolCalls: 2,
-                      })
-                    )
-                  ).toFixed(2)}{" "}
-                  € max)
-                </p>
-              )}
+            <div className="mt-4">
+              <AgentFlowPreview
+                steps={previewSteps}
+                provisioningMode={form.provisioningMode}
+                confirmed={flowPreviewConfirmed}
+                onConfirm={() => setFlowPreviewConfirmed(true)}
+              />
             </div>
           )}
+
+          <div className="mt-4 space-y-3 rounded-xl border border-line bg-card2 p-4">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={includeHumanApprovals}
+                onChange={(e) => {
+                  setIncludeHumanApprovals(e.target.checked);
+                  setFlowPreviewConfirmed(false);
+                }}
+                className="mt-1 rounded border-line"
+              />
+              <span>
+                <span className="text-sm font-medium text-ink">Validations humaines</span>
+                <span className="mt-0.5 block text-xs text-ink-soft">
+                  Insère une étape d&apos;approbation avant chaque action sensible (envoi email, écriture Sheets…).
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={testFullDemo}
+                onChange={(e) => setTestFullDemo(e.target.checked)}
+                className="mt-1 rounded border-line"
+              />
+              <span>
+                <span className="text-sm font-medium text-ink">Démo complète (exécution réelle)</span>
+                <span className="mt-0.5 block text-xs text-ink-soft">
+                  Appels réels aux connecteurs — sans simulation. Les validations humaines sont auto-approuvées dans le builder.
+                </span>
+              </span>
+            </label>
+          </div>
 
           {form.envFields.filter((f) => f.key).length > 0 && (
             <EnvFieldInputs
@@ -1012,47 +1036,58 @@ export function CreateWizard({ categories }: Props) {
               onChange={(key, value) =>
                 setTestInputs((prev) => ({ ...prev, [key]: value }))
               }
-              requiredConnectors={Array.from(
-                new Set([
-                  ...form.requiredConnectors,
-                  ...connectorsForSteps(form.agentSteps),
-                ])
+              requiredConnectors={dedupeConnectors(
+                Array.from(
+                  new Set([
+                    ...form.requiredConnectors,
+                    ...connectorsForSteps(form.agentSteps),
+                  ])
+                )
               )}
               provisioningMode={form.provisioningMode}
             />
           )}
 
-          {(testRunning || testResult) && (
-            <div className="mt-4">
-              <AgentRunConsole
-                runId={testResult?.runId}
-                status={testRunning ? "running" : testResult?.status}
-                stepsCompleted={testResult?.stepsCompleted ?? 0}
-                totalSteps={form.agentSteps.length}
-                stepTrace={testResult?.stepTrace}
-                pollWhileRunning={testRunning}
-                title="Travail de l'agent en direct"
-                errorMessage={testResult?.error ?? null}
-              />
-            </div>
+          {showTestImmersive && (testRunning || testResult) && (
+            <AgentRunExperience
+              title={form.title || "Test agent"}
+              status={testRunning ? "running" : testResult?.status ?? null}
+              stepsCompleted={testResult?.stepsCompleted ?? 0}
+              totalSteps={previewSteps.length}
+              stepTrace={testResult?.stepTrace}
+              pollWhileRunning={testRunning}
+              errorMessage={testResult?.error ?? null}
+              finalOutput={testResult?.output?.result}
+              onClose={() => setShowTestImmersive(false)}
+            />
           )}
 
           <button
             onClick={runPreview}
-            disabled={testRunning}
+            disabled={testRunning || (form.agentSteps.length > 0 && !flowPreviewConfirmed)}
             className="mt-4 flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {testRunning && <Loader2 className="h-4 w-4 animate-spin" />}
-            {testRunning ? "Exécution…" : "Lancer le test"}
+            {testRunning
+              ? "Exécution…"
+              : testFullDemo
+                ? "Lancer la démo complète"
+                : "Lancer le test (simulation)"}
           </button>
 
-          {testResult?.error && (
+          {form.agentSteps.length > 0 && !flowPreviewConfirmed && (
+            <p className="mt-2 text-xs text-amber-700">
+              Validez l&apos;arborescence ci-dessus avant de lancer le test.
+            </p>
+          )}
+
+          {testResult?.error && !showTestImmersive && (
             <p className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-destructive">
               {testResult.error}
             </p>
           )}
 
-          {testResult?.status === "completed" && testResult.output?.result && (
+          {testResult?.status === "completed" && testResult.output?.result && !showTestImmersive && (
             <div className="mt-4 rounded-xl border border-line bg-card p-4">
               <p className="text-xs font-bold uppercase text-ink-soft">Livrable final</p>
               <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-sm text-ink">

@@ -47,6 +47,8 @@ export interface OrchestratorContext {
   apiKeys: Record<string, string>;
   runId?: string;
   dryRun?: boolean;
+  /** Builder / test : auto-approuve les étapes validation humaine */
+  demoMode?: boolean;
   onProgress?: (stepsCompleted: number) => void | Promise<void>;
 }
 
@@ -393,8 +395,10 @@ async function executeStep(
       const payloadText = step.payloadTemplate
         ? interpolate(step.payloadTemplate, vars)
         : JSON.stringify(Object.fromEntries(Object.entries(vars).slice(0, 10)));
-      if (simulated) {
-        const preview = `[APERÇU — approbation requise]\n${payloadText.slice(0, 500)}`;
+      if (simulated || ctx.demoMode) {
+        const preview = ctx.demoMode
+          ? `[DÉMO — validation auto-approuvée]\n${payloadText.slice(0, 500)}`
+          : `[APERÇU — approbation requise]\n${payloadText.slice(0, 500)}`;
         if (runId && stepDbId) {
           await logStepSuccess(stepDbId, preview, undefined, stepStartedAt).catch(() => undefined);
         }

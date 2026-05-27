@@ -34,6 +34,12 @@ export async function GET(req: NextRequest) {
 
   try {
     await handleComposioCallback(user.id, toolkit, connectedAccountId, status);
+    const returnUrl = req.nextUrl.searchParams.get("returnUrl");
+    const appBase = appUrl.replace(/\/$/, "");
+    if (returnUrl && returnUrl.startsWith(appBase)) {
+      const sep = returnUrl.includes("?") ? "&" : "?";
+      return NextResponse.redirect(`${returnUrl}${sep}connected=${toolkit}`);
+    }
     return NextResponse.redirect(`${appUrl}/dashboard/connexions?connected=${toolkit}`);
   } catch {
     return NextResponse.redirect(failRedirect);

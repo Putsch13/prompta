@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
     dryRun = false,
     preview,
     manifest: previewManifest,
+    fullDemo = false,
   } = body as {
     listingId?: string;
     versionId?: string;
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
     dryRun?: boolean;
     preview?: boolean;
     manifest?: unknown;
+    fullDemo?: boolean;
   };
 
   const admin = createAdminClient();
@@ -66,7 +68,8 @@ export async function POST(request: NextRequest) {
       listingId: listingId ?? "preview",
       inputs,
       apiKeys,
-      dryRun: true,
+      dryRun: !fullDemo,
+      demoMode: true,
     });
     return NextResponse.json({ preview: true, ...result });
   }
