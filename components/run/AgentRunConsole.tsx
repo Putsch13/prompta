@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   Check,
@@ -9,9 +9,11 @@ import {
   Code,
   Loader2,
   MessageSquare,
+  RefreshCw,
   Search,
   SkipForward,
   Sparkles,
+  Timer,
   X,
   Zap,
 } from "lucide-react";
@@ -29,7 +31,22 @@ interface Props {
   pollWhileRunning?: boolean;
   title?: string;
   errorMessage?: string | null;
+  onRetry?: () => void;
 }
+
+type DisplayStep = {
+  id: string;
+  index: number;
+  type: string;
+  label: string;
+  status: string;
+  output: string | null;
+  input: string | null;
+  durationMs: number | null;
+  model: string | null;
+  actionSlug: string | null;
+  error: string | null;
+};
 
 function normalizeStatus(s: string | null | undefined): RunStatus {
   if (!s) return "pending";
@@ -52,7 +69,7 @@ function stepIcon(type: string) {
   }
 }
 
-function statusBadge(status: RunStepLog["status"] | StepTraceEntry["status"]) {
+function statusBadge(status: string) {
   switch (status) {
     case "success":
       return (
@@ -97,6 +114,47 @@ function previewText(value: unknown, max = 600): string | null {
   }
 }
 
+function mapDbStep(s: RunStepLog): DisplayStep {
+  return {
+    id: s.id,
+    index: s.stepIndex,
+    type: s.stepType,
+    label: s.label ?? `Étape ${s.stepIndex + 1}`,
+    status: s.status,
+    output: previewText(s.outputPreview),
+    input: previewText(s.inputPreview, 300),
+    durationMs: s.durationMs,
+    model: s.model,
+    actionSlug: s.actionSlug,
+    error: s.errorMessage,
+  };
+}
+
+function mapTraceStep(s: StepTraceEntry, i: number): DisplayStep {
+  return {
+    id: `trace-${i}`,
+    index: s.stepIndex,
+    type: s.stepType,
+    label: s.label,
+    status: s.status,
+    output: s.outputPreview ?? null,
+    input: null,
+    durationMs: s.durationMs ?? null,
+    model: s.model ?? null,
+    actionSlug: s.actionSlug ?? null,
+    error: null,
+  };
+}
+
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return "<1s";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}m${rem > 0 ? ` ${rem}s` : ""}`;
+}
+
 export function AgentRunConsole({
   runId,
   status,
@@ -106,13 +164,27 @@ export function AgentRunConsole({
   pollWhileRunning = false,
   title = "Console d'exécution",
   errorMessage = null,
+  onRetry,
 }: Props) {
   const [dbSteps, setDbSteps] = useState<RunStepLog[]>([]);
+  const [liveCompleted, setLiveCompleted] = useState(stepsCompleted);
   const [loading, setLoading] = useState(Boolean(runId));
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [heartbeatAt, setHeartbeatAt] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const runStatus = normalizeStatus(status);
-  const isActive = runStatus === "running" || runStatus === "pending" || runStatus === "queued";
+  const isActive =
+    runStatus === "running" ||
+    runStatus === "pending" ||
+    runStatus === "queued" ||
+    pollWhileRunning;
+
+  useEffect(() => {
+    setLiveCompleted(stepsCompleted);
+  }, [stepsCompleted]);
 
   useEffect(() => {
     if (!runId) {
@@ -124,10 +196,22 @@ export function AgentRunConsole({
 
     async function load() {
       try {
-        const res = await fetch(`/api/run/agent/${runId}/steps`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled) setDbSteps(data.steps ?? []);
+        const [stepsRes, runRes] = await Promise.all([
+          fetch(`/api/run/agent/${runId}/steps`),
+          fetch(`/api/run/agent/${runId}`),
+        ]);
+        if (stepsRes.ok) {
+          const data = await stepsRes.json();
+          if (!cancelled) setDbSteps(data.steps ?? []);
+        }
+        if (runRes.ok) {
+          const run = await runRes.json();
+          if (!cancelled) {
+            if (run.steps_completed != null) setLiveCompleted(run.steps_completed);
+            if (run.started_at) setStartedAt(run.started_at);
+            if (run.heartbeat_at) setHeartbeatAt(run.heartbeat_at);
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -140,46 +224,72 @@ export function AgentRunConsole({
       };
     }
 
-    const interval = setInterval(load, 1500);
+    const interval = setInterval(load, 800);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
   }, [runId, pollWhileRunning, isActive]);
 
+  useEffect(() => {
+    if (!startedAt || !isActive) return;
+    const start = new Date(startedAt).getTime();
+    setElapsed(Date.now() - start);
+    const timer = setInterval(() => setElapsed(Date.now() - start), 1000);
+    return () => clearInterval(timer);
+  }, [startedAt, isActive]);
+
   const displaySteps = useMemo(() => {
-    if (dbSteps.length > 0) {
-      return dbSteps.map((s) => ({
-        id: s.id,
-        index: s.stepIndex,
-        type: s.stepType,
-        label: s.label ?? `Étape ${s.stepIndex + 1}`,
-        status: s.status,
-        output: previewText(s.outputPreview),
-        input: previewText(s.inputPreview, 300),
-        durationMs: s.durationMs,
-        model: s.model,
-        actionSlug: s.actionSlug,
-        error: s.errorMessage,
-      }));
+    const fromDb = dbSteps.map(mapDbStep);
+    const fromTrace = stepTrace.map(mapTraceStep);
+    const base = fromDb.length > 0 ? fromDb : fromTrace;
+
+    const byIndex = new Map<number, DisplayStep>();
+    for (const s of base) byIndex.set(s.index, s);
+
+    const planned = totalSteps > 0 ? totalSteps : base.length;
+    if (planned === 0) return base;
+
+    const merged: DisplayStep[] = [];
+    for (let i = 0; i < planned; i++) {
+      const existing = byIndex.get(i);
+      if (existing) {
+        merged.push(existing);
+        continue;
+      }
+      const doneCount = liveCompleted || base.filter((s) => s.status === "success").length;
+      let stepStatus = "pending";
+      if (i < doneCount) stepStatus = "success";
+      else if (i === doneCount && isActive) stepStatus = "running";
+
+      merged.push({
+        id: `planned-${i}`,
+        index: i,
+        type: "pending",
+        label: `Étape ${i + 1}`,
+        status: stepStatus,
+        output: null,
+        input: null,
+        durationMs: null,
+        model: null,
+        actionSlug: null,
+        error: null,
+      });
     }
-    return stepTrace.map((s, i) => ({
-      id: `trace-${i}`,
-      index: s.stepIndex,
-      type: s.stepType,
-      label: s.label,
-      status: s.status,
-      output: s.outputPreview ?? null,
-      input: null as string | null,
-      durationMs: s.durationMs ?? null,
-      model: s.model ?? null,
-      actionSlug: s.actionSlug ?? null,
-      error: null as string | null,
-    }));
-  }, [dbSteps, stepTrace]);
+    return merged;
+  }, [dbSteps, stepTrace, totalSteps, liveCompleted, isActive]);
+
+  useEffect(() => {
+    const running = displaySteps.find((s) => s.status === "running");
+    const lastDone = [...displaySteps].reverse().find((s) => s.status === "success");
+    const target = running ?? lastDone;
+    if (target) setExpanded(target.id);
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+  }, [displaySteps]);
 
   const progressTotal = totalSteps || displaySteps.length || 1;
-  const progressDone = stepsCompleted || displaySteps.filter((s) => s.status === "success").length;
+  const progressDone =
+    liveCompleted || displaySteps.filter((s) => s.status === "success").length;
   const progressPct = Math.min(100, Math.round((progressDone / progressTotal) * 100));
 
   const statusLabel =
@@ -192,6 +302,8 @@ export function AgentRunConsole({
           : runStatus === "queued" || runStatus === "pending"
             ? "Démarrage…"
             : runStatus;
+
+  const currentStep = displaySteps.find((s) => s.status === "running");
 
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-gradient-to-b from-card to-card2 shadow-sm">
@@ -210,19 +322,46 @@ export function AgentRunConsole({
                   · {progressDone}/{progressTotal} étape(s)
                 </span>
               )}
+              {elapsed > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1">
+                  <Timer className="inline h-3 w-3" />
+                  {formatElapsed(elapsed)}
+                </span>
+              )}
             </p>
+            {currentStep && isActive && (
+              <p className="mt-1 text-xs text-sky-300">
+                En cours : {currentStep.label}
+              </p>
+            )}
+            {heartbeatAt && isActive && (
+              <p className="mt-0.5 text-[10px] text-white/40">
+                Dernier signal : {new Date(heartbeatAt).toLocaleTimeString("fr-FR")}
+              </p>
+            )}
           </div>
-          {isActive && (
-            <span className="relative flex h-3 w-3">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-60" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-sky-400" />
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {isActive && (
+              <span className="relative flex h-3 w-3">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-60" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-sky-400" />
+              </span>
+            )}
+            {!isActive && onRetry && (runStatus === "failed" || runStatus === "completed") && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Relancer
+              </button>
+            )}
+          </div>
         </div>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-sky-400 to-emerald-400 transition-all duration-700 ease-out"
-            style={{ width: `${isActive && progressPct < 8 ? 8 : progressPct}%` }}
+            className="h-full rounded-full bg-gradient-to-r from-sky-400 to-emerald-400 transition-all duration-500 ease-out"
+            style={{ width: `${isActive && progressPct < 5 ? 5 : progressPct}%` }}
           />
         </div>
       </div>
@@ -234,14 +373,17 @@ export function AgentRunConsole({
         </div>
       )}
 
-      <div className="max-h-[min(60vh,520px)] overflow-y-auto p-4 sm:p-5">
+      <div
+        ref={listRef}
+        className="max-h-[min(60vh,520px)] overflow-y-auto p-4 sm:p-5"
+      >
         {loading && displaySteps.length === 0 ? (
           <div className="flex items-center gap-2 py-8 text-sm text-ink-soft">
-            <Loader2 className="h-4 w-4 animate-spin" /> Chargement du travail de l&apos;agent…
+            <Loader2 className="h-4 w-4 animate-spin" /> Connexion au run…
           </div>
         ) : displaySteps.length === 0 ? (
           <p className="py-6 text-center text-sm text-ink-faint">
-            {isActive ? "L'agent démarre ses étapes…" : "Aucune étape enregistrée pour ce run."}
+            {isActive ? "L'agent démarre…" : "Aucune étape enregistrée."}
           </p>
         ) : (
           <ol className="relative space-y-0">
@@ -268,7 +410,11 @@ export function AgentRunConsole({
                             : "border-line bg-card text-ink-soft"
                     }`}
                   >
-                    {stepIcon(step.type)}
+                    {step.status === "running" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      stepIcon(step.type)
+                    )}
                   </div>
 
                   <div className="min-w-0 flex-1">
@@ -282,12 +428,14 @@ export function AgentRunConsole({
                           <span className="text-sm font-medium text-ink">
                             {step.index + 1}. {step.label}
                           </span>
-                          {statusBadge(step.status as RunStepLog["status"])}
+                          {statusBadge(step.status)}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1.5">
-                          <span className="rounded bg-line/70 px-1.5 py-0.5 text-[10px] uppercase text-ink-faint">
-                            {step.type}
-                          </span>
+                          {step.type !== "pending" && (
+                            <span className="rounded bg-line/70 px-1.5 py-0.5 text-[10px] uppercase text-ink-faint">
+                              {step.type}
+                            </span>
+                          )}
                           {step.model && (
                             <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">
                               {step.model}

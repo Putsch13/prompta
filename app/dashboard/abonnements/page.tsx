@@ -58,6 +58,37 @@ export default function AbonnementsPage() {
     setLoadingPro(false);
   }
 
+  const [cancellingPro, setCancellingPro] = useState(false);
+  const [cancellingSubId, setCancellingSubId] = useState<string | null>(null);
+
+  async function cancelPro() {
+    if (!confirm("Êtes-vous sûr de vouloir annuler Prompta Pro ? L'accès reste actif jusqu'à la fin de la période.")) return;
+    setCancellingPro(true);
+    const res = await fetch("/api/platform-subscription/cancel", { method: "POST" });
+    if (res.ok) {
+      setPlatformSub((s) => s ? { ...s, status: "canceled" } : s);
+    } else {
+      const d = await res.json().catch(() => null);
+      alert(d?.error ?? "Erreur");
+    }
+    setCancellingPro(false);
+  }
+
+  async function cancelSub(subId: string) {
+    if (!confirm("Annuler cet abonnement ? L'accès reste actif jusqu'à la fin de la période en cours.")) return;
+    setCancellingSubId(subId);
+    const res = await fetch(`/api/subscriptions/${subId}/cancel`, { method: "POST" });
+    if (res.ok) {
+      setSubscriptions((subs) =>
+        subs.map((s) => (s.id === subId ? { ...s, status: "canceled" } : s))
+      );
+    } else {
+      const d = await res.json().catch(() => null);
+      alert(d?.error ?? "Erreur");
+    }
+    setCancellingSubId(null);
+  }
+
   const isProActive = platformSub?.status === "active";
 
   return (
@@ -101,7 +132,7 @@ export default function AbonnementsPage() {
               )}
             </div>
           </div>
-          {!isProActive && (
+          {!isProActive ? (
             <button
               onClick={subscribePro}
               disabled={loadingPro}
@@ -111,6 +142,18 @@ export default function AbonnementsPage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 "Souscrire à Pro"
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={cancelPro}
+              disabled={cancellingPro}
+              className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {cancellingPro ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Se désabonner"
               )}
             </button>
           )}
@@ -159,14 +202,29 @@ export default function AbonnementsPage() {
                   )}
                 </p>
               </div>
-              {sub.listing && (
-                <Link
-                  href={`/listing/${sub.listing.slug}`}
-                  className="flex items-center gap-1 text-sm text-accent hover:underline"
-                >
-                  Ouvrir <ExternalLink className="h-3.5 w-3.5" />
-                </Link>
-              )}
+              <div className="flex items-center gap-3">
+                {sub.status === "active" && (
+                  <button
+                    onClick={() => cancelSub(sub.id)}
+                    disabled={cancellingSubId === sub.id}
+                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                  >
+                    {cancellingSubId === sub.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      "Annuler"
+                    )}
+                  </button>
+                )}
+                {sub.listing && (
+                  <Link
+                    href={`/listing/${sub.listing.slug}`}
+                    className="flex items-center gap-1 text-sm text-accent hover:underline"
+                  >
+                    Ouvrir <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
             </div>
           ))}
         </div>

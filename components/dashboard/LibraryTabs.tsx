@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ExternalLink, Pencil, Play, ShoppingBag, Sparkles, User } from "lucide-react";
+import { ExternalLink, Loader2, Pencil, Play, ShoppingBag, Sparkles, Trash2, User } from "lucide-react";
 import type { LibraryListing, LibrarySource } from "@/lib/library/user-listings";
 import { TypeBadge, PriceTag } from "@/components/ui";
 
@@ -23,13 +23,18 @@ export function LibraryTabs({ created, purchased, subscribed }: Props) {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as LibrarySource) || "created";
   const [tab, setTab] = useState<LibrarySource>(initialTab);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const t = searchParams.get("tab") as LibrarySource;
     if (t && TABS.some((x) => x.id === t)) setTab(t);
   }, [searchParams]);
 
-  const lists = { created, purchased, subscribed };
+  const lists = {
+    created: created.filter((i) => i.status !== "deleted" && !deletedIds.has(i.id)),
+    purchased,
+    subscribed,
+  };
   const items = lists[tab];
 
   return (
@@ -89,7 +94,12 @@ export function LibraryTabs({ created, purchased, subscribed }: Props) {
       ) : (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {items.map((item) => (
-            <LibraryCard key={`${item.source}-${item.id}`} item={item} tab={tab} />
+            <LibraryCard
+              key={`${item.source}-${item.id}`}
+              item={item}
+              tab={tab}
+              onDeleted={(id) => setDeletedIds((s) => new Set(s).add(id))}
+            />
           ))}
         </div>
       )}
@@ -97,11 +107,39 @@ export function LibraryTabs({ created, purchased, subscribed }: Props) {
   );
 }
 
-function LibraryCard({ item, tab }: { item: LibraryListing; tab: LibrarySource }) {
+function LibraryCard({
+  item,
+  tab,
+  onDeleted,
+}: {
+  item: LibraryListing;
+  tab: LibrarySource;
+  onDeleted: (id: string) => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   const href =
     tab === "created"
       ? `/dashboard/listing/${item.id}/edit`
       : `/listing/${item.slug}`;
+
+  async function handleDelete() {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setDeleting(true);
+    const res = await fetch(`/api/listings/${item.id}`, { method: "DELETE" });
+    if (res.ok) {
+      onDeleted(item.id);
+    } else {
+      const data = await res.json().catch(() => null);
+      alert(data?.error ?? "Erreur lors de la suppression");
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
 
   return (
     <div className="rounded-xl border border-line bg-card p-4 transition hover:border-accent/40">
@@ -167,6 +205,26 @@ function LibraryCard({ item, tab }: { item: LibraryListing; tab: LibrarySource }
           >
             <ExternalLink className="h-3.5 w-3.5" /> Fiche
           </Link>
+        )}
+        {tab === "created" && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            onBlur={() => setConfirmDelete(false)}
+            disabled={deleting}
+            className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+              confirmDelete
+                ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
+                : "border-line text-ink-soft hover:text-red-600 hover:border-red-200"
+            }`}
+          >
+            {deleting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+            {confirmDelete ? "Confirmer" : "Supprimer"}
+          </button>
         )}
       </div>
     </div>

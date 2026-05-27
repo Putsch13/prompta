@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AgentManifestSchema } from "@/lib/agent/schema";
 import { parseListingEnv } from "@/lib/agent/env";
-import { shouldRunSync } from "@/lib/builder/manifest";
 import {
   resolveAgentRunKeys,
   holdAgentRunCredits,
@@ -174,7 +173,7 @@ export async function POST(request: NextRequest) {
   }
 
   const runAsync =
-    dryRun ? false : runAsyncParam !== undefined ? runAsyncParam : !shouldRunSync(parsedEnv.manifest);
+    dryRun ? false : runAsyncParam !== undefined ? Boolean(runAsyncParam) : true;
 
   if (runAsync) {
     const { data: agentRun, error: insertError } = await admin

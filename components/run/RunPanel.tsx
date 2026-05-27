@@ -154,11 +154,10 @@ export function RunPanel({
   }
 
   async function pollRunStatus(id: string) {
-    const maxPolls = 90;
+    const maxPolls = 120;
     let polls = 0;
-    while (polls < maxPolls) {
-      await new Promise((r) => setTimeout(r, 2000));
-      polls++;
+
+    async function tick() {
       try {
         const [runRes, stepsRes] = await Promise.all([
           fetch(`/api/run/agent/${id}`),
@@ -172,7 +171,7 @@ export function RunPanel({
               stepType: string;
               label?: string;
               status: string;
-              outputPreview?: string;
+              outputPreview?: string | Record<string, unknown>;
               durationMs?: number;
               model?: string;
               actionSlug?: string;
@@ -180,8 +179,13 @@ export function RunPanel({
               stepIndex: s.stepIndex,
               stepType: s.stepType,
               label: s.label ?? `Étape ${s.stepIndex + 1}`,
-              status: s.status,
-              outputPreview: s.outputPreview,
+              status: s.status as StepTraceEntry["status"],
+              outputPreview:
+                typeof s.outputPreview === "string"
+                  ? s.outputPreview
+                  : s.outputPreview
+                    ? JSON.stringify(s.outputPreview).slice(0, 800)
+                    : undefined,
               durationMs: s.durationMs,
               model: s.model,
               actionSlug: s.actionSlug,
@@ -189,29 +193,39 @@ export function RunPanel({
           );
           if (mapped.length > 0) setStepTrace(mapped);
         }
-        if (!runRes.ok) continue;
-        const data = await runRes.json();
-        const status = data.status === "pending" ? "queued" : data.status;
-        setAgentStatus(status);
-        if (data.steps_completed != null) setStepsCompleted(data.steps_completed);
-        if (data.status === "awaiting_approval" && data.approval_id) {
-          setApprovalId(data.approval_id);
-          setRunning(false);
-          return;
-        }
-        if (data.status === "completed") {
-          setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
-          setRunning(false);
-          return;
-        }
-        if (data.status === "failed" || data.status === "suspended") {
-          setError(data.error_message || "L'agent a échoué");
-          setRunning(false);
-          return;
+        if (runRes.ok) {
+          const data = await runRes.json();
+          const status = data.status === "pending" ? "queued" : data.status;
+          setAgentStatus(status);
+          if (data.steps_completed != null) setStepsCompleted(data.steps_completed);
+          if (data.status === "awaiting_approval" && data.approval_id) {
+            setApprovalId(data.approval_id);
+            setRunning(false);
+            return true;
+          }
+          if (data.status === "completed") {
+            setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
+            setRunning(false);
+            return true;
+          }
+          if (data.status === "failed" || data.status === "suspended") {
+            setError(data.error_message || "L'agent a échoué");
+            setRunning(false);
+            return true;
+          }
         }
       } catch {
         // ignore poll errors, continue
       }
+      return false;
+    }
+
+    if (await tick()) return;
+
+    while (polls < maxPolls) {
+      await new Promise((r) => setTimeout(r, 800));
+      polls++;
+      if (await tick()) return;
     }
     setError("Délai d'attente dépassé — l'agent peut continuer en arrière-plan");
     setRunning(false);
@@ -291,6 +305,7 @@ export function RunPanel({
           versionId,
           inputs: variables,
           dryRun,
+          async: !dryRun,
         }),
       });
       const data = await res.json();
@@ -326,18 +341,8 @@ export function RunPanel({
         setRunning(false);
       } else if (data.runId) {
         setAgentStatus(data.status === "queued" ? "queued" : "running");
-        if (data.status === "queued") {
-          setStepTrace([
-            {
-              stepIndex: 0,
-              stepType: "system",
-              label: "Mise en file d'exécution",
-              status: "running",
-              outputPreview: data.message ?? "Démarrage de l'agent…",
-            },
-          ]);
-        }
-        pollRunStatus(data.runId);
+        setStepsCompleted(data.steps_completed ?? 0);
+        void pollRunStatus(data.runId);
       } else {
         setAgentStatus(data.status);
         setAgentOutput(data.output?.result ?? JSON.stringify(data.output, null, 2));
@@ -607,12 +612,13 @@ export function RunPanel({
               stepsCompleted={stepsCompleted ?? 0}
               totalSteps={stepCount}
               stepTrace={stepTrace}
-              pollWhileRunning={
-                running ||
-                agentStatus === "running" ||
-                agentStatus === "queued" ||
-                agentStatus === "pending"
-              }
+                pollWhileRunning={
+                  running ||
+                  agentStatus === "running" ||
+                  agentStatus === "queued" ||
+                  agentStatus === "pending" ||
+                  agentStatus === "checking"
+                }
               errorMessage={error}
               finalOutput={agentOutput}
               approvalId={approvalId}

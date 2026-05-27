@@ -19,12 +19,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  const { data: run } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: run } = await (supabase as any)
     .from("listing_agent_runs")
-    .select("id, status, output, error_message, steps_completed, created_at")
+    .select("id, status, output, error_message, steps_completed, created_at, started_at, heartbeat_at, claimed_by")
     .eq("id", params.runId)
     .eq("user_id", user.id)
-    .single();
+    .single() as { data: { id: string; status: string; output: unknown; error_message: string | null; steps_completed: number | null; created_at: string; started_at: string | null; heartbeat_at: string | null; claimed_by: string | null } | null };
 
   if (!run) {
     return NextResponse.json({ error: "Run non trouvé" }, { status: 404 });
@@ -52,6 +53,8 @@ export async function GET(request: NextRequest, { params }: Params) {
     error_message: run.error_message,
     steps_completed: run.steps_completed,
     created_at: run.created_at,
+    started_at: run.started_at ?? null,
+    heartbeat_at: run.heartbeat_at ?? null,
     approval_id,
   });
 }

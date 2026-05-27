@@ -6,9 +6,19 @@ import {
   settleAgentRunCredits,
   releaseAgentRunCredits,
 } from "@/lib/billing/agent-run-billing";
+import { randomUUID } from "crypto";
+import { checkConnectorHealth } from "@/lib/connectors/connection-health";
+
+const HEARTBEAT_INTERVAL_MS = 5_000;
+
+function workerId(): string {
+  const hostname = typeof process !== "undefined" ? (process.env.HOSTNAME ?? process.env.RENDER_INSTANCE_ID ?? "local") : "unknown";
+  return `${hostname}-${randomUUID().slice(0, 8)}`;
+}
 
 export async function processPendingAgentRuns(limit = 3): Promise<number> {
   const admin = createAdminClient();
+  const wid = workerId();
 
   const { data: jobs } = await admin
     .from("listing_agent_runs")
@@ -22,11 +32,18 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
   for (const job of jobs ?? []) {
     const startMs = Date.now();
 
-    console.info("[worker] claiming run", { runId: job.id, listingId: job.listing_id });
+    console.info("[worker] claiming run", { runId: job.id, listingId: job.listing_id, worker: wid });
 
-    const { data: claimed } = await admin
+    const now = new Date().toISOString();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: claimed } = await (admin as any)
       .from("listing_agent_runs")
-      .update({ status: "running" })
+      .update({
+        status: "running",
+        started_at: now,
+        heartbeat_at: now,
+        claimed_by: wid,
+      })
       .eq("id", job.id)
       .eq("status", "pending")
       .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents")
@@ -37,7 +54,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
       continue;
     }
 
-    console.info("[worker] started run", { runId: claimed.id, listingId: claimed.listing_id });
+    console.info("[worker] started run", { runId: claimed.id, listingId: claimed.listing_id, worker: wid });
 
     try {
       const { data: listing } = await admin
@@ -55,6 +72,17 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
       const parsed = parseListingEnv(version?.env, version?.prompt_body);
       if (!parsed) throw new Error("Manifeste agent manquant");
 
+      if (parsed.manifest.connectors.length > 0 && !claimed.dry_run) {
+        const healthIssues = await checkConnectorHealth(
+          claimed.user_id,
+          parsed.manifest.connectors,
+        );
+        if (healthIssues.length > 0) {
+          const msg = healthIssues.map((i) => i.message).join("\n");
+          throw new Error(`Connecteurs indisponibles :\n${msg}`);
+        }
+      }
+
       const isFree = (listing?.price_cents ?? 0) === 0;
       const isOwner = listing?.creator_id === claimed.user_id;
       const billing = await resolveAgentRunKeys(
@@ -66,20 +94,42 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
       );
 
       const inputs = (claimed.inputs as Record<string, string>) ?? {};
-      const result = await runAgent(parsed.manifest, {
-        userId: claimed.user_id,
-        listingId: claimed.listing_id ?? "",
-        inputs,
-        apiKeys: billing.apiKeys,
-        runId: claimed.id,
-        dryRun: claimed.dry_run ?? false,
-        onProgress: async (stepsCompleted) => {
-          await admin
+
+      const heartbeatTimer = setInterval(async () => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (admin as any)
             .from("listing_agent_runs")
-            .update({ steps_completed: stepsCompleted })
+            .update({ heartbeat_at: new Date().toISOString() })
             .eq("id", claimed.id);
-        },
-      });
+        } catch {
+          // heartbeat failure is non-fatal
+        }
+      }, HEARTBEAT_INTERVAL_MS);
+
+      let result;
+      try {
+        result = await runAgent(parsed.manifest, {
+          userId: claimed.user_id,
+          listingId: claimed.listing_id ?? "",
+          inputs,
+          apiKeys: billing.apiKeys,
+          runId: claimed.id,
+          dryRun: claimed.dry_run ?? false,
+          onProgress: async (stepsCompleted) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (admin as any)
+              .from("listing_agent_runs")
+              .update({
+                steps_completed: stepsCompleted,
+                heartbeat_at: new Date().toISOString(),
+              })
+              .eq("id", claimed.id);
+          },
+        });
+      } finally {
+        clearInterval(heartbeatTimer);
+      }
 
       if (claimed.used_credits && claimed.credit_hold_estimate_cents != null) {
         if (result.status === "completed" && result.usage) {
