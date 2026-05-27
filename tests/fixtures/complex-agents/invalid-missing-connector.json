@@ -1,0 +1,22 @@
+{
+  "id": "invalid-missing-connector",
+  "expectValid": false,
+  "expectErrorCodes": ["action_no_connector"],
+  "manifest": {
+    "kind": "agent",
+    "secrets": ["openai"],
+    "connectors": [],
+    "steps": [
+      {
+        "type": "action",
+        "connector": "",
+        "action": "gmail.send",
+        "params": {
+          "to": "{{email}}",
+          "subject": "Test",
+          "body": "Hello"
+        }
+      }
+    ]
+  }
+}

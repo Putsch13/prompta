@@ -176,6 +176,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
           steps_completed: result.stepsCompleted,
           output: result.output,
           error_message: result.error ?? null,
+          heartbeat_at: new Date().toISOString(),
         })
         .eq("id", claimed.id);
 
@@ -209,7 +210,11 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
 
       await admin
         .from("listing_agent_runs")
-        .update({ status: "failed", error_message: message })
+        .update({
+          status: "failed",
+          error_message: message,
+          heartbeat_at: new Date().toISOString(),
+        })
         .eq("id", claimed.id);
       processed++;
     }

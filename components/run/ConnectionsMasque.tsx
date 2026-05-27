@@ -23,6 +23,17 @@ interface KeyStatus {
 interface ConnectionStatus {
   connectorId: string;
   status: string;
+  accountEmail?: string | null;
+  accountName?: string | null;
+  workspaceName?: string | null;
+}
+
+function connectionAccountLabel(conn: ConnectionStatus): string | null {
+  if (conn.accountEmail) return conn.accountEmail;
+  if (conn.workspaceName && conn.accountName) return `${conn.accountName} · ${conn.workspaceName}`;
+  if (conn.workspaceName) return conn.workspaceName;
+  if (conn.accountName) return conn.accountName;
+  return null;
 }
 
 interface Props {
@@ -154,14 +165,20 @@ export function ConnectionsMasque({
 
         {requiredConnectors.map((id) => {
           const meta = CONNECTORS.find((c) => connectionMatchesConnector(c.id, id));
-          const ok = isConnectorLinked(id, connections);
+          const conn = connections.find(
+            (x) => x.status === "connected" && connectionMatchesConnector(x.connectorId, id),
+          );
+          const ok = Boolean(conn);
+          const accountLabel = conn ? connectionAccountLabel(conn) : null;
           const label = connectorLabel(id, composioLabels);
           return (
             <div key={id} className="flex items-center justify-between rounded-lg bg-card px-3 py-2">
               <div>
                 <p className="text-sm font-medium">{label}</p>
                 <p className="text-xs text-ink-faint">
-                  {meta?.why ?? "Connexion OAuth requise"}
+                  {ok && accountLabel
+                    ? `Compte utilisé : ${accountLabel}`
+                    : meta?.why ?? "Connexion OAuth requise"}
                 </p>
               </div>
               {ok ? (

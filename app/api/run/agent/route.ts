@@ -251,6 +251,8 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const now = new Date().toISOString();
+
   const { data: agentRun } = await admin
     .from("listing_agent_runs")
     .insert({
@@ -262,6 +264,9 @@ export async function POST(request: NextRequest) {
       dry_run: dryRun,
       used_credits: billing.usedCredits,
       credit_hold_estimate_cents: billing.usedCredits ? billing.estimatedMax : null,
+      started_at: now,
+      heartbeat_at: now,
+      claimed_by: "web-sync",
     })
     .select("id")
     .single();
@@ -269,7 +274,14 @@ export async function POST(request: NextRequest) {
   if (billing.usedCredits && agentRun?.id) {
     const held = await holdAgentRunCredits(user.id, agentRun.id, billing.estimatedMax);
     if (!held) {
-      await admin.from("listing_agent_runs").update({ status: "failed" }).eq("id", agentRun.id);
+      await admin
+        .from("listing_agent_runs")
+        .update({
+          status: "failed",
+          error_message: "Crédits insuffisants",
+          heartbeat_at: new Date().toISOString(),
+        })
+        .eq("id", agentRun.id);
       return NextResponse.json({ error: "Crédits insuffisants" }, { status: 402 });
     }
   }
@@ -285,7 +297,10 @@ export async function POST(request: NextRequest) {
       if (agentRun?.id) {
         await admin
           .from("listing_agent_runs")
-          .update({ steps_completed: stepsCompleted })
+          .update({
+            steps_completed: stepsCompleted,
+            heartbeat_at: new Date().toISOString(),
+          })
           .eq("id", agentRun.id);
       }
     },
@@ -306,6 +321,7 @@ export async function POST(request: NextRequest) {
       steps_completed: result.stepsCompleted,
       output: result.output,
       error_message: result.error ?? null,
+      heartbeat_at: new Date().toISOString(),
     })
     .eq("id", agentRun?.id ?? "");
 

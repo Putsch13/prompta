@@ -198,6 +198,7 @@ export async function POST(request: Request) {
         status: string;
         customer: string;
         current_period_end: number;
+        cancel_at_period_end?: boolean;
         metadata?: {
           listing_id?: string;
           buyer_id?: string;
@@ -207,6 +208,11 @@ export async function POST(request: Request) {
         };
       };
 
+      const isDeleted = event.type === "customer.subscription.deleted";
+      const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+      const cancelAtPeriodEnd = isDeleted ? false : Boolean(subscription.cancel_at_period_end);
+      const localStatus = isDeleted ? "canceled" : subscription.status;
+
       if (subscription.metadata?.type === "platform_pro") {
         const buyerId = subscription.metadata.buyer_id;
         if (buyerId) {
@@ -215,8 +221,9 @@ export async function POST(request: Request) {
               user_id: buyerId,
               stripe_subscription_id: subscription.id,
               plan: "pro",
-              status: subscription.status === "active" ? "active" : subscription.status,
-              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              status: localStatus,
+              cancel_at_period_end: cancelAtPeriodEnd,
+              current_period_end: periodEnd,
             },
             { onConflict: "user_id" }
           );
@@ -254,11 +261,10 @@ export async function POST(request: Request) {
             listing_id: listingId,
             stripe_subscription_id: subscription.id,
             stripe_customer_id: subscription.customer,
-            status: subscription.status,
+            status: localStatus,
+            cancel_at_period_end: cancelAtPeriodEnd,
             pinned_version_id: listing?.current_version_id ?? null,
-            current_period_end: new Date(
-              subscription.current_period_end * 1000
-            ).toISOString(),
+            current_period_end: periodEnd,
           },
           { onConflict: "user_id,listing_id" }
         );

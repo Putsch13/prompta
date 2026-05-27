@@ -15,7 +15,7 @@ export async function GET() {
 
   const { data: sub } = await supabase
     .from("platform_subscriptions")
-    .select("status, plan, current_period_end")
+    .select("status, plan, current_period_end, cancel_at_period_end, cancel_requested_at")
     .eq("user_id", user.id)
     .maybeSingle();
 

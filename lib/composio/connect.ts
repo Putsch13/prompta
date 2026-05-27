@@ -1,5 +1,6 @@
 import { saveComposioConnection, isComposioToolkitConnected, getUserConnection } from "@/lib/connections";
 import { getComposioClient, toComposioToolkitSlug } from "./client";
+import { profileFromComposioAccount } from "@/lib/connectors/fetch-account-profile";
 
 async function getAuthConfigId(toolkitSlug: string): Promise<string> {
   const composio = getComposioClient();
@@ -57,7 +58,16 @@ export async function syncComposioConnections(userId: string): Promise<number> {
   for (const account of accounts.items ?? []) {
     const slug = account.toolkit?.slug;
     if (!slug || !account.id) continue;
-    await saveComposioConnection(userId, slug, account.id);
+    let profile = profileFromComposioAccount(account);
+    if (!profile.accountEmail && !profile.accountName && !profile.workspaceName) {
+      try {
+        const full = await composio.connectedAccounts.get(account.id);
+        profile = profileFromComposioAccount(full);
+      } catch {
+        // best-effort
+      }
+    }
+    await saveComposioConnection(userId, slug, account.id, profile);
     synced++;
   }
   return synced;
@@ -87,7 +97,14 @@ export async function checkComposioConnection(
     items[items.length - 1];
 
   if (preferred?.id) {
-    await saveComposioConnection(userId, toolkitSlug, preferred.id);
+    let profile = profileFromComposioAccount(preferred);
+    try {
+      const full = await composio.connectedAccounts.get(preferred.id);
+      profile = profileFromComposioAccount(full);
+    } catch {
+      // best-effort
+    }
+    await saveComposioConnection(userId, toolkitSlug, preferred.id, profile);
     return true;
   }
   return false;

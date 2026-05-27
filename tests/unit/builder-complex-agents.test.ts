@@ -173,7 +173,12 @@ test("validateAgentManifest — agent valide multi-étapes", () => {
 
 test("validateAgentManifest — connecteur non listé en warning", () => {
   const steps: AgentStep[] = [
-    { type: "action", connector: "slack", action: "SLACK_SEND_MESSAGE", params: {} },
+    {
+      type: "action",
+      connector: "slack",
+      action: "slack.send",
+      params: { channel: "#general", text: "Hello" },
+    },
   ];
   const issues = validateAgentManifest(steps, { connectors: ["gmail"] });
   assert.ok(!hasBlockingIssues(issues));

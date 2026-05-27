@@ -88,7 +88,7 @@ export interface Database {
           tags: string[];
           price_cents: number;
           currency: string;
-          status: "draft" | "under_review" | "published" | "rejected" | "deleted";
+          status: "draft" | "under_review" | "published" | "rejected" | "deleted" | "archived";
           current_version_id: string | null;
           search_vector: string | null;
           reason_rejected: string | null;
@@ -112,7 +112,7 @@ export interface Database {
           tags?: string[];
           price_cents?: number;
           currency?: string;
-          status?: "draft" | "under_review" | "published" | "rejected";
+          status?: "draft" | "under_review" | "published" | "rejected" | "deleted" | "archived";
           current_version_id?: string | null;
           search_vector?: string | null;
           reason_rejected?: string | null;
@@ -136,7 +136,7 @@ export interface Database {
           tags?: string[];
           price_cents?: number;
           currency?: string;
-          status?: "draft" | "under_review" | "published" | "rejected";
+          status?: "draft" | "under_review" | "published" | "rejected" | "deleted" | "archived";
           current_version_id?: string | null;
           search_vector?: string | null;
           reason_rejected?: string | null;
@@ -689,7 +689,11 @@ export interface Database {
           action_slug: string;
           execution_key: string;
           result_output: string | null;
+          status: "started" | "completed" | "failed";
+          error_message: string | null;
+          external_id: string | null;
           created_at: string;
+          updated_at: string | null;
         };
         Insert: {
           id?: string;
@@ -698,7 +702,11 @@ export interface Database {
           action_slug: string;
           execution_key: string;
           result_output?: string | null;
+          status?: "started" | "completed" | "failed";
+          error_message?: string | null;
+          external_id?: string | null;
           created_at?: string;
+          updated_at?: string | null;
         };
         Update: {
           id?: string;
@@ -707,7 +715,11 @@ export interface Database {
           action_slug?: string;
           execution_key?: string;
           result_output?: string | null;
+          status?: "started" | "completed" | "failed";
+          error_message?: string | null;
+          external_id?: string | null;
           created_at?: string;
+          updated_at?: string | null;
         };
         Relationships: [];
       };
@@ -1227,6 +1239,8 @@ export interface Database {
           stripe_customer_id: string | null;
           status: string;
           current_period_end: string | null;
+          cancel_at_period_end: boolean;
+          cancel_requested_at: string | null;
           pinned_version_id: string | null;
           created_at: string;
         };
@@ -1238,6 +1252,8 @@ export interface Database {
           stripe_customer_id?: string | null;
           status?: string;
           current_period_end?: string | null;
+          cancel_at_period_end?: boolean;
+          cancel_requested_at?: string | null;
           pinned_version_id?: string | null;
           created_at?: string;
         };
@@ -1249,6 +1265,8 @@ export interface Database {
           stripe_customer_id?: string | null;
           status?: string;
           current_period_end?: string | null;
+          cancel_at_period_end?: boolean;
+          cancel_requested_at?: string | null;
           pinned_version_id?: string | null;
           created_at?: string;
         };
@@ -1478,6 +1496,8 @@ export interface Database {
           plan: string;
           status: string;
           current_period_end: string | null;
+          cancel_at_period_end: boolean;
+          cancel_requested_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -1487,6 +1507,8 @@ export interface Database {
           plan?: string;
           status?: string;
           current_period_end?: string | null;
+          cancel_at_period_end?: boolean;
+          cancel_requested_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -1496,6 +1518,8 @@ export interface Database {
           plan?: string;
           status?: string;
           current_period_end?: string | null;
+          cancel_at_period_end?: boolean;
+          cancel_requested_at?: string | null;
           created_at?: string;
         };
         Relationships: [];

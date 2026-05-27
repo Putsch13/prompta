@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { saveUserConnection } from "@/lib/connections";
 import { verifySignedState } from "@/lib/connectors/oauth-state";
+import { fetchNativeAccountProfile } from "@/lib/connectors/fetch-account-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -97,11 +98,20 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   if (!accessToken) return NextResponse.redirect(failRedirect);
 
+  const profile = await fetchNativeAccountProfile(
+    connectorId,
+    accessToken,
+    tokenData as Record<string, unknown>,
+  );
+
   await saveUserConnection(parsed.userId, connectorId, {
     accessToken,
     refreshToken,
     expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : undefined,
     scopes: (tokenData.scope ?? "").split(" ").filter(Boolean),
+    accountEmail: profile.accountEmail,
+    accountName: profile.accountName,
+    workspaceName: profile.workspaceName,
   });
 
   cookies().delete("oauth_state");

@@ -15,7 +15,9 @@ export async function GET() {
 
   const { data: subscriptions } = await supabase
     .from("subscriptions")
-    .select("id, status, current_period_end, listing:listings(title, slug)")
+    .select(
+      "id, status, current_period_end, cancel_at_period_end, cancel_requested_at, listing:listings(title, slug)",
+    )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 

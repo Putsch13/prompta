@@ -1,0 +1,18 @@
+{
+  "id": "invalid-action-no-params",
+  "expectValid": false,
+  "expectErrorCodes": ["action_no_params"],
+  "manifest": {
+    "kind": "agent",
+    "secrets": ["openai"],
+    "connectors": ["slack"],
+    "steps": [
+      {
+        "type": "action",
+        "connector": "slack",
+        "action": "slack.send",
+        "params": {}
+      }
+    ]
+  }
+}

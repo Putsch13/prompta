@@ -8,6 +8,10 @@ export interface ConnectionStatus {
   scopes?: string[];
   expiresAt?: string | null;
   provider?: "native" | "composio";
+  accountEmail?: string | null;
+  accountName?: string | null;
+  workspaceName?: string | null;
+  lastCheckedAt?: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -129,9 +133,15 @@ async function tryRefreshToken(
 export async function saveComposioConnection(
   userId: string,
   toolkitSlug: string,
-  composioAccountId: string
+  composioAccountId: string,
+  profile?: {
+    accountEmail?: string | null;
+    accountName?: string | null;
+    workspaceName?: string | null;
+  },
 ): Promise<void> {
   const ids = connectorLookupIds(toolkitSlug);
+  const now = new Date().toISOString();
   for (const connectorId of ids) {
     await db().from("user_connections").upsert(
       {
@@ -142,7 +152,11 @@ export async function saveComposioConnection(
         status: "connected",
         access_token_enc: null,
         refresh_token_enc: null,
-        updated_at: new Date().toISOString(),
+        account_email: profile?.accountEmail ?? null,
+        account_name: profile?.accountName ?? null,
+        workspace_name: profile?.workspaceName ?? null,
+        last_checked_at: now,
+        updated_at: now,
       },
       { onConflict: "owner_id,connector_id" }
     );
@@ -184,8 +198,17 @@ export async function saveUserConnectionApiKey(
 export async function saveUserConnection(
   userId: string,
   connectorId: string,
-  tokens: { accessToken: string; refreshToken?: string; expiresAt?: Date; scopes?: string[] }
+  tokens: {
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt?: Date;
+    scopes?: string[];
+    accountEmail?: string | null;
+    accountName?: string | null;
+    workspaceName?: string | null;
+  }
 ): Promise<void> {
+  const now = new Date().toISOString();
   await db().from("user_connections").upsert(
     {
       owner_id: userId,
@@ -195,7 +218,11 @@ export async function saveUserConnection(
       status: "connected",
       scopes: tokens.scopes ?? [],
       expires_at: tokens.expiresAt?.toISOString() ?? null,
-      updated_at: new Date().toISOString(),
+      account_email: tokens.accountEmail ?? null,
+      account_name: tokens.accountName ?? null,
+      workspace_name: tokens.workspaceName ?? null,
+      last_checked_at: now,
+      updated_at: now,
     },
     { onConflict: "owner_id,connector_id" }
   );
@@ -204,7 +231,9 @@ export async function saveUserConnection(
 export async function listUserConnections(userId: string): Promise<ConnectionStatus[]> {
   const { data } = await db()
     .from("user_connections")
-    .select("connector_id, status, scopes, expires_at, provider")
+    .select(
+      "connector_id, status, scopes, expires_at, provider, account_email, account_name, workspace_name, last_checked_at",
+    )
     .eq("owner_id", userId);
 
   return (data ?? []).map(
@@ -214,12 +243,20 @@ export async function listUserConnections(userId: string): Promise<ConnectionSta
       scopes: string[];
       expires_at: string | null;
       provider?: string;
+      account_email?: string | null;
+      account_name?: string | null;
+      workspace_name?: string | null;
+      last_checked_at?: string | null;
     }) => ({
       connectorId: r.connector_id,
       status: r.status as ConnectionStatus["status"],
       scopes: r.scopes ?? [],
       expiresAt: r.expires_at,
       provider: (r.provider as ConnectionStatus["provider"]) ?? "native",
+      accountEmail: r.account_email ?? null,
+      accountName: r.account_name ?? null,
+      workspaceName: r.workspace_name ?? null,
+      lastCheckedAt: r.last_checked_at ?? null,
     })
   );
 }

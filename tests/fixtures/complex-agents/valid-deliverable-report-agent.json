@@ -1,0 +1,29 @@
+{
+  "id": "valid-deliverable-report-agent",
+  "expectValid": true,
+  "expectErrorCodes": [],
+  "manifest": {
+    "kind": "agent",
+    "secrets": ["openai"],
+    "inputs": [{ "key": "brief", "label": "Brief", "type": "textarea", "required": true }],
+    "steps": [
+      {
+        "type": "llm",
+        "model": "gpt-4o",
+        "prompt": "Rédige un rapport markdown structuré à partir de :\n{{brief}}",
+        "outputKey": "report"
+      },
+      {
+        "type": "llm",
+        "model": "gpt-4o",
+        "prompt": "Extrais 5 KPIs JSON depuis :\n{{report}}",
+        "outputKey": "kpis"
+      }
+    ],
+    "outputs": ["report", "kpis"],
+    "provisioning": {
+      "mode": "manual",
+      "deliverables": ["report", "kpis"]
+    }
+  }
+}

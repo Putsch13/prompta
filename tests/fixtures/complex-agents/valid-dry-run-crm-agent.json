@@ -1,0 +1,35 @@
+{
+  "id": "valid-dry-run-crm-agent",
+  "expectValid": true,
+  "expectErrorCodes": [],
+  "manifest": {
+    "kind": "agent",
+    "secrets": ["openai"],
+    "connectors": ["google_sheets"],
+    "inputs": [
+      { "key": "lead_name", "label": "Nom lead", "type": "text", "required": true },
+      { "key": "score", "label": "Score", "type": "text", "required": true },
+      { "key": "sheet_id", "label": "ID spreadsheet", "type": "text", "required": true }
+    ],
+    "steps": [
+      {
+        "type": "llm",
+        "model": "gpt-4o",
+        "prompt": "Rédige une note CRM pour {{lead_name}} (score {{score}})",
+        "outputKey": "note"
+      },
+      {
+        "type": "action",
+        "connector": "google_sheets",
+        "action": "sheets.append",
+        "params": {
+          "spreadsheetId": "{{sheet_id}}",
+          "range": "Leads!A:C",
+          "values": "[\"{{lead_name}}\", \"{{score}}\", \"{{note}}\"]"
+        },
+        "outputKey": "appended"
+      }
+    ],
+    "outputs": ["note", "appended"]
+  }
+}

@@ -4,6 +4,7 @@
  */
 
 import type { AgentStep } from "@/lib/agent/schema";
+import { validateActionParams } from "@/lib/connectors/action-requirements";
 
 export interface AgentValidationIssue {
   stepIndex: number | null;
@@ -90,6 +91,21 @@ export function validateAgentManifest(
           severity: "error",
           code: "action_no_action",
           message: `Étape ${i + 1} (Action) : aucune action spécifiée.`,
+        });
+      }
+
+      const paramIssue = validateActionParams(
+        step.connector,
+        step.action,
+        step.params,
+        `Étape ${i + 1} (Action)`,
+      );
+      if (paramIssue) {
+        issues.push({
+          stepIndex: i,
+          severity: "error",
+          code: paramIssue.code,
+          message: paramIssue.message,
         });
       }
     }

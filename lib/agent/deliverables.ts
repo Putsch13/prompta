@@ -2,7 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const INLINE_MAX_BYTES = 256 * 1024; // 256 KB — au-delà on stocke dans Storage
+export const INLINE_MAX_BYTES = 256 * 1024; // 256 KB — au-delà on stocke dans Storage
+export const DELIVERABLE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB plafond global
 
 export interface SaveDeliverableParams {
   runId: string;
@@ -15,6 +16,14 @@ export interface SaveDeliverableParams {
   previewText?: string;
 }
 
+/** Nettoie un nom de fichier pour éviter path traversal et caractères dangereux. */
+export function sanitizeDeliverableFilename(filename: string): string {
+  const base = filename.split(/[/\\]/).pop() ?? "deliverable.txt";
+  const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
+  const trimmed = cleaned.replace(/^[._-]+/, "").slice(0, 180);
+  return trimmed.length > 0 ? trimmed : "deliverable.txt";
+}
+
 /**
  * Sauvegarde un livrable produit par l'agent.
  * Si le contenu dépasse INLINE_MAX_BYTES, il est uploadé dans Supabase Storage.
@@ -23,13 +32,21 @@ export interface SaveDeliverableParams {
 export async function saveDeliverable(params: SaveDeliverableParams): Promise<string> {
   const admin = createAdminClient();
   const sizeBytes = Buffer.byteLength(params.content, "utf-8");
+
+  if (sizeBytes > DELIVERABLE_MAX_BYTES) {
+    throw new Error(
+      `Livrable trop volumineux (${Math.round(sizeBytes / 1024)} Ko, max ${DELIVERABLE_MAX_BYTES / 1024 / 1024} Mo)`,
+    );
+  }
+
+  const filename = sanitizeDeliverableFilename(params.filename);
   const preview = params.previewText ?? params.content.slice(0, 500);
 
   let storagePath: string | null = null;
   let contentText: string | null = params.content;
 
   if (sizeBytes > INLINE_MAX_BYTES) {
-    const path = `deliverables/${params.userId}/${params.runId}/${params.filename}`;
+    const path = `deliverables/${params.userId}/${params.runId}/${filename}`;
     const { error: uploadError } = await admin.storage
       .from("agent-deliverables")
       .upload(path, Buffer.from(params.content, "utf-8"), {
@@ -52,7 +69,7 @@ export async function saveDeliverable(params: SaveDeliverableParams): Promise<st
       listing_id: params.listingId,
       user_id: params.userId,
       kind: params.kind,
-      filename: params.filename,
+      filename,
       mime_type: params.mimeType,
       storage_path: storagePath,
       content_text: contentText,

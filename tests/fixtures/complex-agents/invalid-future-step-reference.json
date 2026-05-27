@@ -1,0 +1,16 @@
+{
+  "id": "invalid-future-step-reference",
+  "expectValid": false,
+  "expectErrorCodes": ["future_step_reference"],
+  "manifest": {
+    "kind": "workflow",
+    "secrets": ["openai"],
+    "steps": [
+      {
+        "type": "llm",
+        "model": "gpt-4o",
+        "prompt": "Utilise {{step_2_output}} pour résumer."
+      }
+    ]
+  }
+}

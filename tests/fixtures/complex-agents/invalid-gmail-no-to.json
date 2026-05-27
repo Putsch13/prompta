@@ -1,0 +1,21 @@
+{
+  "id": "invalid-gmail-no-to",
+  "expectValid": false,
+  "expectErrorCodes": ["action_missing_param"],
+  "manifest": {
+    "kind": "agent",
+    "secrets": ["openai"],
+    "connectors": ["gmail"],
+    "steps": [
+      {
+        "type": "action",
+        "connector": "gmail",
+        "action": "gmail.send",
+        "params": {
+          "subject": "Hello",
+          "body": "World"
+        }
+      }
+    ]
+  }
+}

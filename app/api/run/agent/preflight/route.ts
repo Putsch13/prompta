@@ -10,6 +10,7 @@ import { estimateMaxCost } from "@/lib/billing/run-cost";
 import { getFreeRunsRemaining } from "@/lib/billing/free-quota";
 import { hasPlatformPro } from "@/lib/platform-access";
 import { isConnectorConnected } from "@/lib/connections";
+import { isSubscriptionAccessActive } from "@/lib/subscriptions/active";
 import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,14 @@ export interface PreflightResult {
   mode: RunMode;
   missingKeys: string[];
   missingConnectors: string[];
+  connectorAccounts?: Array<{
+    connectorId: string;
+    label: string;
+    accountEmail?: string | null;
+    accountName?: string | null;
+    workspaceName?: string | null;
+  }>;
+  connectorHealthIssues?: Array<{ connectorId: string; code: string; message: string }>;
   estimatedCostCents: number;
   estimatedCredits: number;
   creditBalance: number;
@@ -84,13 +93,12 @@ export async function POST(request: NextRequest) {
 
     const { data: subscription } = await admin
       .from("subscriptions")
-      .select("id")
+      .select("id, status, cancel_at_period_end, current_period_end")
       .eq("user_id", user.id)
       .eq("listing_id", listingId)
-      .eq("status", "active")
       .maybeSingle();
 
-    hasEntitlement = !!(purchase || subscription);
+    hasEntitlement = !!(purchase || (subscription && isSubscriptionAccessActive(subscription)));
   }
 
   const keys = await listUserKeys(user.id);
@@ -147,6 +155,33 @@ export async function POST(request: NextRequest) {
       freeRunsRemaining,
       reason: `Connexion manquante : ${missingConnectors.join(", ")}`,
     } satisfies PreflightResult);
+  }
+
+  const requiredConnectors = dedupeConnectors(parsedEnv?.manifest?.connectors ?? []);
+  if (requiredConnectors.length > 0) {
+    const { checkConnectorHealth, summarizeConnectorAccounts } = await import(
+      "@/lib/connectors/connection-health"
+    );
+    const [healthIssues, connectorAccounts] = await Promise.all([
+      checkConnectorHealth(user.id, requiredConnectors),
+      summarizeConnectorAccounts(user.id, requiredConnectors),
+    ]);
+
+    if (healthIssues.length > 0) {
+      return NextResponse.json({
+        canRun: false,
+        mode: "blocked" as RunMode,
+        missingKeys,
+        missingConnectors: [],
+        connectorAccounts,
+        connectorHealthIssues: healthIssues,
+        estimatedCostCents,
+        estimatedCredits,
+        creditBalance,
+        freeRunsRemaining,
+        reason: healthIssues[0].message,
+      } satisfies PreflightResult);
+    }
   }
 
   // BYOK complet ?

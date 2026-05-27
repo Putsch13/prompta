@@ -1,0 +1,34 @@
+{
+  "id": "valid-sales-gmail-agent",
+  "expectValid": true,
+  "expectErrorCodes": [],
+  "manifest": {
+    "kind": "agent",
+    "secrets": ["openai"],
+    "connectors": ["gmail"],
+    "inputs": [
+      { "key": "email", "label": "Email prospect", "type": "text", "required": true },
+      { "key": "body", "label": "Corps relance", "type": "textarea", "required": true }
+    ],
+    "steps": [
+      {
+        "type": "llm",
+        "model": "gpt-4o",
+        "prompt": "Personnalise cette relance pour {{email}} :\n{{body}}",
+        "outputKey": "personalized"
+      },
+      {
+        "type": "action",
+        "connector": "gmail",
+        "action": "gmail.send",
+        "params": {
+          "to": "{{email}}",
+          "subject": "Relance commerciale",
+          "body": "{{personalized}}"
+        },
+        "outputKey": "sent"
+      }
+    ],
+    "outputs": ["personalized", "sent"]
+  }
+}

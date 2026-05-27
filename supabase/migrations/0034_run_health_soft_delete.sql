@@ -21,8 +21,19 @@ comment on column listing_agent_runs.heartbeat_at is 'Dernier heartbeat du worke
 comment on column listing_agent_runs.claimed_by is 'Identifiant du worker qui traite ce run';
 
 -- === Soft delete listings ===
--- Le statut "deleted" est déjà compatible avec la colonne existante.
--- On ajoute juste un index pour exclure efficacement les supprimés.
+-- Étend le CHECK constraint pour autoriser deleted et archived.
+
+alter table listings drop constraint if exists listings_status_check;
+
+alter table listings add constraint listings_status_check
+  check (status in (
+    'draft',
+    'under_review',
+    'published',
+    'rejected',
+    'deleted',
+    'archived'
+  ));
 
 create index if not exists idx_listings_not_deleted
   on listings(status)

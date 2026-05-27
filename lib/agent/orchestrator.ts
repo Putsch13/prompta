@@ -20,8 +20,8 @@ import {
   logStepSkipped,
   updateStepInput,
 } from "./step-logger";
-import { checkIdempotency, recordExecution } from "./idempotency";
-import { saveDeliverable } from "./deliverables";
+import { checkIdempotency, beginExecution, completeExecution, failExecution } from "./idempotency";
+import { saveDeliverable, sanitizeDeliverableFilename } from "./deliverables";
 
 export interface StepUsage {
   inputTokens: number;
@@ -326,7 +326,12 @@ async function executeStep(
       }
 
       if (runId && !simulated) {
-        const cached = await checkIdempotency(runId, stepIndex, step.action);
+        const cached = await checkIdempotency(runId, stepIndex, step.action, params);
+        if (cached.inProgress) {
+          throw new Error(
+            "Action externe déjà en cours pour cette étape — attendez ou relancez manuellement.",
+          );
+        }
         if (cached.alreadyExecuted && cached.previousOutput != null) {
           await logRunActivity({
             userId: ctx.userId,
@@ -347,39 +352,52 @@ async function executeStep(
         }
       }
 
-      const result = await executeConnectorAction(step.action, params, {
-        userId: ctx.userId,
-        accessToken: conn?.accessToken,
-        apiKey: step.connector === "telegram" ? conn?.accessToken : undefined,
-        dryRun: simulated,
-      });
+      let executionId: string | null = null;
+      try {
+        if (runId && !simulated) {
+          executionId = await beginExecution(runId, stepIndex, step.action, params);
+        }
 
-      if (runId && !simulated) {
-        await recordExecution(runId, stepIndex, step.action, result.output).catch(() => undefined);
+        const result = await executeConnectorAction(step.action, params, {
+          userId: ctx.userId,
+          accessToken: conn?.accessToken,
+          apiKey: step.connector === "telegram" ? conn?.accessToken : undefined,
+          dryRun: simulated,
+        });
+
+        if (runId && !simulated && executionId) {
+          await completeExecution(executionId, result.output).catch(() => undefined);
+        }
+
+        await logRunActivity({
+          userId: ctx.userId,
+          runId: ctx.runId,
+          listingId: ctx.listingId,
+          actionType: "action",
+          actionLabel: simulated ? `${step.action} (aperçu)` : step.action,
+          simulated,
+          detail: { connector: step.connector, stepIndex },
+        });
+
+        if (scanOutput(result.output)) {
+          throw new Error("Sortie connecteur interdite détectée");
+        }
+
+        if (runId && stepDbId) {
+          await logStepSuccess(stepDbId, result.output.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
+        }
+
+        return {
+          content: result.output,
+          usage: { inputTokens: 0, outputTokens: 0, connectorAction: step.action },
+        };
+      } catch (err) {
+        if (executionId && runId && !simulated) {
+          const message = err instanceof Error ? err.message : "Erreur action externe";
+          await failExecution(executionId, message).catch(() => undefined);
+        }
+        throw err;
       }
-
-      await logRunActivity({
-        userId: ctx.userId,
-        runId: ctx.runId,
-        listingId: ctx.listingId,
-        actionType: "action",
-        actionLabel: simulated ? `${step.action} (aperçu)` : step.action,
-        simulated,
-        detail: { connector: step.connector, stepIndex },
-      });
-
-      if (scanOutput(result.output)) {
-        throw new Error("Sortie connecteur interdite détectée");
-      }
-
-      if (runId && stepDbId) {
-        await logStepSuccess(stepDbId, result.output.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
-      }
-
-      return {
-        content: result.output,
-        usage: { inputTokens: 0, outputTokens: 0, connectorAction: step.action },
-      };
     }
 
     if (step.type === "code") {
@@ -525,7 +543,7 @@ async function persistRunDeliverables(params: {
       listingId: params.listingId,
       userId: params.userId,
       kind,
-      filename: `${key}.${ext}`,
+      filename: sanitizeDeliverableFilename(`${key}.${ext}`),
       mimeType: kind === "json" ? "application/json" : "text/plain",
       content,
       previewText: content.slice(0, 500),

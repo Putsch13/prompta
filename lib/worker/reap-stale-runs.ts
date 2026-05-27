@@ -86,6 +86,45 @@ export async function reapStaleRunningRuns(): Promise<number> {
       Object.keys(run.output as object).length > 0;
 
     if (stepsCompleted > 0 && hasPartialOutput) {
+      const { count: completedActions } = await db
+        .from("listing_agent_run_steps")
+        .select("*", { count: "exact", head: true })
+        .eq("run_id", run.id)
+        .eq("step_type", "action")
+        .eq("status", "success");
+
+      if ((completedActions ?? 0) > 0) {
+        await db
+          .from("listing_agent_runs")
+          .update({
+            status: "failed",
+            error_message:
+              "Interruption après action externe — reprise automatique désactivée. Relancez manuellement depuis la console.",
+            heartbeat_at: new Date().toISOString(),
+          })
+          .eq("id", run.id)
+          .eq("status", "running");
+
+        if (run.used_credits && run.credit_hold_estimate_cents != null) {
+          await releaseAgentRunCredits(
+            run.user_id,
+            run.id,
+            Number(run.credit_hold_estimate_cents),
+          ).catch((e) =>
+            console.error("[reap] release credits failed (sensitive resume blocked)", {
+              runId: run.id,
+              err: e,
+            }),
+          );
+        }
+
+        console.warn("[worker:reap] stale run blocked auto-resume (sensitive actions)", {
+          runId: run.id,
+          completedActions,
+        });
+        continue;
+      }
+
       await db
         .from("listing_agent_runs")
         .update({
@@ -110,6 +149,7 @@ export async function reapStaleRunningRuns(): Promise<number> {
       .update({
         status: "failed",
         error_message: "Timeout : worker inactif (heartbeat absent), run annulé automatiquement",
+        heartbeat_at: new Date().toISOString(),
       })
       .eq("id", run.id)
       .eq("status", "running");

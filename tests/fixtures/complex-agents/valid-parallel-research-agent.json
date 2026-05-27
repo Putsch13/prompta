@@ -1,0 +1,51 @@
+{
+  "id": "valid-parallel-research-agent",
+  "expectValid": true,
+  "expectErrorCodes": [],
+  "manifest": {
+    "kind": "agent",
+    "secrets": ["openai"],
+    "inputs": [{ "key": "topic", "label": "Sujet", "type": "text", "required": true }],
+    "steps": [
+      {
+        "type": "llm",
+        "model": "gpt-4o",
+        "prompt": "Définis 3 angles de recherche pour : {{topic}}",
+        "outputKey": "angles"
+      },
+      {
+        "type": "parallel",
+        "branches": [
+          {
+            "outputKey": "market",
+            "steps": [
+              {
+                "type": "llm",
+                "model": "gpt-4o",
+                "prompt": "Analyse marché pour {{topic}} — contexte {{angles}}"
+              }
+            ]
+          },
+          {
+            "outputKey": "competition",
+            "steps": [
+              {
+                "type": "llm",
+                "model": "gpt-4o",
+                "prompt": "Analyse concurrence pour {{topic}}"
+              }
+            ]
+          }
+        ],
+        "outputKey": "research"
+      },
+      {
+        "type": "llm",
+        "model": "gpt-4o",
+        "prompt": "Synthèse finale :\nMarché : {{market}}\nConcurrence : {{competition}}",
+        "outputKey": "report"
+      }
+    ],
+    "outputs": ["report"]
+  }
+}

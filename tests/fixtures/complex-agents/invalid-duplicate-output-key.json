@@ -1,0 +1,13 @@
+{
+  "id": "invalid-duplicate-output-key",
+  "expectValid": false,
+  "expectErrorCodes": ["duplicate_output_key"],
+  "manifest": {
+    "kind": "workflow",
+    "secrets": ["openai"],
+    "steps": [
+      { "type": "llm", "model": "gpt-4o", "prompt": "Étape 1", "outputKey": "draft" },
+      { "type": "llm", "model": "gpt-4o", "prompt": "Étape 2", "outputKey": "draft" }
+    ]
+  }
+}

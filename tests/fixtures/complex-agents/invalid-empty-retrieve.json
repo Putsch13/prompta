@@ -1,0 +1,16 @@
+{
+  "id": "invalid-empty-retrieve",
+  "expectValid": false,
+  "expectErrorCodes": ["empty_retrieve_query"],
+  "manifest": {
+    "kind": "agent",
+    "secrets": ["openai"],
+    "steps": [
+      {
+        "type": "retrieve",
+        "source": "url",
+        "query": ""
+      }
+    ]
+  }
+}
