@@ -94,6 +94,67 @@ export function validateAgentManifest(
       }
     }
 
+    // ─── Parallel step validation ────────────────────────────────────────
+    if (step.type === "parallel") {
+      if (!step.branches || step.branches.length === 0) {
+        issues.push({
+          stepIndex: i,
+          severity: "error",
+          code: "parallel_no_branches",
+          message: `Étape ${i + 1} (Parallel) : aucune branche définie.`,
+        });
+      } else {
+        const branchOutputKeys = new Set<string>();
+        for (let b = 0; b < step.branches.length; b++) {
+          const branch = step.branches[b];
+          if (!branch.steps || branch.steps.length === 0) {
+            issues.push({
+              stepIndex: i,
+              severity: "error",
+              code: "parallel_empty_branch",
+              message: `Étape ${i + 1} (Parallel) : la branche ${b + 1} est vide.`,
+            });
+          } else {
+            const branchIssues = validateAgentManifest(branch.steps as AgentStep[], options);
+            for (const issue of branchIssues) {
+              issues.push({
+                ...issue,
+                stepIndex: i,
+                message: `Étape ${i + 1} (Parallel, branche ${b + 1}) : ${issue.message}`,
+              });
+            }
+          }
+          if (branch.outputKey) {
+            if (branchOutputKeys.has(branch.outputKey)) {
+              issues.push({
+                stepIndex: i,
+                severity: "error",
+                code: "parallel_duplicate_branch_output_key",
+                message: `Étape ${i + 1} (Parallel) : outputKey "${branch.outputKey}" dupliqué entre branches.`,
+              });
+            }
+            branchOutputKeys.add(branch.outputKey);
+          }
+        }
+      }
+
+      const key = step.outputKey?.trim();
+      if (key) {
+        if (seenOutputKeys.has(key)) {
+          issues.push({
+            stepIndex: i,
+            severity: "error",
+            code: "duplicate_output_key",
+            message: `Étape ${i + 1} : outputKey "${key}" déjà utilisé à l'étape ${(seenOutputKeys.get(key) ?? 0) + 1}.`,
+          });
+        } else {
+          seenOutputKeys.set(key, i);
+        }
+        outputKeys.add(key);
+      }
+      continue;
+    }
+
     // Vérifier les références step_X_output : pas de référence future
     const textFields = getStepTextFields(step);
     for (const text of textFields) {
@@ -164,6 +225,14 @@ export function validateAgentManifest(
 
 function getStepTextFields(step: AgentStep): string[] {
   const fields: string[] = [];
+  if (step.type === "parallel") {
+    for (const branch of step.branches) {
+      for (const subStep of branch.steps) {
+        fields.push(...getStepTextFields(subStep as AgentStep));
+      }
+    }
+    return fields;
+  }
   if (step.type === "llm" && step.prompt) fields.push(step.prompt);
   if (step.type === "code" && step.source) fields.push(step.source);
   if (step.type === "retrieve" && step.query) fields.push(step.query);

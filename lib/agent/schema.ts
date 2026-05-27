@@ -10,7 +10,9 @@ export const AgentInputSchema = z.object({
 });
 
 // ─── Steps ───────────────────────────────────────────────────────────────────
-export const AgentStepSchema = z.discriminatedUnion("type", [
+
+/** Steps de base (non-parallel) pour éviter la récursion infinie. */
+export const BaseAgentStepSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("llm"),
     model: z.string(),
@@ -58,6 +60,25 @@ export const AgentStepSchema = z.discriminatedUnion("type", [
     maxResults: z.number().default(5),
   }),
 ]);
+
+export type BaseAgentStep = z.infer<typeof BaseAgentStepSchema>;
+
+export const ParallelBranchSchema = z.object({
+  steps: z.array(BaseAgentStepSchema).min(1),
+  outputKey: z.string().optional(),
+});
+
+export const ParallelStepSchema = z.object({
+  type: z.literal("parallel"),
+  branches: z.array(ParallelBranchSchema),
+  outputKey: z.string().optional(),
+});
+
+export type ParallelStep = z.infer<typeof ParallelStepSchema>;
+export type ParallelBranch = z.infer<typeof ParallelBranchSchema>;
+
+/** Union complète incluant les étapes parallèles. */
+export const AgentStepSchema = z.union([BaseAgentStepSchema, ParallelStepSchema]);
 
 // ─── Kind / execution mode (Ticket 10) ──────────────────────────────────────
 export const AgentKindSchema = z.enum(["prompt", "workflow", "agent"]);

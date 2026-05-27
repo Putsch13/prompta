@@ -41,6 +41,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               >
                 Modération
               </Link>
+              <Link
+                href="/admin/worker-health"
+                className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-card2 hover:text-ink"
+              >
+                Worker
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-ink-faint">

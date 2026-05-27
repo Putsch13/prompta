@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractInputVariables, isFakeVariable, validateAgentSteps } from "../../lib/builder/variables";
+import { extractInputVariables, isFakeVariable, validateAgentSteps, extractInputVariablesFromSteps } from "../../lib/builder/variables";
 import { validateAgentManifest, hasBlockingIssues } from "../../lib/builder/validate-agent";
 import type { AgentStep } from "../../lib/agent/schema";
 
@@ -168,4 +168,105 @@ test("validateAgentManifest — connecteur non listé en warning", () => {
   const issues = validateAgentManifest(steps, { connectors: ["gmail"] });
   assert.ok(!hasBlockingIssues(issues));
   assert.ok(issues.some((i) => i.code === "unlisted_connector" && i.severity === "warning"));
+});
+
+// ──────────────────────────────────────────────────────────────
+// Étapes parallèles
+// ──────────────────────────────────────────────────────────────
+
+test("validateAgentManifest — parallel valide", () => {
+  const steps: AgentStep[] = [
+    { type: "llm", model: "gpt-4o", prompt: "Analyse {{topic}}", outputKey: "analysis" },
+    {
+      type: "parallel",
+      branches: [
+        {
+          steps: [{ type: "llm", model: "gpt-4o", prompt: "Résumé court" }],
+          outputKey: "short_summary",
+        },
+        {
+          steps: [{ type: "llm", model: "gpt-4o", prompt: "Résumé long" }],
+          outputKey: "long_summary",
+        },
+      ],
+      outputKey: "parallel_result",
+    },
+    { type: "llm", model: "gpt-4o", prompt: "Combiner {{step_1_output}}" },
+  ];
+  const issues = validateAgentManifest(steps);
+  assert.ok(!hasBlockingIssues(issues));
+});
+
+test("validateAgentManifest — parallel avec branche vide → erreur", () => {
+  const steps: AgentStep[] = [
+    {
+      type: "parallel",
+      branches: [
+        { steps: [{ type: "llm", model: "gpt-4o", prompt: "OK" }] },
+        { steps: [] },
+      ],
+    },
+  ];
+  const issues = validateAgentManifest(steps);
+  assert.ok(hasBlockingIssues(issues));
+  assert.ok(issues.some((i) => i.code === "parallel_empty_branch"));
+});
+
+test("validateAgentManifest — parallel avec outputKey dupliqué entre branches → erreur", () => {
+  const steps: AgentStep[] = [
+    {
+      type: "parallel",
+      branches: [
+        { steps: [{ type: "llm", model: "gpt-4o", prompt: "A" }], outputKey: "dup" },
+        { steps: [{ type: "llm", model: "gpt-4o", prompt: "B" }], outputKey: "dup" },
+      ],
+    },
+  ];
+  const issues = validateAgentManifest(steps);
+  assert.ok(hasBlockingIssues(issues));
+  assert.ok(issues.some((i) => i.code === "parallel_duplicate_branch_output_key"));
+});
+
+test("validateAgentManifest — parallel valide sous-étapes récursives", () => {
+  const steps: AgentStep[] = [
+    {
+      type: "parallel",
+      branches: [
+        {
+          steps: [
+            { type: "tool", tool: "web_search", params: { query: "{{topic}}" } },
+            { type: "llm", model: "gpt-4o", prompt: "Résumé de {{step_0_output}}" },
+          ],
+          outputKey: "branch_a",
+        },
+        {
+          steps: [{ type: "code", language: "python", source: "print('hello')" }],
+          outputKey: "branch_b",
+        },
+      ],
+    },
+  ];
+  const issues = validateAgentManifest(steps);
+  assert.ok(!hasBlockingIssues(issues));
+});
+
+// ──────────────────────────────────────────────────────────────
+// extractInputVariablesFromSteps avec parallel
+// ──────────────────────────────────────────────────────────────
+
+test("extractInputVariablesFromSteps — extrait vars depuis branches parallèles", () => {
+  const steps = [
+    { type: "llm", prompt: "Bonjour {{nom}}" },
+    {
+      type: "parallel",
+      branches: [
+        { steps: [{ type: "llm", prompt: "Branche avec {{email}}" }] },
+        { steps: [{ type: "llm", prompt: "Branche avec {{sujet}}" }] },
+      ],
+    },
+  ];
+  const vars = extractInputVariablesFromSteps(steps as any);
+  assert.ok(vars.includes("nom"));
+  assert.ok(vars.includes("email"));
+  assert.ok(vars.includes("sujet"));
 });

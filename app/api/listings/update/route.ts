@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
   const { data: listing } = await admin
     .from("listings")
-    .select("id, creator_id, current_version_id, pricing_mode, price_cents, subscription_price_cents")
+    .select("id, creator_id, current_version_id, pricing_mode, price_cents, subscription_price_cents, status")
     .eq("id", body.listingId)
     .single();
 
@@ -120,13 +120,47 @@ export async function POST(request: NextRequest) {
 
     const hasVersionUpdate = body.promptBody !== undefined || envPayload;
     if (hasVersionUpdate) {
-      await admin
-        .from("listing_versions")
-        .update({
-          ...(body.promptBody !== undefined ? { prompt_body: body.promptBody } : {}),
-          ...(envPayload ? { env: JSON.parse(JSON.stringify(envPayload)) } : {}),
-        })
-        .eq("id", listing.current_version_id);
+      // Si l'agent est publié, créer une nouvelle version au lieu d'écraser
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const listingStatus = (listing as any).status ?? updates.status;
+      if (listingStatus === "published") {
+        const { data: currentVersion } = await admin
+          .from("listing_versions")
+          .select("semver, prompt_body, env")
+          .eq("id", listing.current_version_id)
+          .single();
+
+        const oldSemver = currentVersion?.semver ?? "1.0.0";
+        const parts = oldSemver.split(".").map(Number);
+        const newSemver = `${parts[0]}.${(parts[1] ?? 0) + 1}.0`;
+
+        const { data: newVersion } = await admin
+          .from("listing_versions")
+          .insert({
+            listing_id: body.listingId,
+            semver: newSemver,
+            changelog: `Mise à jour ${newSemver}`,
+            prompt_body: body.promptBody !== undefined ? body.promptBody : (currentVersion?.prompt_body ?? null),
+            env: envPayload ? JSON.parse(JSON.stringify(envPayload)) : (currentVersion?.env ?? null),
+          })
+          .select("id")
+          .single();
+
+        if (newVersion) {
+          await admin
+            .from("listings")
+            .update({ current_version_id: newVersion.id })
+            .eq("id", body.listingId);
+        }
+      } else {
+        await admin
+          .from("listing_versions")
+          .update({
+            ...(body.promptBody !== undefined ? { prompt_body: body.promptBody } : {}),
+            ...(envPayload ? { env: JSON.parse(JSON.stringify(envPayload)) } : {}),
+          })
+          .eq("id", listing.current_version_id);
+      }
     }
   }
 

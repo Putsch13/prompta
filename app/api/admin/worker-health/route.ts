@@ -1,43 +1,47 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getAdminOrNull } from "@/lib/admin/guard";
 import { getRunHealthStats } from "@/lib/worker/reap-stale-runs";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
-
-  const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile?.is_admin) {
-    return NextResponse.json({ error: "Admin requis" }, { status: 403 });
+  const admin = await getAdminOrNull();
+  if (!admin) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 403 });
   }
 
   const stats = await getRunHealthStats();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+
+  const { data: recentRuns } = await db
+    .from("listing_agent_runs")
+    .select(`
+      id, status, steps_completed, created_at, started_at, heartbeat_at,
+      claimed_by, error_message,
+      listing:listings(title),
+      user:profiles!listing_agent_runs_user_id_fkey(username)
+    `)
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  const mapped = (recentRuns ?? []).map((r: Record<string, unknown>) => ({
+    id: r.id,
+    status: r.status,
+    listing_title: (r.listing as { title: string } | null)?.title ?? null,
+    user_email: (r.user as { username: string } | null)?.username ?? null,
+    created_at: r.created_at,
+    started_at: r.started_at ?? null,
+    heartbeat_at: r.heartbeat_at ?? null,
+    claimed_by: r.claimed_by ?? null,
+    steps_completed: r.steps_completed ?? 0,
+    error_message: r.error_message ?? null,
+  }));
+
   return NextResponse.json({
-    ok: stats.staleRuns === 0,
     ...stats,
-    workerEnv: {
-      composio: !!process.env.COMPOSIO_API_KEY,
-      platformOpenAI: !!process.env.PLATFORM_OPENAI_KEY,
-      platformAnthropic: !!process.env.PLATFORM_ANTHROPIC_KEY,
-      e2b: !!process.env.E2B_API_KEY,
-      serper: !!process.env.PLATFORM_SERPER_KEY,
-      anthropicAdmin: !!process.env.ANTHROPIC_API_KEY,
-    },
+    recentRuns: mapped,
   });
 }

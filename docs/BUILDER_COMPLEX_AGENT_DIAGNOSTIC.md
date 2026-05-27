@@ -202,6 +202,22 @@
 
 ---
 
+## Catalogue exécutable
+
+Les 100 agents sont implémentés dans `lib/templates/complex-agent-catalog.ts` avec :
+- Manifestes complets (steps, inputs, connectors, secrets)
+- Pain points identifiés pour chaque agent (builder + user)
+- Classification par difficulté (standard / advanced / expert)
+- Livrables attendus par agent
+
+### Stats du catalogue
+
+- **10 catégories** : data, crm, marketing, ecommerce, finance, multi-connecteurs, code, live, marketplace, edge cases
+- **3 niveaux** : standard (~40%), advanced (~35%), expert (~25%)
+- **Connecteurs requis** : ~30% des agents
+- **Multi-step (5+)** : ~25% des agents
+- **Étapes parallèles** : supportées via `type: "parallel"` (schema + orchestrateur)
+
 ## Corrections planifiées
 
 Voir les sections P0/P1/P2 du sprint plan dans la TODO globale du projet.

@@ -18,6 +18,32 @@ export function extractInputVariables(text: string): string[] {
   return Array.from(new Set(keys.filter((k) => !isFakeVariable(k))));
 }
 
+/** Extrait les variables d'entrée depuis un tableau d'étapes (parcours récursif des branches parallèles). */
+export function extractInputVariablesFromSteps(steps: { type: string; prompt?: string; source?: string; query?: string; expression?: string; params?: Record<string, string>; branches?: { steps: unknown[]; outputKey?: string }[] }[]): string[] {
+  const allVars = new Set<string>();
+  for (const step of steps) {
+    const texts: string[] = [];
+    if (step.type === "parallel" && step.branches) {
+      for (const branch of step.branches) {
+        const branchVars = extractInputVariablesFromSteps(branch.steps as typeof steps);
+        branchVars.forEach((v) => allVars.add(v));
+      }
+      continue;
+    }
+    if (step.prompt) texts.push(step.prompt);
+    if (step.source) texts.push(step.source);
+    if (step.query) texts.push(step.query);
+    if (step.expression) texts.push(step.expression);
+    if (step.params) texts.push(...Object.values(step.params));
+    for (const text of texts) {
+      for (const v of extractInputVariables(text)) {
+        allVars.add(v);
+      }
+    }
+  }
+  return Array.from(allVars);
+}
+
 /** Convertit une clé snake_case en label lisible. */
 export function keyToLabel(key: string): string {
   return key
@@ -30,10 +56,22 @@ export interface StepValidationIssue {
   message: string;
 }
 
-/** Valide les étapes LLM et les références step_X_output. */
-export function validateAgentSteps(steps: { type: string; prompt?: string }[]): StepValidationIssue[] {
+/** Valide les étapes LLM et les références step_X_output (parcours récursif des branches parallèles). */
+export function validateAgentSteps(steps: { type: string; prompt?: string; branches?: { steps: { type: string; prompt?: string }[] }[] }[]): StepValidationIssue[] {
   const issues: StepValidationIssue[] = [];
   steps.forEach((step, i) => {
+    if (step.type === "parallel" && step.branches) {
+      for (let b = 0; b < step.branches.length; b++) {
+        const branchIssues = validateAgentSteps(step.branches[b].steps);
+        for (const issue of branchIssues) {
+          issues.push({
+            stepIndex: i,
+            message: `Étape ${i + 1} (branche ${b + 1}) : ${issue.message}`,
+          });
+        }
+      }
+      return;
+    }
     if (step.type === "llm") {
       const prompt = step.prompt?.trim() ?? "";
       if (!prompt) {

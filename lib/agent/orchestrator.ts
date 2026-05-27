@@ -2,7 +2,7 @@ import { callModel } from "@/lib/llm/gateway";
 import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
 import { executeConnectorAction } from "@/lib/connectors/execute";
 import { getUserConnection } from "@/lib/connections";
-import { AgentManifestSchema, type AgentManifest, type AgentStep } from "./schema";
+import { AgentManifestSchema, type AgentManifest, type AgentStep, type BaseAgentStep, type ParallelStep } from "./schema";
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
 import { logRunActivity } from "./activity-log";
 import { runCodeInSandbox } from "./sandbox";
@@ -431,6 +431,9 @@ async function executeStep(
 }
 
 function describeStep(step: AgentStep, index: number): string {
+  if (step.type === "parallel") {
+    return `Parallel (${step.branches.length} branches)`;
+  }
   switch (step.type) {
     case "llm":
       return step.model;
@@ -529,6 +532,93 @@ export async function runAgent(
           throw new Error("Plafond max_steps atteint");
         }
 
+        // ─── Parallel step ────────────────────────────────────────────────
+        if (step.type === "parallel") {
+          const parallelStep = step as ParallelStep;
+          const ctxWithMemory = { ...effectiveContext, memoryEnabled };
+
+          const branchResults = await Promise.allSettled(
+            parallelStep.branches.map(async (branch, branchIdx) => {
+              const branchOutputs: string[] = [];
+              for (let s = 0; s < branch.steps.length; s++) {
+                const subStep = branch.steps[s] as BaseAgentStep;
+                const { content, usage: subUsage } = await executeStepWithRetry(
+                  subStep,
+                  { ...vars },
+                  ctxWithMemory,
+                  manifestWithLimits.limits.max_tokens,
+                  i * 100 + branchIdx * 10 + s
+                );
+                branchOutputs.push(content);
+                if (subUsage) usageLog.push(subUsage);
+
+                if (subStep.type === "tool" || subStep.type === "action") {
+                  toolCalls++;
+                }
+                if (subStep.type === "llm" && subUsage) {
+                  tokensUsed += subUsage.inputTokens + subUsage.outputTokens;
+                }
+                totalOutputBytes += content.length;
+              }
+              const lastOutput = branchOutputs[branchOutputs.length - 1] ?? "";
+              return { lastOutput, branchIdx, outputKey: branch.outputKey };
+            })
+          );
+
+          if (toolCalls > maxToolCalls) throw new Error("Plafond max_tool_calls atteint");
+          if (tokensUsed > manifestWithLimits.limits.max_tokens) throw new Error("Plafond max_tokens atteint");
+          if (totalOutputBytes > maxOutputBytes) throw new Error("Plafond max_output_bytes atteint");
+
+          const branchOutputsList: string[] = [];
+          const errors: string[] = [];
+
+          for (const result of branchResults) {
+            if (result.status === "fulfilled") {
+              branchOutputsList.push(result.value.lastOutput);
+              if (result.value.outputKey) {
+                vars[result.value.outputKey] = result.value.lastOutput;
+                outputs[result.value.outputKey] = result.value.lastOutput;
+              }
+            } else {
+              const errMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+              errors.push(errMsg);
+              branchOutputsList.push(`[ERREUR] ${errMsg}`);
+            }
+          }
+
+          const combinedContent = JSON.stringify(branchOutputsList);
+          vars[`step_${stepsCompleted}_output`] = combinedContent;
+          outputs[`step_${stepsCompleted}`] = combinedContent;
+
+          if (parallelStep.outputKey) {
+            vars[parallelStep.outputKey] = combinedContent;
+            outputs[parallelStep.outputKey] = combinedContent;
+          }
+
+          const parallelStatus = errors.length > 0 && errors.length === branchResults.length ? "failed" : "success";
+          stepTrace.push({
+            stepIndex: i,
+            stepType: "parallel",
+            label: describeStep(step, i),
+            status: parallelStatus === "failed" ? "failed" : "success",
+            outputPreview: combinedContent.slice(0, 800),
+            durationMs: Date.now() - stepStartedAt,
+          });
+
+          if (parallelStatus === "failed") {
+            throw new Error(`Toutes les branches parallèles ont échoué: ${errors.join("; ")}`);
+          }
+
+          stepsCompleted++;
+          latestStepsCompleted = stepsCompleted;
+
+          if (context.onProgress) {
+            await context.onProgress(stepsCompleted);
+          }
+          continue;
+        }
+
+        // ─── Sequential step (existant) ──────────────────────────────────
         const ctxWithMemory = { ...effectiveContext, memoryEnabled };
         const { content, usage } = await executeStepWithRetry(
           step,
