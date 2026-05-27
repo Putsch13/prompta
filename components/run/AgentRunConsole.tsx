@@ -194,7 +194,7 @@ export function AgentRunConsole({
 
     let cancelled = false;
 
-    async function load() {
+    async function loadOnce() {
       try {
         const [stepsRes, runRes] = await Promise.all([
           fetch(`/api/run/agent/${runId}/steps`),
@@ -217,17 +217,55 @@ export function AgentRunConsole({
       }
     }
 
-    load();
-    if (!pollWhileRunning && !isActive) {
+    loadOnce();
+
+    const useStream = pollWhileRunning || isActive;
+    if (!useStream) {
       return () => {
         cancelled = true;
       };
     }
 
-    const interval = setInterval(load, 800);
+    let es: EventSource | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    try {
+      es = new EventSource(`/api/run/agent/${runId}/stream`);
+      es.addEventListener("run", (ev) => {
+        if (cancelled) return;
+        try {
+          const run = JSON.parse((ev as MessageEvent).data);
+          if (run.steps_completed != null) setLiveCompleted(run.steps_completed);
+          if (run.started_at) setStartedAt(run.started_at);
+          if (run.heartbeat_at) setHeartbeatAt(run.heartbeat_at);
+        } catch {
+          // ignore malformed SSE
+        }
+      });
+      es.addEventListener("steps", (ev) => {
+        if (cancelled) return;
+        try {
+          const data = JSON.parse((ev as MessageEvent).data);
+          setDbSteps(data.steps ?? []);
+        } catch {
+          // ignore
+        }
+      });
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        if (!pollInterval && !cancelled) {
+          pollInterval = setInterval(loadOnce, 800);
+        }
+      };
+    } catch {
+      pollInterval = setInterval(loadOnce, 800);
+    }
+
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      es?.close();
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, [runId, pollWhileRunning, isActive]);
 

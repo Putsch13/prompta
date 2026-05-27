@@ -79,12 +79,24 @@ export async function POST(request: NextRequest) {
 
   const { data: listing } = await admin
     .from("listings")
-    .select("id, type, status, creator_id, price_cents")
+    .select("id, type, status, creator_id, price_cents, current_version_id")
     .eq("id", listingId)
     .single();
 
   if (!listing || listing.type === "prompt") {
     return NextResponse.json({ error: "Agent introuvable" }, { status: 404 });
+  }
+
+  const { assertAllowedAgentVersion } = await import("@/lib/listings/resolve-agent-version");
+  const versionCheck = await assertAllowedAgentVersion(admin, {
+    listingId,
+    userId: user.id,
+    creatorId: listing.creator_id,
+    currentVersionId: listing.current_version_id,
+    requestedVersionId: versionId,
+  });
+  if (!versionCheck.ok) {
+    return NextResponse.json({ error: versionCheck.error }, { status: 403 });
   }
 
   const isOwner = listing.creator_id === user.id;

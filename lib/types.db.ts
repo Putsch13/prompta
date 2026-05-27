@@ -88,7 +88,7 @@ export interface Database {
           tags: string[];
           price_cents: number;
           currency: string;
-          status: "draft" | "under_review" | "published" | "rejected";
+          status: "draft" | "under_review" | "published" | "rejected" | "deleted";
           current_version_id: string | null;
           search_vector: string | null;
           reason_rejected: string | null;
@@ -681,6 +681,120 @@ export interface Database {
         };
         Relationships: [];
       };
+      agent_action_executions: {
+        Row: {
+          id: string;
+          run_id: string;
+          step_index: number;
+          action_slug: string;
+          execution_key: string;
+          result_output: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id: string;
+          step_index: number;
+          action_slug: string;
+          execution_key: string;
+          result_output?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          run_id?: string;
+          step_index?: number;
+          action_slug?: string;
+          execution_key?: string;
+          result_output?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      agent_approvals: {
+        Row: {
+          id: string;
+          run_id: string;
+          step_id: string | null;
+          step_index: number;
+          status: string;
+          payload: Json;
+          expires_at: string | null;
+          decided_at: string | null;
+          decided_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id: string;
+          step_id?: string | null;
+          step_index: number;
+          status?: string;
+          payload?: Json;
+          expires_at?: string | null;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          run_id?: string;
+          step_id?: string | null;
+          step_index?: number;
+          status?: string;
+          payload?: Json;
+          expires_at?: string | null;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      agent_deliverables: {
+        Row: {
+          id: string;
+          run_id: string;
+          listing_id: string | null;
+          user_id: string;
+          kind: string;
+          filename: string;
+          mime_type: string;
+          storage_path: string | null;
+          content_text: string | null;
+          preview_text: string | null;
+          size_bytes: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id: string;
+          listing_id?: string | null;
+          user_id: string;
+          kind?: string;
+          filename: string;
+          mime_type?: string;
+          storage_path?: string | null;
+          content_text?: string | null;
+          preview_text?: string | null;
+          size_bytes?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          run_id?: string;
+          listing_id?: string | null;
+          user_id?: string;
+          kind?: string;
+          filename?: string;
+          mime_type?: string;
+          storage_path?: string | null;
+          content_text?: string | null;
+          preview_text?: string | null;
+          size_bytes?: number | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       listing_agent_runs: {
         Row: {
           id: string;
@@ -696,6 +810,11 @@ export interface Database {
           dry_run: boolean;
           used_credits: boolean;
           credit_hold_estimate_cents: number | null;
+          started_at: string | null;
+          heartbeat_at: string | null;
+          claimed_by: string | null;
+          paused_at_step: number | null;
+          resume_from_step: number | null;
           created_at: string;
         };
         Insert: {
@@ -712,6 +831,11 @@ export interface Database {
           dry_run?: boolean;
           used_credits?: boolean;
           credit_hold_estimate_cents?: number | null;
+          started_at?: string | null;
+          heartbeat_at?: string | null;
+          claimed_by?: string | null;
+          paused_at_step?: number | null;
+          resume_from_step?: number | null;
           created_at?: string;
         };
         Update: {
@@ -728,6 +852,71 @@ export interface Database {
           dry_run?: boolean;
           used_credits?: boolean;
           credit_hold_estimate_cents?: number | null;
+          started_at?: string | null;
+          heartbeat_at?: string | null;
+          claimed_by?: string | null;
+          paused_at_step?: number | null;
+          resume_from_step?: number | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      listing_agent_run_steps: {
+        Row: {
+          id: string;
+          run_id: string;
+          step_index: number;
+          step_id: string;
+          step_type: string;
+          label: string | null;
+          status: string;
+          output_preview: string | null;
+          error_code: string | null;
+          error_message: string | null;
+          provider: string | null;
+          model: string | null;
+          tool_slug: string | null;
+          action_slug: string | null;
+          started_at: string | null;
+          finished_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id: string;
+          step_index: number;
+          step_id: string;
+          step_type: string;
+          label?: string | null;
+          status?: string;
+          output_preview?: string | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          provider?: string | null;
+          model?: string | null;
+          tool_slug?: string | null;
+          action_slug?: string | null;
+          started_at?: string | null;
+          finished_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          run_id?: string;
+          step_index?: number;
+          step_id?: string;
+          step_type?: string;
+          label?: string | null;
+          status?: string;
+          output_preview?: string | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          provider?: string | null;
+          model?: string | null;
+          tool_slug?: string | null;
+          action_slug?: string | null;
+          started_at?: string | null;
+          finished_at?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -1038,6 +1227,7 @@ export interface Database {
           stripe_customer_id: string | null;
           status: string;
           current_period_end: string | null;
+          pinned_version_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -1048,6 +1238,7 @@ export interface Database {
           stripe_customer_id?: string | null;
           status?: string;
           current_period_end?: string | null;
+          pinned_version_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -1058,6 +1249,7 @@ export interface Database {
           stripe_customer_id?: string | null;
           status?: string;
           current_period_end?: string | null;
+          pinned_version_id?: string | null;
           created_at?: string;
         };
         Relationships: [];

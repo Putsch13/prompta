@@ -51,7 +51,10 @@ export interface OrchestratorContext {
   dryRun?: boolean;
   /** Builder / test : auto-approuve les étapes validation humaine */
   demoMode?: boolean;
-  onProgress?: (stepsCompleted: number) => void | Promise<void>;
+  /** Reprise après approbation ou crash worker */
+  resumeFromStep?: number;
+  resumeOutputs?: Record<string, string>;
+  onProgress?: (stepsCompleted: number, outputs?: Record<string, string>) => void | Promise<void>;
 }
 
 export interface OrchestratorResult {
@@ -186,13 +189,35 @@ async function executeStep(
   try {
     if (step.type === "llm") {
       const { provider, apiModel, tokenParam } = resolved!;
-      const apiKey = ctx.apiKeys[provider];
-      if (!apiKey) throw new Error(`Clé ${provider} manquante`);
-
       const prompt = interpolate(step.prompt, vars);
       if (runId && stepDbId) {
         await updateStepInput(stepDbId, { prompt: prompt.slice(0, 500) }).catch(() => undefined);
       }
+
+      if (simulated || ctx.demoMode) {
+        const preview = ctx.demoMode
+          ? `[DÉMO — LLM ${apiModel}]\n${prompt.slice(0, 500)}`
+          : `[APERÇU — LLM ${apiModel}]\n${prompt.slice(0, 500)}`;
+        await logRunActivity({
+          userId: ctx.userId,
+          runId: ctx.runId,
+          listingId: ctx.listingId,
+          actionType: "llm",
+          actionLabel: simulated ? `LLM (aperçu) — ${resolved!.catalogId}` : `LLM (démo) — ${resolved!.catalogId}`,
+          simulated: true,
+          detail: { model: apiModel, stepIndex },
+        }).catch(() => undefined);
+        if (runId && stepDbId) {
+          await logStepSuccess(stepDbId, preview.slice(0, 500), undefined, stepStartedAt).catch(() => undefined);
+        }
+        return {
+          content: preview,
+          usage: { inputTokens: 0, outputTokens: 0, model: apiModel },
+        };
+      }
+
+      const apiKey = ctx.apiKeys[provider];
+      if (!apiKey) throw new Error(`Clé ${provider} manquante`);
 
       let memoryContext = "";
       const memEnabled = (ctx as OrchestratorContext & { memoryEnabled?: boolean }).memoryEnabled;
@@ -569,11 +594,12 @@ export async function runAgent(
   const effectiveContext = { ...context, inputs: runInputs };
   let latestStepsCompleted = 0;
   const memoryEnabled = manifest.memory?.enabled ?? false;
-  const startFromStep = (context as OrchestratorContext & { resumeFromStep?: number }).resumeFromStep ?? 0;
+  const startFromStep = context.resumeFromStep ?? 0;
+  const resumeOutputs = context.resumeOutputs ?? {};
 
   const run = async (): Promise<OrchestratorResult> => {
-    const vars = { ...effectiveContext.inputs };
-    const outputs: Record<string, string> = {};
+    const vars = { ...effectiveContext.inputs, ...resumeOutputs };
+    const outputs: Record<string, string> = { ...resumeOutputs };
     const usageLog: StepUsage[] = [];
     const stepTrace: StepTraceEntry[] = [];
     let stepsCompleted = startFromStep;
@@ -682,7 +708,7 @@ export async function runAgent(
           latestStepsCompleted = stepsCompleted;
 
           if (context.onProgress) {
-            await context.onProgress(stepsCompleted);
+            await context.onProgress(stepsCompleted, { ...outputs });
           }
           continue;
         }
@@ -761,10 +787,10 @@ export async function runAgent(
         // Always set by index for backward compat
         vars[`step_${stepsCompleted}_output`] = content;
         outputs[`step_${stepsCompleted}`] = content;
+        outputs[`step_${stepsCompleted}_output`] = content;
 
-        // If step has a custom outputKey, set it as a named variable too
         const outputKey = step.outputKey;
-        if (outputKey && outputKey !== `step_${stepsCompleted}_output`) {
+        if (outputKey) {
           vars[outputKey] = content;
           outputs[outputKey] = content;
         }
@@ -784,7 +810,7 @@ export async function runAgent(
         });
 
         if (context.onProgress) {
-          await context.onProgress(stepsCompleted);
+          await context.onProgress(stepsCompleted, { ...outputs });
         }
       }
 

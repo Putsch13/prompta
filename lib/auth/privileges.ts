@@ -22,29 +22,33 @@ export const UNRESTRICTED_LIMITS = {
 };
 
 export async function getUserPrivileges(userId: string): Promise<UserPrivileges> {
-  const admin = createAdminClient();
+  try {
+    const admin = createAdminClient();
 
-  const { data: authData } = await admin.auth.admin.getUserById(userId);
-  const email = authData.user?.email?.toLowerCase() ?? null;
+    const { data: authData } = await admin.auth.admin.getUserById(userId);
+    const email = authData.user?.email?.toLowerCase() ?? null;
 
-  if (email && HARDCODED_UNRESTRICTED.has(email)) {
-    await admin
+    if (email && HARDCODED_UNRESTRICTED.has(email)) {
+      await admin
+        .from("profiles")
+        .update({ is_admin: true, unrestricted_usage: true })
+        .eq("id", userId);
+      return { isAdmin: true, unrestricted: true, email };
+    }
+
+    const { data: profile } = await admin
       .from("profiles")
-      .update({ is_admin: true, unrestricted_usage: true })
-      .eq("id", userId);
-    return { isAdmin: true, unrestricted: true, email };
+      .select("is_admin, unrestricted_usage")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const isAdmin = Boolean(profile?.is_admin);
+    const unrestricted = Boolean(profile?.unrestricted_usage) || isAdmin;
+
+    return { isAdmin, unrestricted, email };
+  } catch {
+    return { isAdmin: false, unrestricted: false, email: null };
   }
-
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("is_admin, unrestricted_usage")
-    .eq("id", userId)
-    .maybeSingle();
-
-  const isAdmin = Boolean(profile?.is_admin);
-  const unrestricted = Boolean(profile?.unrestricted_usage) || isAdmin;
-
-  return { isAdmin, unrestricted, email };
 }
 
 export async function isUnrestrictedUser(userId: string): Promise<boolean> {

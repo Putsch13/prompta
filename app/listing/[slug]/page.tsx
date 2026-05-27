@@ -131,12 +131,22 @@ export default async function ListingPage({ params }: Props) {
     hasSubscription = !!sub;
   }
 
-  // Version courante
-  const { data: version } = listing.current_version_id
+  // Version à exécuter (courante pour owner, figée pour abonné)
+  const { resolveAgentVersionId } = await import("@/lib/listings/resolve-agent-version");
+  const resolvedVersionId = user
+    ? await resolveAgentVersionId(supabase, {
+        listingId: listing.id,
+        userId: user.id,
+        creatorId: listing.creator_id,
+        currentVersionId: listing.current_version_id,
+      })
+    : listing.current_version_id;
+
+  const { data: version } = resolvedVersionId
     ? await supabase
         .from("listing_versions")
         .select("*")
-        .eq("id", listing.current_version_id)
+        .eq("id", resolvedVersionId)
         .single()
     : { data: null };
 
@@ -388,7 +398,7 @@ export default async function ListingPage({ params }: Props) {
 
               <BuyButton
                 listingId={listing.id}
-                versionId={listing.current_version_id}
+                versionId={resolvedVersionId}
                 listingSlug={listing.slug}
                 listingType={listing.type as "prompt" | "agent" | "workflow"}
                 priceCents={listing.price_cents}
@@ -446,7 +456,7 @@ export default async function ListingPage({ params }: Props) {
             {(listing.type === "prompt" ? version?.prompt_body : version) && (
               <RunPanel
                 listingId={listing.id}
-                versionId={listing.current_version_id}
+                versionId={resolvedVersionId}
                 listingSlug={listing.slug}
                 title={listing.title}
                 promptBody={canSeeFullPrompt ? version?.prompt_body ?? null : null}

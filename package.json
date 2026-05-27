@@ -17,6 +17,7 @@
     "secrets:scan": "bash scripts/secrets-scan.sh",
     "composio:smoke": "tsx scripts/composio-smoke.ts",
     "test:unit": "tsx --test tests/unit/*.test.ts",
+    "test:integration": "tsx --test tests/integration/*.test.ts",
     "smoke:local": "tsx scripts/smoke-local.ts"
   },
   "dependencies": {

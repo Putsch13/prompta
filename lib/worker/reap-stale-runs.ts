@@ -7,9 +7,9 @@ const STALE_HEARTBEAT_MS = 5 * 60 * 1000; // 5 min sans heartbeat = stale
 const STALE_CREATED_MS = 15 * 60 * 1000;  // 15 min depuis created_at (fallback si pas de heartbeat)
 
 /**
- * Marque les runs bloqués comme failed.
+ * Marque les runs bloqués comme failed ou les remet en pending pour reprise.
  * Priorité : heartbeat_at si dispo, sinon started_at, sinon created_at.
- * Libère les crédits retenus.
+ * Si steps_completed > 0 et output partiel → reprise via resume_from_step.
  */
 export async function reapStaleRunningRuns(): Promise<number> {
   const admin = createAdminClient();
@@ -20,18 +20,16 @@ export async function reapStaleRunningRuns(): Promise<number> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
 
-  // Runs avec heartbeat dépassé
   const { data: staleHeartbeat } = await db
     .from("listing_agent_runs")
-    .select("id, user_id, used_credits, credit_hold_estimate_cents")
+    .select("id, user_id, used_credits, credit_hold_estimate_cents, steps_completed, output")
     .eq("status", "running")
     .not("heartbeat_at", "is", null)
     .lt("heartbeat_at", heartbeatCutoff);
 
-  // Runs sans heartbeat mais créés il y a longtemps
   const { data: staleLegacy } = await db
     .from("listing_agent_runs")
-    .select("id, user_id, used_credits, credit_hold_estimate_cents")
+    .select("id, user_id, used_credits, credit_hold_estimate_cents, steps_completed, output")
     .eq("status", "running")
     .is("heartbeat_at", null)
     .lt("created_at", createdCutoff);
@@ -40,6 +38,32 @@ export async function reapStaleRunningRuns(): Promise<number> {
   if (stale.length === 0) return 0;
 
   for (const run of stale) {
+    const stepsCompleted = Number(run.steps_completed ?? 0);
+    const hasPartialOutput =
+      run.output &&
+      typeof run.output === "object" &&
+      Object.keys(run.output as object).length > 0;
+
+    if (stepsCompleted > 0 && hasPartialOutput) {
+      await db
+        .from("listing_agent_runs")
+        .update({
+          status: "pending",
+          resume_from_step: stepsCompleted,
+          claimed_by: null,
+          heartbeat_at: null,
+          error_message: "Reprise automatique après interruption worker",
+        })
+        .eq("id", run.id)
+        .eq("status", "running");
+
+      console.warn("[worker:reap] stale run rescheduled for resume", {
+        runId: run.id,
+        resumeFromStep: stepsCompleted,
+      });
+      continue;
+    }
+
     await admin
       .from("listing_agent_runs")
       .update({

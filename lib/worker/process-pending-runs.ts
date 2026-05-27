@@ -16,13 +16,23 @@ function workerId(): string {
   return `${hostname}-${randomUUID().slice(0, 8)}`;
 }
 
+function parseResumeOutputs(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
 export async function processPendingAgentRuns(limit = 3): Promise<number> {
   const admin = createAdminClient();
   const wid = workerId();
 
-  const { data: jobs } = await admin
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: jobs } = await (admin as any)
     .from("listing_agent_runs")
-    .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents")
+    .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents, resume_from_step, output, steps_completed")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
     .limit(limit);
@@ -31,8 +41,15 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
 
   for (const job of jobs ?? []) {
     const startMs = Date.now();
+    const resumeFromStep = typeof job.resume_from_step === "number" ? job.resume_from_step : 0;
+    const resumeOutputs = parseResumeOutputs(job.output);
 
-    console.info("[worker] claiming run", { runId: job.id, listingId: job.listing_id, worker: wid });
+    console.info("[worker] claiming run", {
+      runId: job.id,
+      listingId: job.listing_id,
+      worker: wid,
+      resumeFromStep,
+    });
 
     const now = new Date().toISOString();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,6 +60,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
         started_at: now,
         heartbeat_at: now,
         claimed_by: wid,
+        resume_from_step: null,
       })
       .eq("id", job.id)
       .eq("status", "pending")
@@ -116,13 +134,16 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
           apiKeys: billing.apiKeys,
           runId: claimed.id,
           dryRun: claimed.dry_run ?? false,
-          onProgress: async (stepsCompleted) => {
+          resumeFromStep,
+          resumeOutputs,
+          onProgress: async (stepsCompleted, partialOutput) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await (admin as any)
               .from("listing_agent_runs")
               .update({
                 steps_completed: stepsCompleted,
                 heartbeat_at: new Date().toISOString(),
+                ...(partialOutput ? { output: partialOutput } : {}),
               })
               .eq("id", claimed.id);
           },
@@ -139,7 +160,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
             { steps: result.usage },
             Number(claimed.credit_hold_estimate_cents)
           );
-        } else {
+        } else if (result.status !== "awaiting_approval") {
           await releaseAgentRunCredits(
             claimed.user_id,
             claimed.id,

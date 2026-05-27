@@ -41,5 +41,12 @@ export async function POST(
     return NextResponse.json({ error: "Approbation introuvable ou déjà traitée" }, { status: 404 });
   }
 
+  if (decision === "approved") {
+    const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
+    void processPendingAgentRuns(1).catch((e) =>
+      console.error("[approve] worker kick failed", e)
+    );
+  }
+
   return NextResponse.json({ ok: true, runId: result.runId, resumeFromStep: result.stepIndex + 1 });
 }

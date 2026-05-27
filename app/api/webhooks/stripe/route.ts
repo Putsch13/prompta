@@ -242,6 +242,12 @@ export async function POST(request: Request) {
       const buyerId = subscription.metadata?.buyer_id;
 
       if (listingId && buyerId) {
+        const { data: listing } = await admin
+          .from("listings")
+          .select("current_version_id")
+          .eq("id", listingId)
+          .maybeSingle();
+
         await admin.from("subscriptions").upsert(
           {
             user_id: buyerId,
@@ -249,6 +255,7 @@ export async function POST(request: Request) {
             stripe_subscription_id: subscription.id,
             stripe_customer_id: subscription.customer,
             status: subscription.status,
+            pinned_version_id: listing?.current_version_id ?? null,
             current_period_end: new Date(
               subscription.current_period_end * 1000
             ).toISOString(),

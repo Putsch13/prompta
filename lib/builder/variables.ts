@@ -1,6 +1,6 @@
 /** Utilitaires pour les variables d'entrée du builder. */
 
-const STEP_OUTPUT_RE = /^step_\d+_output$/;
+const STEP_OUTPUT_RE = /^step_\d+_output(\.|$)/;
 const FAKE_VARS = new Set(["variable", "input", "step_N_output"]);
 
 export function isStepOutputRef(key: string): boolean {
@@ -11,11 +11,15 @@ export function isFakeVariable(key: string): boolean {
   return FAKE_VARS.has(key) || isStepOutputRef(key);
 }
 
-/** Extrait les variables d'entrée depuis un texte (hors références d'étapes). */
+/** Extrait les variables d'entrée depuis un texte (hors références d'étapes). Supporte {{customer.email}}. */
 export function extractInputVariables(text: string): string[] {
-  const matches = text.match(/\{\{(\w+)\}\}/g) ?? [];
-  const keys = matches.map((m) => m.replace(/\{\{|\}\}/g, ""));
-  return Array.from(new Set(keys.filter((k) => !isFakeVariable(k))));
+  const re = /\{\{([\w.]+)\}\}/g;
+  const keys: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    keys.push(m[1]);
+  }
+  return Array.from(new Set(keys.filter((k) => !isFakeVariable(k) && !isStepOutputRef(k))));
 }
 
 /** Extrait les variables d'entrée depuis un tableau d'étapes (parcours récursif des branches parallèles). */

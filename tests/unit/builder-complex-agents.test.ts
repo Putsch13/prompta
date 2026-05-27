@@ -28,6 +28,16 @@ test("extractInputVariables — déduplique", () => {
   assert.deepEqual(vars, ["nom"]);
 });
 
+test("extractInputVariables — variables imbriquées customer.email", () => {
+  const vars = extractInputVariables("Email : {{customer.email}}, nom {{customer.name}}");
+  assert.deepEqual(vars.sort(), ["customer.email", "customer.name"]);
+});
+
+test("extractInputVariables — ignore step_0_output.data.path", () => {
+  const vars = extractInputVariables("Ref {{step_0_output.data.name}}");
+  assert.equal(vars.length, 0);
+});
+
 test("isFakeVariable — reconnaît les fausses vars", () => {
   assert.ok(isFakeVariable("variable"));
   assert.ok(isFakeVariable("input"));

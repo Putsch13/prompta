@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Copy, Plus, Trash2, X, Zap, Code, MessageSquare, Search } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Plus, Trash2, X, Zap, Code, MessageSquare, Search, GitBranch } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { ComposioActionPicker } from "@/components/builder/ComposioActionPicker";
+import { ParallelBranchEditor } from "@/components/builder/ParallelBranchEditor";
 import { getGatewayModels } from "@/lib/catalogs";
 import { CONNECTORS, type ConnectorAction } from "@/lib/connectors/registry";
 import type { ComposioToolEntry } from "@/lib/composio/catalog";
@@ -33,6 +34,7 @@ function stepBadge(step: AgentStep): string {
   if (step.type === "llm") return "LLM";
   if (step.type === "tool") return TOOLS.find((t) => t.id === step.tool)?.badge ?? "Outil";
   if (step.type === "action") return CONNECTORS.find((c) => c.id === step.connector)?.label ?? step.connector;
+  if (step.type === "parallel") return `Parallèle (${step.branches.length} branches)`;
   return "Code";
 }
 
@@ -45,7 +47,7 @@ function stepIcon(type: StepCategory) {
     case "condition": return <Search className="h-4 w-4" />;
     case "approval": return <Zap className="h-4 w-4" />;
     case "retrieve": return <Search className="h-4 w-4" />;
-    case "parallel": return <Zap className="h-4 w-4" />;
+    case "parallel": return <GitBranch className="h-4 w-4" />;
   }
 }
 
@@ -122,6 +124,23 @@ export function StepEditor({
     addStep({ type: "code", language: "python", source: "# Votre code ici\nresult = {}\n", outputKey: `step_${steps.length}_output` });
   }
 
+  function addParallelStep() {
+    addStep({
+      type: "parallel",
+      outputKey: `step_${steps.length}_output`,
+      branches: [
+        {
+          steps: [{ type: "llm", model: defaultModel, prompt: "", outputKey: "branch_a_output" }],
+          outputKey: "branch_a_output",
+        },
+        {
+          steps: [{ type: "llm", model: defaultModel, prompt: "", outputKey: "branch_b_output" }],
+          outputKey: "branch_b_output",
+        },
+      ],
+    });
+  }
+
   return (
     <div className="space-y-4">
       {/* Pipeline visualization */}
@@ -176,7 +195,8 @@ export function StepEditor({
               </div>
             </div>
 
-            {/* outputKey */}
+            {/* outputKey — sauf parallel (clé globale en plus des branches) */}
+            {step.type !== "parallel" && (
             <div className="mb-3 flex items-center gap-2">
               <label className="text-xs text-ink-faint whitespace-nowrap">Clé de sortie :</label>
               <input
@@ -186,6 +206,29 @@ export function StepEditor({
                 placeholder={`step_${i}_output`}
               />
             </div>
+            )}
+
+            {step.type === "parallel" && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-ink-faint whitespace-nowrap">Clé de sortie combinée :</label>
+                  <input
+                    value={step.outputKey ?? `step_${i}_output`}
+                    onChange={(e) => updateStep(i, { ...step, outputKey: e.target.value })}
+                    className="h-7 w-48 rounded border border-line bg-card px-2 font-mono text-xs"
+                  />
+                </div>
+                <p className="text-xs text-ink-soft">
+                  Les branches s&apos;exécutent en parallèle. Leurs sorties sont agrégées en JSON.
+                </p>
+                <ParallelBranchEditor
+                  branches={step.branches}
+                  onChange={(branches) => updateStep(i, { ...step, branches })}
+                  defaultModel={defaultModel}
+                  envFields={envFields}
+                />
+              </div>
+            )}
 
             {step.type === "llm" && (
               <div className="space-y-3">
@@ -353,6 +396,7 @@ export function StepEditor({
                 { id: "tool", label: "Outil", icon: <Search className="h-3.5 w-3.5" /> },
                 { id: "action", label: "Action", icon: <Zap className="h-3.5 w-3.5" /> },
                 { id: "code", label: "Code", icon: <Code className="h-3.5 w-3.5" /> },
+                { id: "parallel", label: "Parallèle", icon: <GitBranch className="h-3.5 w-3.5" /> },
               ] as const).map((cat) => (
                 <button
                   key={cat.id}
@@ -442,6 +486,21 @@ export function StepEditor({
                     className="mt-3 flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
                   >
                     <Code className="h-4 w-4" /> Étape code Python
+                  </button>
+                </div>
+              )}
+
+              {addCategory === "parallel" && (
+                <div>
+                  <p className="text-sm text-ink-soft">
+                    Exécutez plusieurs branches simultanément (ex. recherche + rédaction en parallèle).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={addParallelStep}
+                    className="mt-3 flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
+                  >
+                    <GitBranch className="h-4 w-4" /> Étape parallèle (2 branches)
                   </button>
                 </div>
               )}
