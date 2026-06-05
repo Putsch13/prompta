@@ -22,7 +22,9 @@ interface RunRow {
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "En attente",
+  queued: "En file",
   running: "En cours",
+  awaiting_approval: "Validation requise",
   completed: "Terminé",
   failed: "Échoué",
   suspended: "Suspendu",
@@ -30,11 +32,15 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "text-amber-600",
+  queued: "text-amber-600",
   running: "text-blue-600",
+  awaiting_approval: "text-purple-600",
   completed: "text-green-600",
   failed: "text-red-600",
   suspended: "text-orange-600",
 };
+
+type RunFilter = "active" | "approval" | "done";
 
 export default function RunsHistoryPage() {
   return (
@@ -57,6 +63,7 @@ function RunsHistoryContent() {
   const [loading, setLoading] = useState(true);
   const [relancing, setRelancing] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(focusRunId);
+  const [filter, setFilter] = useState<RunFilter>("active");
 
   function loadRuns() {
     fetch("/api/runs")
@@ -67,6 +74,8 @@ function RunsHistoryContent() {
 
   useEffect(() => {
     loadRuns();
+    const t = setInterval(loadRuns, 10_000);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
@@ -157,14 +166,43 @@ function RunsHistoryContent() {
     );
   }
 
+  const filtered = runs.filter((run) => {
+    if (filter === "active") {
+      return run.status === "pending" || run.status === "queued" || run.status === "running";
+    }
+    if (filter === "approval") return run.status === "awaiting_approval";
+    return ["completed", "failed", "suspended"].includes(run.status);
+  });
+
   return (
     <div>
       <h1 className="font-display text-2xl font-bold text-ink">Historique des runs</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Prompts et agents — statuts pending, running, completed, failed, suspended.
+        Suivez vos agents en cours, validations en attente et runs terminés.
       </p>
 
-      {runs.length === 0 ? (
+      <div className="mt-4 flex flex-wrap gap-2">
+        {(
+          [
+            { id: "active" as const, label: "En cours" },
+            { id: "approval" as const, label: "En attente de validation" },
+            { id: "done" as const, label: "Terminés" },
+          ] as const
+        ).map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setFilter(f.id)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+              filter === f.id ? "bg-accent text-white" : "bg-card2 text-ink-soft"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
         <div className="mt-8 rounded-xl border border-dashed border-line bg-card p-12 text-center">
           <p className="text-ink-soft">Aucun run pour le moment.</p>
           <Link href="/explore" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
@@ -173,7 +211,7 @@ function RunsHistoryContent() {
         </div>
       ) : (
         <div className="mt-6 space-y-3">
-          {runs.map((run) => (
+          {filtered.map((run) => (
             <div key={run.id} className="rounded-xl border border-line bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -202,7 +240,10 @@ function RunsHistoryContent() {
                         <Settings className="h-3 w-3" /> Reconnecter une clé
                       </Link>
                     )}
-                  {run.status !== "running" && run.status !== "pending" && run.listing_id && (
+                  {run.status !== "running" &&
+                    run.status !== "pending" &&
+                    run.status !== "queued" &&
+                    run.listing_id && (
                     <button
                       onClick={() => handleRetry(run)}
                       disabled={relancing === run.id}
@@ -231,7 +272,12 @@ function RunsHistoryContent() {
                   <AgentRunConsole
                     runId={run.id}
                     status={run.status}
-                    pollWhileRunning={run.status === "running" || run.status === "pending"}
+                    pollWhileRunning={
+                      run.status === "running" ||
+                      run.status === "pending" ||
+                      run.status === "queued" ||
+                      run.status === "awaiting_approval"
+                    }
                     title={run.listing?.title ?? "Agent"}
                   />
                 </div>

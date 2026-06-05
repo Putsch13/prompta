@@ -1,6 +1,11 @@
-import type { AgentManifest, AgentStep } from "@/lib/agent/schema";
+import type { AgentManifest, AgentStep, BaseAgentStep } from "@/lib/agent/schema";
 import { validateAgentManifest, hasBlockingIssues } from "@/lib/builder/validate-agent";
 import { isBinding, getRequiredActionParams } from "@/lib/connectors/action-requirements";
+import {
+  isResourcePlaceholder,
+  resourcePlaceholder,
+} from "@/lib/connectors/param-bindings";
+import { getConnectorAction } from "@/lib/connectors/registry";
 
 export interface CredentialLeakIssue {
   code: string;
@@ -43,23 +48,29 @@ function scanSteps(steps: AgentStep[], stepOffset = 0): CredentialLeakIssue[] {
     if (step.type === "action") {
       for (const [key, value] of Object.entries(step.params ?? {})) {
         const required = getRequiredActionParams(step.connector, step.action);
-        if (!isBinding(value)) {
-          if (required.includes(key)) {
+        if (!isBinding(value) && !isResourcePlaceholder(value)) {
+          if (required.includes(key) && (key === "to" || key === "from")) {
             issues.push({
               code: "literal_required_param",
-              message: `Étape ${idx + 1} : le paramètre « ${key} » doit être un binding {{variable}}, pas une valeur en dur.`,
+              message: `Étape ${idx + 1} : le paramètre « ${key} » doit être un binding ou {{resource:…}}, pas une valeur en dur.`,
+              stepIndex: idx,
+            });
+          } else if (required.includes(key) && !step.paramMeta?.[key]?.shared) {
+            issues.push({
+              code: "literal_required_param",
+              message: `Étape ${idx + 1} : le paramètre « ${key} » doit être un binding {{variable}} ou une ressource, pas une valeur en dur.`,
               stepIndex: idx,
             });
           }
           issues.push(...scanText(value, idx));
-          if (EMAIL_RE.test(value) && !isBinding(value)) {
+          if (EMAIL_RE.test(value)) {
             issues.push({
               code: "literal_email_in_param",
-              message: `Étape ${idx + 1} : email en dur dans « ${key} » — utilisez {{variable}}.`,
+              message: `Étape ${idx + 1} : email en dur dans « ${key} » — utilisez {{variable}} ou {{resource:…}}.`,
               stepIndex: idx,
             });
           }
-          if (PHONE_RE.test(value) && !isBinding(value)) {
+          if (PHONE_RE.test(value)) {
             issues.push({
               code: "literal_phone_in_param",
               message: `Étape ${idx + 1} : téléphone en dur dans « ${key} » — utilisez {{variable}}.`,
@@ -91,23 +102,66 @@ export function assertNoLeakedCredentials(manifest: AgentManifest): void {
   }
 }
 
+/** Retire les ressources builder_test du manifeste vendu. */
+export function stripBuilderResources(manifest: AgentManifest): AgentManifest {
+  function stripSteps(steps: AgentStep[]): AgentStep[] {
+    return steps.map((step) => {
+      if (step.type === "parallel") {
+        return {
+          ...step,
+          branches: step.branches.map((b) => ({
+            ...b,
+            steps: stripSteps(b.steps as AgentStep[]) as BaseAgentStep[],
+          })),
+        };
+      }
+      if (step.type !== "action") return step;
+      const params = { ...(step.params ?? {}) };
+      const paramMeta = { ...(step.paramMeta ?? {}) };
+      for (const [key, meta] of Object.entries(paramMeta)) {
+        if (meta.scope === "builder_test" && !meta.shared && params[key]) {
+          const rt =
+            meta.resourceType ??
+            getConnectorAction(step.connector, step.action)?.inputs.find((i) => i.key === key)
+              ?.resourceType ??
+            key;
+          params[key] = resourcePlaceholder(rt);
+          paramMeta[key] = { ...meta, scope: "end_user" };
+        }
+      }
+      return { ...step, params, paramMeta };
+    });
+  }
+
+  return { ...manifest, steps: stripSteps(manifest.steps) };
+}
+
 /** Ne conserve que déclarations structurelles — pas de runtime builder. */
 export function stripManifestForPublish(manifest: AgentManifest): AgentManifest {
-  const steps = manifest.steps.map((step) => {
+  const stripped = stripBuilderResources(manifest);
+  const steps = stripped.steps.map((step) => {
     if (step.type !== "action" && step.type !== "tool") return step;
     const cleanParams: Record<string, string> = {};
     for (const [key, value] of Object.entries(step.params ?? {})) {
-      cleanParams[key] = isBinding(value) ? value : `{{${key}}}`;
+      if (isBinding(value) || isResourcePlaceholder(value)) {
+        cleanParams[key] = value;
+      } else {
+        cleanParams[key] = `{{${key}}}`;
+      }
+    }
+    if (step.type === "action") {
+      // paramMeta est interne au builder — retiré du manifeste publié
+      return { type: "action" as const, connector: step.connector, action: step.action, params: cleanParams, outputKey: step.outputKey };
     }
     return { ...step, params: cleanParams };
   });
 
   return {
-    ...manifest,
+    ...stripped,
     steps,
-    connectors: Array.from(new Set(manifest.connectors)),
-    secrets: Array.from(new Set(manifest.secrets)),
-    inputs: manifest.inputs.map((input) => ({
+    connectors: Array.from(new Set(stripped.connectors)),
+    secrets: Array.from(new Set(stripped.secrets)),
+    inputs: stripped.inputs.map((input) => ({
       key: input.key,
       label: input.label,
       type: input.type,

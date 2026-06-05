@@ -61,6 +61,18 @@ export async function validateAgentPreflight(
         });
       }
     }
+
+    for (const step of manifest.steps) {
+      if (step.type === "action" && step.connector === "gmail" && step.action === "send") {
+        const gmailOk = connected.some((c) => connectionMatchesConnector(c.connectorId, "gmail"));
+        if (!gmailOk) {
+          issues.push({
+            code: "missing_connector",
+            message: "Connectez la boîte d'envoi Gmail pour lancer cet agent.",
+          });
+        }
+      }
+    }
   }
 
   const seen = new Set<string>();

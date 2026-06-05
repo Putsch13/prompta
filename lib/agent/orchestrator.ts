@@ -2,6 +2,7 @@ import { callModel } from "@/lib/llm/gateway";
 import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
 import { executeConnectorAction } from "@/lib/connectors/execute";
 import { getUserConnection } from "@/lib/connections";
+import { isResourcePlaceholder } from "@/lib/connectors/param-bindings";
 import { AgentManifestSchema, type AgentManifest, type AgentStep, type BaseAgentStep, type ParallelStep } from "./schema";
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
 import { logRunActivity } from "./activity-log";
@@ -46,6 +47,8 @@ export interface OrchestratorContext {
   userId: string;
   listingId: string;
   inputs: Record<string, string>;
+  /** Valeurs choisies pour {{resource:…}} — clés « stepIndex:paramKey » */
+  resources?: Record<string, string>;
   apiKeys: Record<string, string>;
   runId?: string;
   dryRun?: boolean;
@@ -86,7 +89,10 @@ function resolveJsonPath(obj: string, path: string): string {
  * - JSON path: {{step_0_output.data.name}} → JSON parse step_0_output then access data.name
  */
 function interpolate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{([\w.]+)\}\}/g, (match, expr: string) => {
+  return template.replace(/\{\{([\w.:]+)\}\}/g, (match, expr: string) => {
+    if (expr.startsWith("resource:")) {
+      return vars[expr] ?? match;
+    }
     const dotIdx = expr.indexOf(".");
     if (dotIdx === -1) {
       return vars[expr] ?? match;
@@ -318,7 +324,16 @@ async function executeStep(
       const conn = await getUserConnection(ctx.userId, step.connector);
       const params: Record<string, string> = {};
       for (const [k, v] of Object.entries(step.params)) {
-        params[k] = interpolate(v, vars);
+        let raw = v;
+        if (isResourcePlaceholder(v)) {
+          const override = ctx.resources?.[`${stepIndex}:${k}`];
+          if (override) raw = override;
+          else {
+            const rt = v.trim().slice("{{resource:".length, -2);
+            raw = ctx.inputs[`resource:${rt}`] ?? v;
+          }
+        }
+        params[k] = interpolate(raw, vars);
       }
 
       if (runId && stepDbId) {
@@ -588,6 +603,13 @@ export async function runAgent(
   const manifestWithLimits = { ...manifest, limits: effectiveLimits };
 
   let runInputs = { ...context.inputs };
+  const resources: Record<string, string> = { ...(context.resources ?? {}) };
+  const cleanInputs: Record<string, string> = {};
+  for (const [k, v] of Object.entries(runInputs)) {
+    if (/^\d+:[\w]+$/.test(k)) resources[k] = v;
+    else cleanInputs[k] = v;
+  }
+  runInputs = cleanInputs;
   const docText = await resolveDocumentFromInputs(context.userId, runInputs).catch(() => null);
   if (docText) {
     runInputs.file_content = docText;
@@ -609,7 +631,7 @@ export async function runAgent(
     runInputs._provision_logs = provisioned.logs.join("\n");
   }
 
-  const effectiveContext = { ...context, inputs: runInputs };
+  const effectiveContext = { ...context, inputs: runInputs, resources };
   let latestStepsCompleted = 0;
   const memoryEnabled = manifest.memory?.enabled ?? false;
   const startFromStep = context.resumeFromStep ?? 0;

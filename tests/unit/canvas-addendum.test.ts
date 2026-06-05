@@ -52,6 +52,7 @@ test("isBinding — détecte les bindings valides", () => {
   assert.ok(isBinding("{{destinataire_email}}"));
   assert.ok(isBinding("  {{step_analyze_output}}  "));
   assert.ok(isBinding("{{customer.email}}"));
+  assert.ok(isBinding("{{resource:gmail.send_as}}"));
   assert.ok(!isBinding("equipe@test.com"));
   assert.ok(!isBinding(""));
 });
@@ -65,6 +66,7 @@ test("validateActionParams — params vides → warnings, pas error bloquant", (
 
 test("validateActionParams — bindings complets → aucune issue", () => {
   const issues = validateActionParams("gmail", "gmail.send", {
+    from: "{{resource:gmail.send_as}}",
     to: "{{email}}",
     subject: "{{subject}}",
     body: "{{body}}",

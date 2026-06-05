@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Copy, Play, Check, AlertTriangle, Settings } from "lucide-react";
 import { UserSetupWizard } from "@/components/onboarding/UserSetupWizard";
 import { ConnectionsMasque } from "@/components/run/ConnectionsMasque";
 import { AgentRunExperience } from "@/components/run/AgentRunExperience";
+import { RunResourceFields } from "@/components/run/RunResourceFields";
+import type { RunResourceField } from "@/lib/connectors/extract-run-resources";
 import { estimateMaxCost } from "@/lib/billing/run-cost";
 import { costToCredits, creditsToEur } from "@/lib/billing/credits";
 
@@ -31,6 +34,7 @@ interface Props {
   envFields?: EnvField[];
   requiredSecrets?: string[];
   requiredConnectors?: string[];
+  resourceFields?: RunResourceField[];
   provisioningMode?: "manual" | "assisted" | "managed";
   stepCount?: number;
   pricingMode?: string;
@@ -65,6 +69,7 @@ export function RunPanel({
   envFields = [],
   requiredSecrets = [],
   requiredConnectors = [],
+  resourceFields = [],
   provisioningMode = "manual",
   stepCount = 3,
   pricingMode,
@@ -74,8 +79,10 @@ export function RunPanel({
   canAccess,
   type,
 }: Props) {
+  const router = useRouter();
   const [tab, setTab] = useState<"copy" | "run">("copy");
   const [variables, setVariables] = useState<Record<string, string>>({});
+  const [resourceValues, setResourceValues] = useState<Record<string, string>>({});
   const [copyMode, setCopyMode] = useState<"template" | "filled">("filled");
   const [copied, setCopied] = useState(false);
   const [selectedModel, setSelectedModel] = useState(models[0] ?? "gpt-5.4");
@@ -254,6 +261,13 @@ export function RunPanel({
   async function handleAgentRun() {
     if (!versionId) return;
 
+    for (const field of resourceFields) {
+      if (!resourceValues[field.id]) {
+        setError(`Choisissez : ${field.label}`);
+        return;
+      }
+    }
+
     setError(null);
     setRunning(true);
     setAgentOutput("");
@@ -304,7 +318,7 @@ export function RunPanel({
         body: JSON.stringify({
           listingId,
           versionId,
-          inputs: variables,
+          inputs: { ...variables, ...resourceValues },
           dryRun,
           async: !dryRun,
         }),
@@ -343,6 +357,10 @@ export function RunPanel({
       } else if (data.runId) {
         setAgentStatus(data.status === "queued" ? "queued" : "running");
         setStepsCompleted(data.steps_completed ?? 0);
+        if (!dryRun) {
+          router.push(`/dashboard/runs?id=${data.runId}`);
+          return;
+        }
         void pollRunStatus(data.runId);
       } else {
         setAgentStatus(data.status);
@@ -517,6 +535,16 @@ export function RunPanel({
               provisioningMode={provisioningMode}
               title="Variables d'entrée"
             />
+          )}
+
+          {resourceFields.length > 0 && (
+            <div className="mt-4">
+              <RunResourceFields
+                fields={resourceFields}
+                values={resourceValues}
+                onChange={setResourceValues}
+              />
+            </div>
           )}
 
           <div className="mt-4">

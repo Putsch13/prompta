@@ -5,6 +5,9 @@ import { Plus, Trash2, X } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { getBuilderModels } from "@/lib/catalogs";
 import { getConnectorAction } from "@/lib/connectors/registry";
+import { ResourcePicker } from "@/components/builder/canvas/ResourcePicker";
+import { defaultScopeForInput } from "@/lib/connectors/param-bindings";
+import type { ParamScope } from "@/lib/connectors/types";
 import {
   addNode,
   createDefaultNode,
@@ -199,63 +202,114 @@ export function NodeInspector({
               />
             </div>
             {currentNode.connectorId && currentNode.actionSlug && (
-              <div className="space-y-2 border-t border-line pt-2">
-                <p className="text-xs font-medium text-ink-soft">Paramètres (bindings {"{{variable}}"})</p>
+              <div className="space-y-3 border-t border-line pt-2">
+                <p className="text-xs font-medium text-ink-soft">Paramètres</p>
                 {(getConnectorAction(currentNode.connectorId, currentNode.actionSlug)?.inputs ?? []).map(
-                  (input) => (
-                    <div key={input.key}>
-                      <label className="text-[10px] text-ink-faint">
-                        {input.label}
-                        {input.required ? " *" : ""}
-                      </label>
-                      <div className="mt-0.5 flex flex-wrap gap-1">
-                        {envFields.map((f) => (
-                          <button
-                            key={f.key}
-                            type="button"
-                            onClick={() =>
-                              patch({
-                                params: {
-                                  ...(currentNode.params ?? {}),
-                                  [input.key]: `{{${f.key}}}`,
+                  (input) => {
+                    const meta = currentNode.paramMeta?.[input.key];
+                    const scope: ParamScope = meta?.scope ?? defaultScopeForInput(input);
+                    const isResource =
+                      input.kind === "resource" ||
+                      input.kind === "identity" ||
+                      !!input.resourceType;
+
+                    if (isResource && input.resourceType) {
+                      const depValue = input.dependsOn
+                        ? currentNode.params?.[input.dependsOn]
+                        : undefined;
+                      return (
+                        <ResourcePicker
+                          key={input.key}
+                          connectorId={currentNode.connectorId!}
+                          resourceType={input.resourceType}
+                          label={`${input.label}${input.required ? " *" : ""}`}
+                          value={currentNode.params?.[input.key] ?? ""}
+                          scope={scope}
+                          dependsOnValue={depValue}
+                          onChange={(val, newScope) => {
+                            patch({
+                              params: { ...(currentNode.params ?? {}), [input.key]: val },
+                              paramMeta: {
+                                ...(currentNode.paramMeta ?? {}),
+                                [input.key]: {
+                                  scope: newScope,
+                                  resourceType: input.resourceType,
                                 },
-                              })
-                            }
-                            className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
-                          >
-                            {f.key}
-                          </button>
-                        ))}
-                        {priorOutputs.map((k) => (
-                          <button
-                            key={k}
-                            type="button"
-                            onClick={() =>
-                              patch({
-                                params: {
-                                  ...(currentNode.params ?? {}),
-                                  [input.key]: `{{${k}}}`,
-                                },
-                              })
-                            }
-                            className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
-                          >
-                            {k}
-                          </button>
-                        ))}
+                              },
+                            });
+                          }}
+                        />
+                      );
+                    }
+
+                    return (
+                      <div key={input.key}>
+                        <label className="text-[10px] text-ink-faint">
+                          {input.label}
+                          {input.required ? " *" : ""}
+                          {input.kind === "input" ? " (variable)" : ""}
+                        </label>
+                        <div className="mt-0.5 flex flex-wrap gap-1">
+                          {envFields.map((f) => (
+                            <button
+                              key={f.key}
+                              type="button"
+                              onClick={() =>
+                                patch({
+                                  params: {
+                                    ...(currentNode.params ?? {}),
+                                    [input.key]: `{{${f.key}}}`,
+                                  },
+                                  paramMeta: {
+                                    ...(currentNode.paramMeta ?? {}),
+                                    [input.key]: { scope: "dynamic" },
+                                  },
+                                })
+                              }
+                              className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
+                            >
+                              {f.key}
+                            </button>
+                          ))}
+                          {priorOutputs.map((k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onClick={() =>
+                                patch({
+                                  params: {
+                                    ...(currentNode.params ?? {}),
+                                    [input.key]: `{{${k}}}`,
+                                  },
+                                  paramMeta: {
+                                    ...(currentNode.paramMeta ?? {}),
+                                    [input.key]: { scope: "dynamic" },
+                                  },
+                                })
+                              }
+                              className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
+                            >
+                              {k}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          value={currentNode.params?.[input.key] ?? ""}
+                          onChange={(e) =>
+                            patch({
+                              params: { ...(currentNode.params ?? {}), [input.key]: e.target.value },
+                              paramMeta: {
+                                ...(currentNode.paramMeta ?? {}),
+                                [input.key]: { scope: "dynamic" },
+                              },
+                            })
+                          }
+                          placeholder={`{{${input.key}}}`}
+                          className="mt-1 h-8 w-full rounded border border-line px-2 font-mono text-xs"
+                        />
                       </div>
-                      <input
-                        value={currentNode.params?.[input.key] ?? ""}
-                        onChange={(e) =>
-                          patch({
-                            params: { ...(currentNode.params ?? {}), [input.key]: e.target.value },
-                          })
-                        }
-                        placeholder={`{{${input.key}}}`}
-                        className="mt-1 h-8 w-full rounded border border-line px-2 font-mono text-xs"
-                      />
-                    </div>
-                  ),
+                    );
+                  },
                 )}
               </div>
             )}

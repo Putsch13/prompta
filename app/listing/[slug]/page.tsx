@@ -26,6 +26,7 @@ import { RunPartnerButton } from "@/components/RunPartnerButton";
 import { RunPanel } from "@/components/run/RunPanel";
 import { SubscribeButton } from "@/components/SubscribeButton";
 import { parseListingEnv, envFieldsFromManifest } from "@/lib/agent/env";
+import { extractRunResourceFields } from "@/lib/connectors/extract-run-resources";
 
 export const revalidate = 3600;
 
@@ -200,6 +201,7 @@ export default async function ListingPage({ params }: Props) {
   const requiredSecrets = parsedEnv?.manifest.secrets ?? [];
   const requiredConnectors = parsedEnv?.manifest.connectors ?? [];
   const agentStepCount = parsedEnv?.manifest.steps.length ?? 1;
+  const resourceFields = parsedEnv ? extractRunResourceFields(parsedEnv.manifest) : [];
   const meta = parsedEnv?.meta ?? (version?.env as { dependencies?: string; setup_time?: string } | null);
 
   const isFree = listing.price_cents === 0 && listing.pricing_mode !== "subscription";
@@ -464,6 +466,7 @@ export default async function ListingPage({ params }: Props) {
                 envFields={envFields}
                 requiredSecrets={requiredSecrets}
                 requiredConnectors={requiredConnectors}
+                resourceFields={resourceFields}
                 provisioningMode={
                   (listing as { provisioning_mode?: string }).provisioning_mode as
                     | "manual"

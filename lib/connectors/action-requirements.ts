@@ -5,7 +5,8 @@ const BINDING_RE = /^\s*\{\{[\w.]+\}\}\s*$/;
 /** True si la valeur est un binding {{variable}} ou {{sortie_etape}}. */
 export function isBinding(v?: string): boolean {
   if (v === undefined || v === null) return false;
-  return BINDING_RE.test(String(v));
+  if (BINDING_RE.test(String(v))) return true;
+  return /^\s*\{\{resource:[\w.]+\}\}\s*$/.test(String(v));
 }
 
 /** Paramètres obligatoires par action (depuis le registre connecteurs). */

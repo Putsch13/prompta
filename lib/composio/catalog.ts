@@ -1,4 +1,5 @@
 import { getComposioClient, isComposioEnabled } from "./client";
+import { inferComposioResourceType } from "@/lib/connectors/resource-types";
 
 export interface ComposioToolkitEntry {
   id: string;
@@ -15,7 +16,16 @@ export interface ComposioToolEntry {
   name: string;
   toolkit: string;
   description?: string;
-  inputs: { key: string; label: string; required: boolean; type?: string }[];
+  inputs: {
+    key: string;
+    label: string;
+    required: boolean;
+    type?: string;
+    kind?: "static" | "input" | "step_ref" | "resource" | "identity";
+    resourceType?: string;
+    defaultScope?: "builder_test" | "end_user" | "dynamic";
+    dependsOn?: string;
+  }[];
 }
 
 const POPULAR_SLUGS = new Set([
@@ -72,12 +82,22 @@ function parseToolInputs(
     { title?: string; description?: string; type?: string }
   >;
   const required = new Set((parameters?.required as string[] | undefined) ?? []);
-  return Object.entries(props).map(([key, meta]) => ({
-    key,
-    label: meta.title ?? meta.description ?? key,
-    required: required.has(key),
-    type: meta.type,
-  }));
+  return Object.entries(props).map(([key, meta]) => {
+    const resourceType = inferComposioResourceType(key);
+    return {
+      key,
+      label: meta.title ?? meta.description ?? key,
+      required: required.has(key),
+      type: meta.type,
+      ...(resourceType
+        ? {
+            kind: "resource" as const,
+            resourceType,
+            defaultScope: "end_user" as const,
+          }
+        : {}),
+    };
+  });
 }
 
 export async function listComposioToolkits(): Promise<ComposioToolkitEntry[]> {

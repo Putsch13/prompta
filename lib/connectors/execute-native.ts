@@ -5,7 +5,9 @@ async function gmailSend(
   params: Record<string, string>
 ): Promise<ExecuteResult> {
   if (!ctx.accessToken) throw new Error("Connexion Gmail requise");
+  const fromLine = params.from ? `From: ${params.from}\r\n` : "";
   const raw = [
+    fromLine,
     `To: ${params.to}`,
     `Subject: ${params.subject}`,
     "Content-Type: text/plain; charset=utf-8",

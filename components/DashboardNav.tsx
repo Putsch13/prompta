@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   CreditCard,
@@ -12,6 +13,7 @@ import {
   Coins,
   Sparkles,
   FileText,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,6 +23,7 @@ const ICONS: Record<string, LucideIcon> = {
   documents: FileText,
   connexions: Key,
   runs: History,
+  validations: ClipboardCheck,
   credits: Coins,
   abonnements: Repeat,
   payouts: CreditCard,
@@ -40,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/documents", label: "Documents", iconKey: "documents" },
   { href: "/dashboard/connexions", label: "Connexions", iconKey: "connexions" },
   { href: "/dashboard/runs", label: "Historique runs", iconKey: "runs" },
+  { href: "/dashboard/validations", label: "Validations", iconKey: "validations" },
   { href: "/dashboard/credits", label: "Crédits", iconKey: "credits" },
   { href: "/dashboard/abonnements", label: "Abonnements", iconKey: "abonnements" },
   { href: "/dashboard/payouts", label: "Revenus", iconKey: "payouts" },
@@ -48,6 +52,14 @@ const NAV_ITEMS: NavItem[] = [
 
 export function DashboardNav() {
   const pathname = usePathname();
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/approvals")
+      .then((r) => (r.ok ? r.json() : { count: 0 }))
+      .then((d) => setPendingApprovals(d.count ?? 0))
+      .catch(() => undefined);
+  }, [pathname]);
 
   return (
     <nav className="sticky top-24 space-y-1">
@@ -57,6 +69,7 @@ export function DashboardNav() {
           : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
         const Icon = ICONS[item.iconKey];
+        const badge = item.iconKey === "validations" && pendingApprovals > 0 ? pendingApprovals : 0;
 
         return (
           <Link
@@ -70,7 +83,12 @@ export function DashboardNav() {
             }`}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {badge > 0 && (
+              <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                {badge}
+              </span>
+            )}
           </Link>
         );
       })}

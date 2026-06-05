@@ -30,6 +30,16 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
     connector: z.string(),
     action: z.string(),
     params: z.record(z.string(), z.string()).default({}),
+    paramMeta: z
+      .record(
+        z.string(),
+        z.object({
+          scope: z.enum(["builder_test", "end_user", "dynamic"]),
+          resourceType: z.string().optional(),
+          shared: z.boolean().optional(),
+        }),
+      )
+      .optional(),
     outputKey: z.string().optional(),
   }),
   z.object({

@@ -30,7 +30,12 @@ test("validateActionParams — Gmail avec bindings OK", () => {
   const issues = validateActionParams(
     "gmail",
     "gmail.send",
-    { to: "{{email}}", subject: "{{subject}}", body: "{{body}}" },
+    {
+      from: "{{resource:gmail.send_as}}",
+      to: "{{email}}",
+      subject: "{{subject}}",
+      body: "{{body}}",
+    },
     "Étape 1 (Action)",
   );
   assert.equal(issues.length, 0);

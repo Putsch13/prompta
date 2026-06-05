@@ -183,7 +183,7 @@ function LibraryCard({
         </p>
       )}
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <Link
           href={href}
           className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white"
@@ -198,6 +198,16 @@ function LibraryCard({
             </>
           )}
         </Link>
+        {(tab === "created" || tab === "purchased" || tab === "subscribed") &&
+          item.type !== "prompt" &&
+          item.status === "published" && (
+            <Link
+              href={`/listing/${item.slug}?run=1`}
+              className="inline-flex items-center gap-1 rounded-lg border border-accent px-3 py-1.5 text-xs font-medium text-accent"
+            >
+              <Play className="h-3.5 w-3.5" /> Lancer
+            </Link>
+          )}
         {item.status === "published" && (
           <Link
             href={`/listing/${item.slug}`}

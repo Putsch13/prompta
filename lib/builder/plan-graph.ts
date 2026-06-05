@@ -4,6 +4,7 @@ import type { GeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
 import { validateAgentManifest, hasBlockingIssues } from "@/lib/builder/validate-agent";
 import { connectorsForSteps, getConnectorAction } from "@/lib/connectors/registry";
 import { isBinding } from "@/lib/connectors/action-requirements";
+import type { ParamMeta } from "@/lib/connectors/param-bindings";
 
 export const COL_W = 260;
 export const ROW_H = 130;
@@ -32,6 +33,7 @@ export interface PlanNode {
   riskLevel: "low" | "medium" | "high";
   requiresApproval: boolean;
   params?: Record<string, string>;
+  paramMeta?: Record<string, ParamMeta>;
   x?: number;
   y?: number;
 }
@@ -260,6 +262,7 @@ function nodeToAgentStep(node: PlanNode, defaultModel: string): AgentStep {
         connector: node.connectorId ?? "",
         action: node.actionSlug ?? "",
         params: node.params ?? {},
+        paramMeta: node.paramMeta,
         outputKey: node.outputKey,
       };
     case "tool":

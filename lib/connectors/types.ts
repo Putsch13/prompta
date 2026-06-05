@@ -1,10 +1,17 @@
 export type AuthType = "oauth" | "api_key";
 
+export type ParamKind = "static" | "input" | "step_ref" | "resource" | "identity";
+export type ParamScope = "builder_test" | "end_user" | "dynamic";
+
 export interface ActionInput {
   key: string;
   label: string;
-  type?: "text" | "textarea";
+  type?: "text" | "textarea" | "email";
   required?: boolean;
+  kind?: ParamKind;
+  resourceType?: string;
+  defaultScope?: ParamScope;
+  dependsOn?: string;
 }
 
 export interface ConnectorAction {
