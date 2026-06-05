@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { validateAgentManifest, hasBlockingIssues } from "../../lib/builder/validate-agent";
 import { validateActionParams } from "../../lib/connectors/action-requirements";
 import { isSubscriptionAccessActive } from "@/lib/subscriptions/active";
-import { missingRequiredScopes } from "../../lib/connectors/required-scopes";
+import { missingRequiredScopes, getOAuthScopeParam } from "../../lib/connectors/required-scopes";
 import { sanitizeDeliverableFilename } from "../../lib/agent/deliverables";
 import { buildExecutionKey } from "../../lib/agent/idempotency";
 import type { AgentStep } from "../../lib/agent/schema";
@@ -126,6 +126,31 @@ test("missingRequiredScopes — Gmail avec scope send OK", () => {
   const missing = missingRequiredScopes(
     ["https://www.googleapis.com/auth/gmail.send", "https://www.googleapis.com/auth/gmail.readonly"],
     "gmail",
+  );
+  assert.equal(missing.length, 0);
+});
+
+test("google_sheets OAuth — inclut Drive metadata pour lister les feuilles", () => {
+  const scopes = getOAuthScopeParam("google_sheets");
+  assert.ok(scopes.includes("spreadsheets"));
+  assert.ok(scopes.includes("drive.metadata.readonly"));
+});
+
+test("missingRequiredScopes — Google Sheets sans Drive → reconnexion", () => {
+  const missing = missingRequiredScopes(
+    ["https://www.googleapis.com/auth/spreadsheets"],
+    "google_sheets",
+  );
+  assert.ok(missing.some((s) => s.includes("drive.metadata.readonly")));
+});
+
+test("missingRequiredScopes — Google Sheets avec Drive OK", () => {
+  const missing = missingRequiredScopes(
+    [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/drive.metadata.readonly",
+    ],
+    "google_sheets",
   );
   assert.equal(missing.length, 0);
 });

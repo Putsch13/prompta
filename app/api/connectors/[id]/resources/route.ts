@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { listConnectorResources, NeedsConnectionError } from "@/lib/connectors/list-resources";
+import { listConnectorResources, NeedsConnectionError, InsufficientScopesError } from "@/lib/connectors/list-resources";
 import { getResourceType } from "@/lib/connectors/resource-types";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +45,16 @@ export async function GET(
   } catch (err) {
     if (err instanceof NeedsConnectionError) {
       return NextResponse.json({ needsConnection: err.connectorId }, { status: 409 });
+    }
+    if (err instanceof InsufficientScopesError) {
+      return NextResponse.json(
+        {
+          needsReconnect: true,
+          connectorId: err.connectorId,
+          message: err.message,
+        },
+        { status: 409 },
+      );
     }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Erreur listing ressources" },

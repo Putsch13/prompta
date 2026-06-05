@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { isComposioEnabled, toComposioToolkitSlug } from "@/lib/composio/client";
 import { startComposioAuth } from "@/lib/composio/connect";
 import { createSignedState } from "@/lib/connectors/oauth-state";
+import { getOAuthScopeParam } from "@/lib/connectors/required-scopes";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ const OAUTH_CONFIG: Record<
   },
   google_sheets: {
     authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
-    scopes: "https://www.googleapis.com/auth/spreadsheets",
+    scopes: getOAuthScopeParam("google_sheets"),
     clientIdEnv: "GOOGLE_CLIENT_ID",
     clientSecretEnv: "GOOGLE_CLIENT_SECRET",
   },

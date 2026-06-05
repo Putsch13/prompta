@@ -1,4 +1,7 @@
-import { getUserConnection } from "@/lib/connections";
+import { getUserConnection, listUserConnections } from "@/lib/connections";
+import { isComposioEnabled, toComposioToolkitSlug } from "@/lib/composio/client";
+import { connectionMatchesConnector } from "./resolve-id";
+import { missingRequiredScopes } from "./required-scopes";
 import { getResourceType } from "./resource-types";
 import type { ExecuteContext } from "./types";
 
@@ -27,6 +30,9 @@ async function fetchGoogleSpreadsheets(token: string, q?: string): Promise<Resou
     : "mimeType='application/vnd.google-apps.spreadsheet'";
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=50`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 403) {
+    throw new InsufficientScopesError("google_sheets");
+  }
   if (!res.ok) throw new Error(`Drive list: ${res.status}`);
   const data = (await res.json()) as { files?: { id: string; name: string }[] };
   return (data.files ?? []).map((f) => ({ id: f.id, label: f.name }));
@@ -109,15 +115,21 @@ async function listNativeResources(
 async function listComposioResources(
   resourceType: string,
   userId: string,
+  connectorId: string,
   parent?: string,
+  q?: string,
 ): Promise<ListResourcesResult> {
+  if (resourceType.startsWith("google_sheets.")) {
+    return listComposioGoogleSheetsResources(resourceType, userId, connectorId, parent, q);
+  }
+
   const def = getResourceType(resourceType);
   if (!def?.listAction) return { items: [] };
 
   const { executeComposioTool } = await import("@/lib/composio/execute");
   try {
     const result = await executeComposioTool(def.listAction, userId, {}, {
-      toolkitSlug: def.connectorId,
+      toolkitSlug: toComposioToolkitSlug(def.connectorId),
     });
     const parsed = JSON.parse(result.output || "{}") as {
       items?: ResourceListItem[];
@@ -133,10 +145,117 @@ async function listComposioResources(
   }
 }
 
+function parseComposioSpreadsheetOutput(output: string): ResourceListItem[] {
+  try {
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    const nested = parsed.data as Record<string, unknown> | undefined;
+    const candidates = [
+      parsed.files,
+      parsed.spreadsheets,
+      parsed.items,
+      nested?.files,
+      nested?.spreadsheets,
+      nested?.items,
+    ];
+    for (const raw of candidates) {
+      if (!Array.isArray(raw)) continue;
+      const items = raw
+        .map((f: Record<string, string>) => ({
+          id: f.id ?? f.spreadsheetId ?? f.spreadsheet_id ?? "",
+          label: f.name ?? f.title ?? f.label ?? f.id ?? "",
+        }))
+        .filter((i) => i.id);
+      if (items.length > 0) return items;
+    }
+  } catch {
+    /* output non-JSON */
+  }
+  return [];
+}
+
+function parseComposioSheetTabs(output: string, spreadsheetId: string): ResourceListItem[] {
+  try {
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    const nested = parsed.data as Record<string, unknown> | undefined;
+    const sheets =
+      (parsed.sheets as unknown[]) ??
+      (nested?.sheets as unknown[]) ??
+      [];
+    return sheets.map((s) => {
+      const props = (s as { properties?: { title?: string } }).properties;
+      const title = props?.title ?? "Sheet";
+      return { id: title, label: title, parentId: spreadsheetId };
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function listComposioGoogleSheetsResources(
+  resourceType: string,
+  userId: string,
+  connectorId: string,
+  parent?: string,
+  q?: string,
+): Promise<ListResourcesResult> {
+  const { executeComposioTool } = await import("@/lib/composio/execute");
+  const toolkit = toComposioToolkitSlug(connectorId);
+
+  if (resourceType === "google_sheets.spreadsheet") {
+    const result = await executeComposioTool(
+      "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+      userId,
+      q ? { query: q } : {},
+      { toolkitSlug: toolkit },
+    );
+    return { items: parseComposioSpreadsheetOutput(result.output) };
+  }
+
+  if (resourceType === "google_sheets.tab" && parent) {
+    for (const action of ["GOOGLESHEETS_GET_SPREADSHEET_INFO", "GOOGLESHEETS_GET_SPREADSHEET"]) {
+      try {
+        const result = await executeComposioTool(
+          action,
+          userId,
+          { spreadsheet_id: parent },
+          { toolkitSlug: toolkit },
+        );
+        const items = parseComposioSheetTabs(result.output, parent);
+        if (items.length > 0) return { items };
+      } catch {
+        /* essayer action suivante */
+      }
+    }
+  }
+
+  return { items: [] };
+}
+
+function assertGoogleSheetsScopes(
+  connectorId: string,
+  grantedScopes: string[] | undefined,
+): void {
+  if (!connectionMatchesConnector(connectorId, "google_sheets")) return;
+  const missing = missingRequiredScopes(grantedScopes ?? [], "google_sheets");
+  if (missing.length > 0) {
+    throw new InsufficientScopesError("google_sheets");
+  }
+}
+
 export class NeedsConnectionError extends Error {
   constructor(public connectorId: string) {
     super(`Connexion ${connectorId} requise`);
     this.name = "NeedsConnectionError";
+  }
+}
+
+export class InsufficientScopesError extends Error {
+  constructor(
+    public connectorId: string,
+    message = "Reconnectez Google Sheets pour autoriser la sélection de fichiers.",
+  ) {
+    super(message);
+    this.name = "InsufficientScopesError";
   }
 }
 
@@ -158,12 +277,36 @@ export async function listConnectorResources(opts: {
   const conn = await getUserConnection(userId, connectorId);
   if (!conn?.accessToken) throw new NeedsConnectionError(connectorId);
 
+  const connections = await listUserConnections(userId);
+  const status = connections.find(
+    (c) => connectionMatchesConnector(c.connectorId, connectorId) && c.status === "connected",
+  );
+  const useComposioList =
+    isComposioEnabled() && status?.provider === "composio" && resourceType.startsWith("google_sheets");
+
   const ctx: ExecuteContext = { userId, accessToken: conn.accessToken };
   let result: ListResourcesResult;
-  if (def.listVia === "native") {
-    result = await listNativeResources(resourceType, ctx, parent, q);
+  if (useComposioList) {
+    result = await listComposioGoogleSheetsResources(resourceType, userId, connectorId, parent, q);
+  } else if (def.listVia === "native") {
+    if (resourceType.startsWith("google_sheets.")) {
+      assertGoogleSheetsScopes(connectorId, status?.scopes);
+    }
+    try {
+      result = await listNativeResources(resourceType, ctx, parent, q);
+    } catch (err) {
+      if (err instanceof InsufficientScopesError) throw err;
+      if (
+        err instanceof Error &&
+        resourceType.startsWith("google_sheets.") &&
+        err.message.includes("403")
+      ) {
+        throw new InsufficientScopesError("google_sheets");
+      }
+      throw err;
+    }
   } else {
-    result = await listComposioResources(resourceType, userId, parent);
+    result = await listComposioResources(resourceType, userId, connectorId, parent, q);
   }
 
   cache.set(ck, { at: Date.now(), data: result });

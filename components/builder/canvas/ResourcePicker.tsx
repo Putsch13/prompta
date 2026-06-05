@@ -42,6 +42,8 @@ export function ResourcePicker({
   const [items, setItems] = useState<ResourceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [needsConnection, setNeedsConnection] = useState(false);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
+  const [reconnectMessage, setReconnectMessage] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
   const effectiveScope: ParamScope = pinOnly ? "builder_test" : scope;
@@ -50,6 +52,8 @@ export function ResourcePicker({
     if (effectiveScope !== "builder_test") return;
     setLoading(true);
     setNeedsConnection(false);
+    setNeedsReconnect(false);
+    setReconnectMessage(null);
     try {
       const params = new URLSearchParams({ resourceType });
       if (dependsOnValue) params.set("parent", dependsOnValue);
@@ -61,7 +65,17 @@ export function ResourcePicker({
         setItems([]);
         return;
       }
+      if (res.status === 409 && data.needsReconnect) {
+        setNeedsReconnect(true);
+        setReconnectMessage(
+          data.message ??
+            "Reconnectez Google Sheets pour autoriser la sélection de fichiers.",
+        );
+        setItems([]);
+        return;
+      }
       if (res.ok) setItems(data.items ?? []);
+      else setItems([]);
     } finally {
       setLoading(false);
     }
@@ -108,13 +122,19 @@ export function ResourcePicker({
 
       {(pinOnly || scope === "builder_test") && (
         <>
-          {needsConnection ? (
-            <a
-              href={`/api/connectors/${connectorId}/connect?returnUrl=${encodeURIComponent("/dashboard/new")}`}
-              className="flex items-center gap-1 text-xs text-accent hover:underline"
-            >
-              <Plug className="h-3 w-3" /> Connecter {connectorId}
-            </a>
+          {needsConnection || needsReconnect ? (
+            <div className="space-y-1">
+              {reconnectMessage && (
+                <p className="text-xs text-amber-800">{reconnectMessage}</p>
+              )}
+              <a
+                href={`/api/connectors/${connectorId}/connect?force=true&returnUrl=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname + window.location.search : "/dashboard/new")}`}
+                className="flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+              >
+                <Plug className="h-3 w-3" />
+                {needsReconnect ? "Reconnecter Google Sheets" : `Connecter ${connectorId}`}
+              </a>
+            </div>
           ) : (
             <>
               <input
