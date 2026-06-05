@@ -40,6 +40,86 @@ export function normalizePlanVariableType(raw: unknown): PlanVariableType {
   return VARIABLE_TYPE_ALIASES[lower] ?? "text";
 }
 
+// ─── Normalisation types trigger (IA renvoie cron, form, api, …) ───
+
+const ALLOWED_TRIGGER_TYPES = [
+  "manual",
+  "schedule",
+  "webhook",
+  "email",
+  "app_event",
+] as const;
+export type PlanTriggerType = (typeof ALLOWED_TRIGGER_TYPES)[number];
+
+const TRIGGER_TYPE_ALIASES: Record<string, PlanTriggerType> = {
+  cron: "schedule",
+  scheduled: "schedule",
+  schedule_cron: "schedule",
+  timer: "schedule",
+  periodic: "schedule",
+  recurring: "schedule",
+  interval: "schedule",
+  time: "schedule",
+  api: "webhook",
+  http: "webhook",
+  http_webhook: "webhook",
+  callback: "webhook",
+  hook: "webhook",
+  incoming_webhook: "webhook",
+  gmail: "email",
+  mail: "email",
+  inbox: "email",
+  incoming_email: "email",
+  email_received: "email",
+  event: "app_event",
+  integration: "app_event",
+  app: "app_event",
+  connector: "app_event",
+  slack_event: "app_event",
+  form: "manual",
+  button: "manual",
+  user: "manual",
+  user_initiated: "manual",
+  on_demand: "manual",
+  automatic: "manual",
+  default: "manual",
+  none: "manual",
+};
+
+/** Normalise un type de trigger IA → valeur acceptée par le schéma. */
+export function normalizePlanTriggerType(raw: unknown): PlanTriggerType {
+  if (typeof raw !== "string") return "manual";
+  const lower = raw.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if ((ALLOWED_TRIGGER_TYPES as readonly string[]).includes(lower)) {
+    return lower as PlanTriggerType;
+  }
+  return TRIGGER_TYPE_ALIASES[lower] ?? "manual";
+}
+
+function normalizeTriggers(raw: unknown): { type: PlanTriggerType; config?: Record<string, unknown> }[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [{ type: "manual" }];
+  }
+
+  const seen = new Set<PlanTriggerType>();
+  const normalized: { type: PlanTriggerType; config?: Record<string, unknown> }[] = [];
+
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as Record<string, unknown>;
+    const type = normalizePlanTriggerType(entry.type);
+    if (seen.has(type)) continue;
+    seen.add(type);
+    const config =
+      entry.config && typeof entry.config === "object" && !Array.isArray(entry.config)
+        ? (entry.config as Record<string, unknown>)
+        : undefined;
+    normalized.push(config ? { type, config } : { type });
+  }
+
+  return normalized.length > 0 ? normalized : [{ type: "manual" }];
+}
+
 /** Pré-traitement du JSON brut IA avant validation Zod. */
 export function coerceGeneratedPlanRaw(raw: unknown): unknown {
   if (!raw || typeof raw !== "object") return raw;
@@ -56,6 +136,8 @@ export function coerceGeneratedPlanRaw(raw: unknown): unknown {
       };
     });
   }
+
+  plan.triggers = normalizeTriggers(plan.triggers);
 
   return plan;
 }
@@ -100,7 +182,10 @@ export const GeneratedAgentPlanSchema = z.object({
     branchLabel: z.string().optional(),
   })).min(1).max(15),
   triggers: z.array(z.object({
-    type: z.enum(["manual", "schedule", "webhook", "email", "app_event"]),
+    type: z.preprocess(
+      (val) => normalizePlanTriggerType(val),
+      z.enum(["manual", "schedule", "webhook", "email", "app_event"]),
+    ),
     config: z.record(z.string(), z.any()).optional(),
   })).default([{ type: "manual" }]),
   policies: z
@@ -174,6 +259,7 @@ Règles strictes :
 17. Si le step B référence {{outputKey_de_A}} dans son prompt ou inputMapping, alors A précède B (A doit apparaître dans la chaîne "next" menant à B).
 18. Tout step doit être atteignable depuis entryStepId. Aucun nœud orphelin.
 19. Chaque variable "type" doit être exactement : text | number | boolean | json | file | url | email (pas "string", "textarea", etc.).
+20. "triggers" : tableau de { "type": "manual" | "schedule" | "webhook" | "email" | "app_event" } uniquement — pas "cron", "form", "api", etc. Par défaut [{ "type": "manual" }].
 
 Catalogue d'actions disponibles :
 ${COMPOSIO_CATALOG_COMPRESSED}

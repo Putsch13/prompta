@@ -18,12 +18,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 test("normalizePlanVariableType — coerce types IA invalides", async () => {
-  const { normalizePlanVariableType, parseGeneratedAgentPlan } = await import(
-    "../../lib/builder/generate-agent-plan"
-  );
+  const {
+    normalizePlanVariableType,
+    normalizePlanTriggerType,
+    parseGeneratedAgentPlan,
+  } = await import("../../lib/builder/generate-agent-plan");
   assert.equal(normalizePlanVariableType("textarea"), "text");
   assert.equal(normalizePlanVariableType("string"), "text");
   assert.equal(normalizePlanVariableType("email"), "email");
+  assert.equal(normalizePlanTriggerType("cron"), "schedule");
+  assert.equal(normalizePlanTriggerType("form"), "manual");
+  assert.equal(normalizePlanTriggerType("api"), "webhook");
 
   const plan = parseGeneratedAgentPlan({
     kind: "agent",
@@ -34,6 +39,7 @@ test("normalizePlanVariableType — coerce types IA invalides", async () => {
       { key: "a", label: "A", type: "textarea", required: true },
       { key: "b", label: "B", type: "string", required: true },
     ],
+    triggers: [{ type: "manual" }, { type: "cron" }, { type: "form" }],
     steps: [
       {
         id: "s1",
@@ -46,6 +52,7 @@ test("normalizePlanVariableType — coerce types IA invalides", async () => {
   });
   assert.equal(plan.variables[0].type, "text");
   assert.equal(plan.variables[1].type, "text");
+  assert.deepEqual(plan.triggers.map((t) => t.type), ["manual", "schedule"]);
 });
 
 test("isBinding — détecte les bindings valides", () => {
