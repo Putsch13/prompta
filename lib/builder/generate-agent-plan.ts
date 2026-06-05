@@ -20,6 +20,7 @@ export const GeneratedAgentPlanSchema = z.object({
     reason: z.string(),
     requiredActions: z.array(z.string()).default([]),
   })).default([]),
+  entryStepId: z.string().optional(),
   steps: z.array(z.object({
     id: z.string(),
     type: z.enum(["llm", "action", "tool", "code", "condition", "approval"]),
@@ -33,6 +34,8 @@ export const GeneratedAgentPlanSchema = z.object({
     actionSlug: z.string().optional(),
     riskLevel: z.enum(["low", "medium", "high"]).default("low"),
     requiresApproval: z.boolean().default(false),
+    next: z.array(z.string()).optional(),
+    branchLabel: z.string().optional(),
   })).min(1).max(15),
   triggers: z.array(z.object({
     type: z.enum(["manual", "schedule", "webhook", "email", "app_event"]),
@@ -73,6 +76,11 @@ linear: create_issue, list_issues, update_issue
 zendesk: create_ticket, search_tickets, update_ticket
 telegram: send_message
 canva: create_design
+linkedin: create_post
+twitter: create_tweet
+facebook: create_post
+instagram: create_post
+airtable: get_record, update_record, create_record
 `;
 
 // ─── Génération du plan ──────────────────────────────────────────────────────
@@ -92,6 +100,9 @@ Règles strictes :
 9. Les steps approval bloquent avant une action risquée.
 10. kind = "prompt" si un seul step LLM, "workflow" si déterministe, "agent" si besoin de décisions.
 11. Chaque variable doit avoir un champ "help" avec un exemple concret (ex. ID Sheets depuis l'URL, nom d'expéditeur Gmail sans mot de passe).
+12. Pour exécuter plusieurs actions en parallèle (ex. publier sur plusieurs réseaux), crée un step amont puis fais pointer son champ "next" vers tous les steps parallèles.
+13. Pour un embranchement conditionnel, crée un step condition dont "next" liste les steps de chaque branche ; mets "branchLabel" sur chaque step cible (ex. "si urgent", "sinon").
+14. "entryStepId" = id du premier step (défaut : steps[0].id). Sans "next" explicite, les steps sont chaînés séquentiellement.
 
 Catalogue d'actions disponibles :
 ${COMPOSIO_CATALOG_COMPRESSED}
@@ -118,23 +129,81 @@ Génère un plan JSON complet avec cette structure :
   "objective": "...",
   "variables": [{ "key": "...", "label": "...", "type": "text", "required": true, "help": "Exemple concret + où trouver l'info" }],
   "requiredConnectors": [{ "connectorId": "gmail", "reason": "...", "requiredActions": ["read_email"] }],
+  "entryStepId": "read_airtable",
   "steps": [{
-    "id": "read_emails",
+    "id": "read_airtable",
     "type": "action",
-    "name": "Lire les emails",
-    "description": "...",
-    "outputKey": "read_emails",
-    "connectorId": "gmail",
-    "actionSlug": "read_email",
+    "name": "Lire fiche Airtable",
+    "description": "Récupère la fiche source",
+    "outputKey": "airtable_record",
+    "connectorId": "airtable",
+    "actionSlug": "get_record",
     "riskLevel": "low",
-    "requiresApproval": false
+    "requiresApproval": false,
+    "next": ["generate_post"]
   }, {
-    "id": "analyze",
+    "id": "generate_post",
     "type": "llm",
-    "name": "Analyser",
-    "description": "...",
-    "outputKey": "analysis",
+    "name": "Générer le post",
+    "description": "Rédige le contenu à partir de {{airtable_record}}",
+    "outputKey": "post_content",
     "riskLevel": "low",
+    "requiresApproval": false,
+    "next": ["post_linkedin", "post_twitter", "post_facebook", "post_instagram"]
+  }, {
+    "id": "post_linkedin",
+    "type": "action",
+    "name": "Publier LinkedIn",
+    "description": "Publication LinkedIn",
+    "outputKey": "linkedin_result",
+    "connectorId": "linkedin",
+    "actionSlug": "create_post",
+    "branchLabel": "LinkedIn",
+    "riskLevel": "high",
+    "requiresApproval": true
+  }, {
+    "id": "post_twitter",
+    "type": "action",
+    "name": "Publier X",
+    "description": "Publication X/Twitter",
+    "outputKey": "twitter_result",
+    "connectorId": "twitter",
+    "actionSlug": "create_tweet",
+    "branchLabel": "X",
+    "riskLevel": "high",
+    "requiresApproval": true
+  }, {
+    "id": "post_facebook",
+    "type": "action",
+    "name": "Publier Facebook",
+    "description": "Publication Facebook",
+    "outputKey": "facebook_result",
+    "connectorId": "facebook",
+    "actionSlug": "create_post",
+    "branchLabel": "Facebook",
+    "riskLevel": "high",
+    "requiresApproval": true
+  }, {
+    "id": "post_instagram",
+    "type": "action",
+    "name": "Publier Instagram",
+    "description": "Publication Instagram",
+    "outputKey": "instagram_result",
+    "connectorId": "instagram",
+    "actionSlug": "create_post",
+    "branchLabel": "Instagram",
+    "riskLevel": "high",
+    "requiresApproval": true,
+    "next": ["update_airtable"]
+  }, {
+    "id": "update_airtable",
+    "type": "action",
+    "name": "Mettre à jour Airtable",
+    "description": "Marque la fiche comme publiée",
+    "outputKey": "airtable_updated",
+    "connectorId": "airtable",
+    "actionSlug": "update_record",
+    "riskLevel": "medium",
     "requiresApproval": false
   }],
   "triggers": [{ "type": "manual" }],

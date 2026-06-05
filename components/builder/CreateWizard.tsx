@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Trash2, Plus, Loader2, AlertTriangle, Check, Wand2 } from "lucide-react";
 import { StepEditor } from "@/components/builder/StepEditor";
 import { EnvFieldInputs } from "@/components/builder/EnvFieldInputs";
 import { TemplatePicker } from "@/components/builder/TemplatePicker";
-import { AgentIdeaAssistant } from "@/components/builder/AgentIdeaAssistant";
 import { CatalogMultiSelect } from "@/components/builder/CatalogMultiSelect";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { CommissionNote } from "@/components/CommissionNote";
@@ -15,6 +14,21 @@ import { buildManifest } from "@/lib/builder/manifest";
 import { PROVISIONING_OPTIONS, type ProvisioningMode } from "@/lib/builder/provisioning";
 import { AgentRunExperience } from "@/components/run/AgentRunExperience";
 import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
+import { AgentCanvas } from "@/components/builder/canvas/AgentCanvas";
+import { NodeInspector } from "@/components/builder/canvas/NodeInspector";
+import { PlanChat } from "@/components/builder/canvas/PlanChat";
+import {
+  graphConnectors,
+  graphToSteps,
+  layoutGraph,
+  moveNode,
+  planToGraph,
+  updateNode,
+  validatePlanGraph,
+  hasBlockingGraphIssues,
+  type PlanGraph,
+  type PlanNode,
+} from "@/lib/builder/plan-graph";
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 import { injectHumanApprovals } from "@/lib/connectors/approvals-inject";
 import { dedupeConnectors } from "@/lib/connectors/resolve-id";
@@ -34,7 +48,6 @@ import {
 import { validateAgentManifest, hasBlockingIssues } from "@/lib/builder/validate-agent";
 import { connectorsForSteps } from "@/lib/connectors/registry";
 import type { AgentTemplate } from "@/lib/templates/agent-templates";
-import type { GeneratedSkeleton } from "@/lib/builder/generate-skeleton";
 import type { GeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
 import type { AgentStep, AgentKind, ExecutionMode } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
@@ -121,6 +134,11 @@ export function CreateWizard({ categories }: Props) {
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const [generatedPlan, setGeneratedPlan] = useState<GeneratedAgentPlan | null>(null);
+  const [planGraph, setPlanGraph] = useState<PlanGraph | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [highlightedIds, setHighlightedIds] = useState<string[]>([]);
+  const [graphIssues, setGraphIssues] = useState<ReturnType<typeof validatePlanGraph>>([]);
+  const graphHistoryRef = useRef<{ past: PlanGraph[]; future: PlanGraph[] }>({ past: [], future: [] });
 
   const [form, setForm] = useState({
     type: "prompt" as "prompt" | "agent" | "workflow",
@@ -175,62 +193,30 @@ export function CreateWizard({ categories }: Props) {
     setSuggestedVars(keys.filter((k) => !existing.has(k)));
   }
 
-  function applySkeleton(skeleton: GeneratedSkeleton) {
-    setSelectedTemplateId(undefined);
-    setForm((prev) => ({
-      ...prev,
-      type: skeleton.type,
-      title: skeleton.title,
-      description: skeleton.description,
-      models: skeleton.models,
-      tags: skeleton.tags,
-      integrations: skeleton.integrations ?? prev.integrations,
-      agentSteps: skeleton.steps as AgentStep[],
-      envFields: skeleton.envFields.map((f) => ({
-        key: f.key,
-        label: f.label,
-        required: f.required,
-        type: f.type ?? "text",
-        help: f.help,
-      })),
-      requiredSecrets: (skeleton.requiredSecrets ?? ["openai"]).filter((s): s is KeyProvider =>
-        SECRET_PROVIDERS.some((p) => p.id === s)
-      ),
-    }));
-    const allText = skeleton.steps.map((s) => s.prompt).join("\n");
-    const keys = extractInputVariables(allText);
-    const existing = new Set(skeleton.envFields.map((f) => f.key));
-    setSuggestedVars(keys.filter((k) => !existing.has(k)));
+  function commitPlanGraph(next: PlanGraph | null, pushHistory = true) {
+    if (pushHistory && planGraph && next) {
+      graphHistoryRef.current.past.push(planGraph);
+      if (graphHistoryRef.current.past.length > 40) {
+        graphHistoryRef.current.past.shift();
+      }
+      graphHistoryRef.current.future = [];
+    }
+    setPlanGraph(next);
   }
 
   function applyPlan(plan: GeneratedAgentPlan) {
     setGeneratedPlan(plan);
-    const agentSteps: AgentStep[] = plan.steps
-      .filter((s) => s.type === "llm" || s.type === "action" || s.type === "tool" || s.type === "code")
-      .map((s) => {
-        if (s.type === "llm") {
-          return { type: "llm" as const, model: form.models[0], prompt: s.description, outputKey: s.outputKey };
-        }
-        if (s.type === "action" && s.connectorId && s.actionSlug) {
-          return { type: "action" as const, connector: s.connectorId, action: s.actionSlug, params: {}, outputKey: s.outputKey };
-        }
-        if (s.type === "tool") {
-          const toolId = (s.actionSlug === "web_search" || s.actionSlug === "http_fetch" || s.actionSlug === "file_read")
-            ? s.actionSlug : "web_search";
-          return { type: "tool" as const, tool: toolId as "web_search" | "http_fetch" | "file_read", params: {}, outputKey: s.outputKey };
-        }
-        return { type: "llm" as const, model: form.models[0], prompt: s.description, outputKey: s.outputKey };
-      });
+    const graph = layoutGraph(planToGraph(plan, form.models[0]));
+    commitPlanGraph(graph, false);
+    graphHistoryRef.current = { past: [], future: [] };
 
     const connectorIds = plan.requiredConnectors.map((c) => c.connectorId);
-
     setForm((prev) => ({
       ...prev,
       type: plan.kind,
       kind: plan.kind,
       title: plan.title,
       description: plan.description,
-      agentSteps,
       envFields: plan.variables.map((v) => ({
         key: v.key,
         label: v.label,
@@ -240,6 +226,67 @@ export function CreateWizard({ categories }: Props) {
       requiredConnectors: connectorIds,
     }));
     setSelectedTemplateId(undefined);
+    setSelectedNodeId(null);
+  }
+
+  useEffect(() => {
+    if (!planGraph) return;
+    const steps = graphToSteps(planGraph, form.models[0]);
+    const connectors = graphConnectors(planGraph);
+    setForm((prev) => ({
+      ...prev,
+      agentSteps: steps,
+      requiredConnectors: connectors.length > 0 ? connectors : prev.requiredConnectors,
+      ...(planGraph.meta?.title ? { title: planGraph.meta.title } : {}),
+      ...(planGraph.meta?.description ? { description: planGraph.meta.description } : {}),
+      ...(planGraph.meta?.kind ? { type: planGraph.meta.kind, kind: planGraph.meta.kind } : {}),
+    }));
+    const promptText = planGraph.nodes
+      .filter((n) => n.kind === "llm")
+      .map((n) => n.prompt ?? n.description ?? "")
+      .join("\n");
+    if (promptText) {
+      const keys = extractInputVariables(promptText);
+      setForm((prev) => {
+        const existing = new Set(prev.envFields.map((f) => f.key));
+        setSuggestedVars(keys.filter((k) => !existing.has(k)));
+        return prev;
+      });
+    }
+    setGraphIssues(validatePlanGraph(planGraph, form.models[0]));
+  }, [planGraph, form.models]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === "z" && !e.shiftKey) {
+        const { past, future } = graphHistoryRef.current;
+        if (!past.length || !planGraph) return;
+        e.preventDefault();
+        const prev = past.pop()!;
+        future.push(planGraph);
+        setPlanGraph(prev);
+      }
+      if (e.key === "z" && e.shiftKey) {
+        const { past, future } = graphHistoryRef.current;
+        if (!future.length || !planGraph) return;
+        e.preventDefault();
+        past.push(planGraph);
+        const next = future.pop()!;
+        setPlanGraph(next);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [planGraph]);
+
+  function handleNodeInspectorChange(node: PlanNode) {
+    if (!planGraph || !selectedNodeId) return;
+    commitPlanGraph(updateNode(planGraph, selectedNodeId, node));
+  }
+
+  function handleGraphMutation(graph: PlanGraph) {
+    commitPlanGraph(graph);
   }
 
   async function handleGeneratePlan() {
@@ -314,6 +361,11 @@ export function CreateWizard({ categories }: Props) {
 
   function canContinueFromStep(current: number): boolean {
     setStepError(null);
+    if (current === 0 && planGraph && hasBlockingGraphIssues(graphIssues)) {
+      const first = graphIssues.find((i) => i.level === "error");
+      setStepError(first?.message ?? "Corrigez les erreurs du graphe avant de continuer.");
+      return false;
+    }
     if (current === 2 && form.type !== "prompt") {
       const err = validateCurrentManifest();
       if (err) {
@@ -488,47 +540,72 @@ export function CreateWizard({ categories }: Props) {
             {planLoading ? "Analyse en cours…" : "Générer le plan"}
           </button>
 
-          {generatedPlan && (
-            <div className="mt-6 rounded-xl border border-accent/30 bg-accent/5 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-ink">{generatedPlan.title}</p>
-                  <p className="mt-0.5 text-xs text-ink-soft">{generatedPlan.description}</p>
-                </div>
-                <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent capitalize">
-                  {generatedPlan.kind}
-                </span>
-              </div>
-              <div className="mt-3 space-y-1.5">
-                {generatedPlan.steps.map((s, i) => (
-                  <div key={s.id} className="flex items-start gap-2 text-xs">
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[10px] font-bold text-accent">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <span className="font-medium text-ink">{s.name}</span>
-                      <span className="ml-1 rounded bg-line/80 px-1 py-0.5 text-[10px] text-ink-faint">{s.type}</span>
-                      {s.connectorId && (
-                        <span className="ml-1 rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-600">{s.connectorId}</span>
-                      )}
-                      {s.requiresApproval && (
-                        <span className="ml-1 rounded bg-amber-50 px-1 py-0.5 text-[10px] text-amber-600">approbation</span>
-                      )}
-                      <p className="text-ink-soft">{s.description}</p>
-                    </div>
+          {(planGraph || planLoading) && (
+            <div className="mt-6 space-y-4">
+              {generatedPlan && (
+                <div className="flex items-center justify-between rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-ink">{generatedPlan.title}</p>
+                    <p className="mt-0.5 text-xs text-ink-soft">{generatedPlan.description}</p>
                   </div>
-                ))}
-              </div>
-              {generatedPlan.requiredConnectors.length > 0 && (
-                <div className="mt-3 border-t border-line pt-2">
-                  <p className="text-xs font-medium text-ink-soft">Connexions requises :</p>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {generatedPlan.requiredConnectors.map((c) => (
-                      <span key={c.connectorId} className="rounded-full border border-line px-2 py-0.5 text-xs text-ink">{c.connectorId}</span>
-                    ))}
-                  </div>
+                  <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium capitalize text-accent">
+                    {generatedPlan.kind}
+                  </span>
                 </div>
               )}
+              <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+                <AgentCanvas
+                  graph={planGraph}
+                  selectedId={selectedNodeId ?? undefined}
+                  onSelect={setSelectedNodeId}
+                  onMoveNode={(id, x, y) => {
+                    if (!planGraph) return;
+                    commitPlanGraph(moveNode(planGraph, id, x, y));
+                  }}
+                  highlightedIds={highlightedIds}
+                  loading={planLoading}
+                  validationIssues={graphIssues}
+                />
+                <NodeInspector
+                  node={planGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null}
+                  graph={planGraph}
+                  onChange={handleNodeInspectorChange}
+                  onGraphChange={handleGraphMutation}
+                  onClose={() => setSelectedNodeId(null)}
+                  defaultModel={form.models[0]}
+                  envFields={form.envFields}
+                />
+              </div>
+              {graphIssues.length > 0 && (
+                <ul className="space-y-1 rounded-lg border border-line bg-card2 p-3 text-xs">
+                  {graphIssues.map((issue, i) => (
+                    <li
+                      key={i}
+                      className={issue.level === "error" ? "text-destructive" : "text-amber-700"}
+                    >
+                      {issue.nodeId ? `[${issue.nodeId}] ` : ""}
+                      {issue.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => planGraph && commitPlanGraph(layoutGraph(planGraph))}
+                  disabled={!planGraph}
+                  className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft hover:bg-card2 disabled:opacity-40"
+                >
+                  Réorganiser
+                </button>
+              </div>
+              <PlanChat
+                graph={planGraph}
+                onGraphChange={(g) => commitPlanGraph(g)}
+                onChangedIds={setHighlightedIds}
+                modelId={builderModel}
+                defaultModel={form.models[0]}
+              />
             </div>
           )}
 
@@ -542,6 +619,7 @@ export function CreateWizard({ categories }: Props) {
                     updateField("type", t);
                     updateField("kind", t);
                     setGeneratedPlan(null);
+                    setPlanGraph(null);
                   }}
                   className={`rounded-xl border p-3 text-left transition-all ${
                     form.type === t && !generatedPlan ? "border-accent bg-accent-light" : "border-line hover:border-accent/50"
@@ -559,10 +637,7 @@ export function CreateWizard({ categories }: Props) {
           </div>
 
           {!generatedPlan && (form.type === "agent" || form.type === "workflow") && (
-            <>
-              <TemplatePicker selectedId={selectedTemplateId} onSelect={applyTemplate} />
-              <AgentIdeaAssistant onGenerated={applySkeleton} builderModel={builderModel} />
-            </>
+            <TemplatePicker selectedId={selectedTemplateId} onSelect={applyTemplate} />
           )}
         </div>
       )}
@@ -1014,7 +1089,32 @@ export function CreateWizard({ categories }: Props) {
             Visualisez l&apos;arborescence, configurez les validations humaines, puis lancez une démo complète.
           </p>
 
-          {form.agentSteps.length > 0 && (
+          {planGraph && planGraph.nodes.length > 0 && (
+            <div className="mt-4">
+              <AgentCanvas
+                graph={planGraph}
+                selectedId={undefined}
+                onSelect={() => undefined}
+                readOnly
+                validationIssues={graphIssues}
+              />
+              {!flowPreviewConfirmed && (
+                <button
+                  type="button"
+                  onClick={() => setFlowPreviewConfirmed(true)}
+                  className="mt-3 rounded-lg border border-accent bg-accent/10 px-4 py-2 text-sm font-medium text-accent"
+                >
+                  Valider l&apos;arborescence
+                </button>
+              )}
+              {flowPreviewConfirmed && (
+                <p className="mt-2 flex items-center gap-1 text-xs text-green-700">
+                  <Check className="h-3.5 w-3.5" /> Arborescence validée
+                </p>
+              )}
+            </div>
+          )}
+          {form.agentSteps.length > 0 && !planGraph && (
             <div className="mt-4">
               <AgentFlowPreview
                 steps={previewSteps}
