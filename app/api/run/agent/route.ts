@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
     parsedEnv.manifest,
     billing.apiKeys,
     user.id,
-    { dryRun }
+    { dryRun, creatorId: listing.creator_id }
   );
   if (preflightIssues.length > 0) {
     console.warn("[run/agent] preflight blocked", {
@@ -185,9 +185,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!dryRun && parsedEnv.manifest.connectors.length > 0) {
+  if (!dryRun) {
     const { checkConnectorHealth } = await import("@/lib/connectors/connection-health");
-    const healthIssues = await checkConnectorHealth(user.id, parsedEnv.manifest.connectors);
+    const { runnerRequiredConnectors } = await import("@/lib/agent/run-connectors");
+    const requiredConnectors = runnerRequiredConnectors(parsedEnv.manifest, {
+      userId: user.id,
+      creatorId: listing.creator_id,
+    });
+    const healthIssues = await checkConnectorHealth(user.id, requiredConnectors);
     if (healthIssues.length > 0) {
       return NextResponse.json(
         {
@@ -289,6 +294,7 @@ export async function POST(request: NextRequest) {
   const result = await runAgent(parsedEnv.manifest, {
     userId: user.id,
     listingId,
+    creatorId: listing.creator_id,
     inputs,
     apiKeys: billing.apiKeys,
     runId: agentRun?.id,

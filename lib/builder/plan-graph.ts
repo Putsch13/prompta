@@ -34,6 +34,10 @@ export interface PlanNode {
   requiresApproval: boolean;
   params?: Record<string, string>;
   paramMeta?: Record<string, ParamMeta>;
+  /** true = env partagée (builder) pour tous les abonnés */
+  sharedEnv?: boolean;
+  /** Ressources épinglées par le builder (clé param → bool) */
+  pinnedResources?: Record<string, boolean>;
   x?: number;
   y?: number;
 }
@@ -263,6 +267,7 @@ function nodeToAgentStep(node: PlanNode, defaultModel: string): AgentStep {
         action: node.actionSlug ?? "",
         params: node.params ?? {},
         paramMeta: node.paramMeta,
+        sharedEnv: node.sharedEnv,
         outputKey: node.outputKey,
       };
     case "tool":

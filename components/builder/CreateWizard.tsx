@@ -3,15 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2, Plus, Loader2, AlertTriangle, Check, Wand2 } from "lucide-react";
-import { StepEditor } from "@/components/builder/StepEditor";
+import { Loader2, AlertTriangle, Check, Wand2 } from "lucide-react";
 import { EnvFieldInputs } from "@/components/builder/EnvFieldInputs";
-import { TemplatePicker } from "@/components/builder/TemplatePicker";
 import { CatalogMultiSelect } from "@/components/builder/CatalogMultiSelect";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { CommissionNote } from "@/components/CommissionNote";
 import { buildManifest } from "@/lib/builder/manifest";
-import { PROVISIONING_OPTIONS, type ProvisioningMode } from "@/lib/builder/provisioning";
+import type { ProvisioningMode } from "@/lib/builder/provisioning";
+import { deriveGraphEnv } from "@/lib/builder/derive-graph-env";
+import { deriveClientRequirements } from "@/lib/builder/client-requirements";
+import { ClientRequirementsPanel } from "@/components/builder/canvas/ClientRequirementsPanel";
 import { AgentRunExperience } from "@/components/run/AgentRunExperience";
 import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
 import { AgentCanvas } from "@/components/builder/canvas/AgentCanvas";
@@ -37,10 +38,6 @@ import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 import {
   getGatewayModels,
   getBuilderModels,
-  TECH_RUNTIMES,
-  INTEGRATIONS,
-  getIntegrationsRequiringKey,
-  getConnectorIdsFromIntegrations,
 } from "@/lib/catalogs";
 import {
   extractInputVariables,
@@ -48,29 +45,11 @@ import {
   validateAgentSteps,
 } from "@/lib/builder/variables";
 import { validateAgentManifest, hasBlockingIssues } from "@/lib/builder/validate-agent";
-import { connectorsForSteps } from "@/lib/connectors/registry";
-import type { AgentTemplate } from "@/lib/templates/agent-templates";
 import type { GeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
 import type { AgentStep, AgentKind, ExecutionMode } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 
-const STEPS = [
-  "Objectif",
-  "Bases",
-  "Contenu",
-  "Environnement",
-  "Tarification",
-  "Test",
-  "Publication",
-];
-
-const SECRET_PROVIDERS: { id: KeyProvider; label: string }[] = [
-  { id: "openai", label: "OpenAI" },
-  { id: "anthropic", label: "Anthropic" },
-  { id: "google", label: "Google AI" },
-  { id: "mistral", label: "Mistral" },
-  { id: "serper", label: "Serper" },
-];
+const STEPS = ["Décrire", "Construire", "Détails", "Tester", "Publier"];
 
 interface Props {
   categories: { id: string; name: string; slug: string }[];
@@ -107,29 +86,9 @@ export function CreateWizard({ categories }: Props) {
     runId?: string;
   } | null>(null);
   const [testInputs, setTestInputs] = useState<Record<string, string>>({});
-  const [suggestedVars, setSuggestedVars] = useState<string[]>([]);
   const [stepError, setStepError] = useState<string | null>(null);
-  const [integrationCatalog, setIntegrationCatalog] = useState(INTEGRATIONS);
-
-  useEffect(() => {
-    fetch("/api/composio/toolkits")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.enabled && Array.isArray(d.toolkits) && d.toolkits.length > 0) {
-          setIntegrationCatalog(
-            d.toolkits.map((t: { id: string; label: string; category: string; popular: boolean; authType: string; connectorId: string }) => ({
-              id: t.id,
-              label: t.label,
-              category: t.category,
-              popular: t.popular,
-              authType: t.authType as "oauth" | "api_key",
-              connectorId: t.connectorId ?? t.id,
-            }))
-          );
-        }
-      })
-      .catch(() => undefined);
-  }, []);
+  const [disconnectedConnectors, setDisconnectedConnectors] = useState<string[]>([]);
+  const [sharedPublishAck, setSharedPublishAck] = useState(false);
 
   const [objectiveText, setObjectiveText] = useState("");
   const [builderModel, setBuilderModel] = useState("gpt-5.4-mini");
@@ -168,33 +127,6 @@ export function CreateWizard({ categories }: Props) {
     hostingFeeCents: 490,
   });
 
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>();
-
-  function applyTemplate(template: AgentTemplate) {
-    setSelectedTemplateId(template.id);
-    setForm((prev) => ({
-      ...prev,
-      type: template.type,
-      title: template.label,
-      description: template.description,
-      models: template.models,
-      tags: template.tags,
-      integrations: template.integrations,
-      agentSteps: template.steps,
-      envFields: template.envFields,
-      requiredSecrets: template.requiredSecrets,
-      requiredConnectors: template.requiredConnectors,
-      setupTime: template.setupTime,
-    }));
-    const allText = template.steps
-      .filter((s) => s.type === "llm")
-      .map((s) => s.prompt)
-      .join("\n");
-    const keys = extractInputVariables(allText);
-    const existing = new Set(template.envFields.map((f) => f.key));
-    setSuggestedVars(keys.filter((k) => !existing.has(k)));
-  }
-
   function commitPlanGraph(next: PlanGraph | null, pushHistory = true) {
     if (pushHistory && planGraph && next) {
       graphHistoryRef.current.past.push(planGraph);
@@ -227,8 +159,8 @@ export function CreateWizard({ categories }: Props) {
       })),
       requiredConnectors: connectorIds,
     }));
-    setSelectedTemplateId(undefined);
     setSelectedNodeId(null);
+    setStep(1);
   }
 
   useEffect(() => {
@@ -251,8 +183,16 @@ export function CreateWizard({ categories }: Props) {
       const keys = extractInputVariables(promptText);
       setForm((prev) => {
         const existing = new Set(prev.envFields.map((f) => f.key));
-        setSuggestedVars(keys.filter((k) => !existing.has(k)));
-        return prev;
+        const newFields = keys
+          .filter((k) => !existing.has(k))
+          .map((k) => ({
+            key: k,
+            label: keyToLabel(k),
+            required: true,
+            type: "text" as const,
+          }));
+        if (!newFields.length) return prev;
+        return { ...prev, envFields: [...prev.envFields, ...newFields] };
       });
     }
     if (planGraph.meta?.variables?.length) {
@@ -271,6 +211,30 @@ export function CreateWizard({ categories }: Props) {
       });
     }
     setGraphIssues(validatePlanGraph(planGraph, form.models[0]));
+    const derived = deriveGraphEnv(planGraph, form.models[0]);
+    setForm((prev) => ({
+      ...prev,
+      requiredConnectors: derived.requiredConnectors,
+      requiredSecrets: derived.requiredSecrets,
+    }));
+  }, [planGraph, form.models]);
+
+  useEffect(() => {
+    if (!planGraph) return;
+    const connectors = deriveGraphEnv(planGraph, form.models[0]).requiredConnectors;
+    let cancelled = false;
+    (async () => {
+      const disconnected: string[] = [];
+      for (const id of connectors) {
+        const res = await fetch(`/api/connectors/${id}/status`);
+        const data = await res.json();
+        if (!data.connected) disconnected.push(id);
+      }
+      if (!cancelled) setDisconnectedConnectors(disconnected);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [planGraph, form.models]);
 
   useEffect(() => {
@@ -352,20 +316,6 @@ export function CreateWizard({ categories }: Props) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function detectVariablesInText(text: string) {
-    const keys = extractInputVariables(text);
-    const existing = new Set(form.envFields.map((f) => f.key));
-    setSuggestedVars(keys.filter((k) => !existing.has(k)));
-  }
-
-  function addSuggestedVariable(key: string) {
-    updateField("envFields", [
-      ...form.envFields,
-      { key, label: keyToLabel(key), required: true, type: "text" as const },
-    ]);
-    setSuggestedVars((prev) => prev.filter((k) => k !== key));
-  }
-
   function validateCurrentManifest(): string | null {
     if (form.type === "prompt") return null;
     const manifest = buildCurrentManifest();
@@ -378,20 +328,37 @@ export function CreateWizard({ categories }: Props) {
 
   function canContinueFromStep(current: number): boolean {
     setStepError(null);
-    if (current === 0 && planGraph && hasBlockingGraphIssues(graphIssues)) {
+    if (current === 0 && !planGraph) {
+      setStepError("Générez d'abord un plan à partir de votre description.");
+      return false;
+    }
+    if (current === 1 && planGraph && hasBlockingGraphIssues(graphIssues)) {
       const first = graphIssues.find((i) => i.level === "error");
       setStepError(first?.message ?? "Corrigez les erreurs du graphe avant de continuer.");
       return false;
     }
-    if (current === 2 && form.type !== "prompt") {
+    if (current === 1 && form.type !== "prompt") {
       const err = validateCurrentManifest();
       if (err) {
         setStepError(err);
         return false;
       }
     }
+    if (current === 2 && !form.title.trim()) {
+      setStepError("Indiquez un titre.");
+      return false;
+    }
     return true;
   }
+
+  const clientRequirements = deriveClientRequirements(
+    planGraph,
+    form.models[0],
+    form.envFields,
+  );
+
+  const hasSharedNodes =
+    planGraph?.nodes.some((n) => n.kind === "action" && n.sharedEnv) ?? false;
 
   function buildCurrentManifest() {
     let steps = form.agentSteps;
@@ -422,6 +389,11 @@ export function CreateWizard({ categories }: Props) {
     const validationErr = validateCurrentManifest();
     if (validationErr) {
       setStepError(validationErr);
+      setSaving(false);
+      return;
+    }
+    if (publish && hasSharedNodes && !sharedPublishAck) {
+      setStepError("Confirmez que vous acceptez de partager vos accès avec les abonnés.");
       setSaving(false);
       return;
     }
@@ -557,34 +529,50 @@ export function CreateWizard({ categories }: Props) {
             {planLoading ? "Analyse en cours…" : "Générer le plan"}
           </button>
 
-          {(planGraph || planLoading) && (
-            <div className="mt-6 space-y-4">
-              {generatedPlan && (
-                <div className="flex items-center justify-between rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold text-ink">{generatedPlan.title}</p>
-                    <p className="mt-0.5 text-xs text-ink-soft">{generatedPlan.description}</p>
-                  </div>
-                  <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium capitalize text-accent">
-                    {generatedPlan.kind}
-                  </span>
-                </div>
-              )}
+          {generatedPlan && (
+            <div className="mt-4 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-ink">{generatedPlan.title}</p>
+                <p className="mt-0.5 text-xs text-ink-soft">{generatedPlan.description}</p>
+              </div>
+              <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium capitalize text-accent">
+                {generatedPlan.kind}
+              </span>
+            </div>
+          )}
+          {planGraph && (
+            <p className="mt-3 text-xs text-green-700">
+              Plan généré — passez à l&apos;étape « Construire » pour configurer chaque nœud.
+            </p>
+          )}
+        </div>
+      )}
+
+      {step === 1 && (
+        <div className="space-y-4">
+          <h2 className="font-display text-xl font-bold text-ink">Construire le squelette</h2>
+          <p className="text-sm text-ink-soft">
+            Sur chaque nœud : connectez l&apos;outil, choisissez une ressource précise si besoin,
+            et décidez si l&apos;env est partagée ou laissée au client.
+          </p>
+          {!planGraph ? (
+            <p className="text-sm text-amber-700">Générez d&apos;abord un plan à l&apos;étape « Décrire ».</p>
+          ) : (
+            <>
               <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
                 <AgentCanvas
                   graph={planGraph}
                   selectedId={selectedNodeId ?? undefined}
                   onSelect={setSelectedNodeId}
                   onMoveNode={(id, x, y) => {
-                    if (!planGraph) return;
                     commitPlanGraph(moveNode(planGraph, id, x, y));
                   }}
                   highlightedIds={highlightedIds}
-                  loading={planLoading}
                   validationIssues={graphIssues}
+                  disconnectedConnectors={disconnectedConnectors}
                 />
                 <NodeInspector
-                  node={planGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null}
+                  node={planGraph.nodes.find((n) => n.id === selectedNodeId) ?? null}
                   graph={planGraph}
                   onChange={handleNodeInspectorChange}
                   onGraphChange={handleGraphMutation}
@@ -609,19 +597,18 @@ export function CreateWizard({ categories }: Props) {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => planGraph && commitPlanGraph(layoutGraph(planGraph))}
-                  disabled={!planGraph}
-                  className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft hover:bg-card2 disabled:opacity-40"
+                  onClick={() => commitPlanGraph(layoutGraph(planGraph))}
+                  className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft hover:bg-card2"
                 >
                   Réorganiser
                 </button>
-                {planGraph && graphHasRepairableIssues(planGraph) && (
+                {graphHasRepairableIssues(planGraph) && (
                   <button
                     type="button"
                     onClick={() =>
-                      commitPlanGraph(layoutGraph(normalizeGraph(planGraph!)))
+                      commitPlanGraph(layoutGraph(normalizeGraph(planGraph)))
                     }
-                    className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-100"
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800"
                   >
                     Reconnecter automatiquement
                   </button>
@@ -634,45 +621,20 @@ export function CreateWizard({ categories }: Props) {
                 modelId={builderModel}
                 defaultModel={form.models[0]}
               />
-            </div>
-          )}
-
-          <div className="mt-6 border-t border-line pt-4">
-            <p className="text-xs font-medium text-ink-soft">Ou choisissez manuellement le type :</p>
-            <div className="mt-2 grid gap-3 sm:grid-cols-3">
-              {(["prompt", "agent", "workflow"] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => {
-                    updateField("type", t);
-                    updateField("kind", t);
-                    setGeneratedPlan(null);
-                    setPlanGraph(null);
-                  }}
-                  className={`rounded-xl border p-3 text-left transition-all ${
-                    form.type === t && !generatedPlan ? "border-accent bg-accent-light" : "border-line hover:border-accent/50"
-                  }`}
-                >
-                  <p className="text-sm font-medium capitalize text-ink">{t}</p>
-                  <p className="mt-0.5 text-[11px] text-ink-soft">
-                    {t === "prompt" && "Un appel modèle simple"}
-                    {t === "agent" && "Chaîne + outils orchestrés"}
-                    {t === "workflow" && "Séquence d'étapes déterministe"}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {!generatedPlan && (form.type === "agent" || form.type === "workflow") && (
-            <TemplatePicker selectedId={selectedTemplateId} onSelect={applyTemplate} />
+              <ClientRequirementsPanel
+                summary={clientRequirements}
+                onPreviewAsClient={() => setStep(3)}
+              />
+              {stepError && <p className="text-sm text-destructive">{stepError}</p>}
+            </>
           )}
         </div>
       )}
 
-      {step === 1 && (
+      {step === 2 && (
         <div className="space-y-4">
-          <h2 className="font-display text-xl font-bold text-ink">Informations de base</h2>
+          <h2 className="font-display text-xl font-bold text-ink">Détails</h2>
+          <p className="text-sm text-ink-soft">Pré-rempli par l&apos;IA — ajustez si besoin.</p>
           <input
             value={form.title}
             onChange={(e) => updateField("title", e.target.value)}
@@ -708,320 +670,10 @@ export function CreateWizard({ categories }: Props) {
         </div>
       )}
 
-      {step === 2 && (
-        <div>
-          <h2 className="font-display text-xl font-bold text-ink">Contenu</h2>
-          {form.type === "prompt" ? (
-            <textarea
-              value={form.promptBody}
-              onChange={(e) => {
-                updateField("promptBody", e.target.value);
-                detectVariablesInText(e.target.value);
-              }}
-              placeholder="Corps du prompt — utilisez {{variable}} pour les champs dynamiques"
-              rows={12}
-              className="mt-4 w-full rounded-lg border border-line px-3 py-2 font-mono text-sm"
-            />
-          ) : (
-            <div className="mt-4">
-              <p className="mb-3 text-sm text-ink-soft">
-                Composez les étapes de votre {form.type}. Chaque prompt peut référencer{" "}
-                <code className="text-xs">{"{{step_N_output}}"}</code>.
-              </p>
-              <StepEditor
-                steps={form.agentSteps}
-                onChange={(s) => {
-                  updateField("agentSteps", s);
-                  const allText = s
-                    .filter((st) => st.type === "llm")
-                    .map((st) => st.prompt)
-                    .join("\n");
-                  detectVariablesInText(allText);
-                  const connectorIds = connectorsForSteps(s);
-                  if (connectorIds.length) {
-                    updateField("requiredConnectors", connectorIds);
-                  }
-                }}
-                defaultModel={form.models[0]}
-                envFields={form.envFields}
-              />
-              {stepError && <p className="mt-2 text-sm text-destructive">{stepError}</p>}
-            </div>
-          )}
-        </div>
-      )}
-
-      {step === 3 && (
-        <div className="space-y-4">
-          <h2 className="font-display text-xl font-bold text-ink">Environnement</h2>
-          <p className="text-sm text-ink-soft">
-            Runtime, intégrations, variables d&apos;entrée et clés API requises.
-          </p>
-
-          {(form.type === "agent" || form.type === "workflow") &&
-            dedupeConnectors(form.requiredConnectors).length > 0 && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
-              <p className="text-sm font-semibold text-ink">Vos accès (pour tester)</p>
-              <p className="mt-1 text-xs text-ink-soft">
-                Connectez vos comptes et clés pour tester dans le builder. Ces accès ne sont{" "}
-                <strong>jamais</strong> inclus dans l&apos;agent vendu — l&apos;abonné final
-                branchera les siens.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {dedupeConnectors(form.requiredConnectors).map((id) => (
-                  <a
-                    key={id}
-                    href={`/api/connectors/${id}/connect?returnUrl=${encodeURIComponent("/dashboard/create")}`}
-                    className="rounded-lg border border-line bg-card px-3 py-1.5 text-xs font-medium text-accent hover:border-accent"
-                  >
-                    Connecter {id}
-                  </a>
-                ))}
-              </div>
-              {form.requiredSecrets.length > 0 && (
-                <p className="mt-2 text-xs text-ink-soft">
-                  Clés BYOK pour les tests :{" "}
-                  {form.requiredSecrets.map((s) => SECRET_PROVIDERS.find((p) => p.id === s)?.label ?? s).join(", ")}
-                  {" "}— à configurer dans Connexions.
-                </p>
-              )}
-            </div>
-          )}
-
-          <CatalogMultiSelect
-            catalog={TECH_RUNTIMES}
-            selected={form.techStack}
-            onChange={(ids) => updateField("techStack", ids)}
-            label="Runtime / Tech requise"
-            placeholder="Rechercher un runtime…"
-          />
-
-          <CatalogMultiSelect
-            catalog={integrationCatalog}
-            selected={form.integrations}
-            onChange={(ids) => {
-              updateField("integrations", ids);
-              const integrationsNeedingKeys = getIntegrationsRequiringKey(ids);
-              const connectorIds = ids.filter((id) =>
-                integrationCatalog.some((i) => i.id === id && (i.connectorId || i.authType === "oauth"))
-              ).map((id) => integrationCatalog.find((i) => i.id === id)?.connectorId ?? id);
-              const legacyConnectorIds = getConnectorIdsFromIntegrations(ids);
-              const allConnectors = Array.from(new Set([...connectorIds, ...legacyConnectorIds]));
-              if (allConnectors.length) {
-                updateField("requiredConnectors", Array.from(new Set([...form.requiredConnectors, ...allConnectors])));
-              }
-              if (integrationsNeedingKeys.length > 0) {
-                const newSecrets = [...form.requiredSecrets];
-                for (const int of integrationsNeedingKeys) {
-                  const key = int.id as KeyProvider;
-                  if (!newSecrets.includes(key) && SECRET_PROVIDERS.some((p) => p.id === key)) {
-                    newSecrets.push(key);
-                  }
-                }
-                if (newSecrets.length !== form.requiredSecrets.length) {
-                  updateField("requiredSecrets", newSecrets);
-                }
-              }
-            }}
-            label="Intégrations connectées"
-            groupByKey="category"
-            placeholder="Rechercher une intégration…"
-          />
-
-          <div className="border-t border-line pt-4">
-            <p className="mb-1 text-sm font-medium text-ink">Que doit fournir l&apos;utilisateur final ?</p>
-            <p className="mb-3 text-xs text-ink-soft">
-              Définissez explicitement les variables d&apos;entrée. Les sorties d&apos;étapes (
-              <code>step_N_output</code>) sont gérées automatiquement.
-            </p>
-
-            {suggestedVars.length > 0 && (
-              <div className="mb-3 rounded-lg border border-accent/30 bg-accent-light/50 p-3">
-                <p className="text-xs font-medium text-accent">Variables détectées dans vos prompts</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {suggestedVars.map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => addSuggestedVariable(key)}
-                      className="rounded border border-accent px-2 py-1 text-xs text-accent hover:bg-accent-light"
-                    >
-                      + {keyToLabel(key)} ({key})
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              {form.envFields.map((f, i) => (
-                <div key={i} className="grid gap-2 rounded-lg border border-line p-3 sm:grid-cols-2">
-                  <input
-                    value={f.key}
-                    onChange={(e) => {
-                      const fields = [...form.envFields];
-                      fields[i] = { ...fields[i], key: e.target.value };
-                      updateField("envFields", fields);
-                    }}
-                    placeholder="clé (ex: secteur)"
-                    className="h-10 rounded-lg border border-line px-3 font-mono text-sm"
-                  />
-                  <input
-                    value={f.label}
-                    onChange={(e) => {
-                      const fields = [...form.envFields];
-                      fields[i] = { ...fields[i], label: e.target.value };
-                      updateField("envFields", fields);
-                    }}
-                    placeholder="Label visible"
-                    className="h-10 rounded-lg border border-line px-3 text-sm"
-                  />
-                  <select
-                    value={f.type}
-                    onChange={(e) => {
-                      const fields = [...form.envFields];
-                      fields[i] = { ...fields[i], type: e.target.value as EnvField["type"] };
-                      updateField("envFields", fields);
-                    }}
-                    className="h-10 rounded-lg border border-line px-3 text-sm"
-                  >
-                    <option value="text">Texte court</option>
-                    <option value="textarea">Texte long</option>
-                    <option value="number">Nombre</option>
-                    <option value="file">Fichier</option>
-                    <option value="list">Liste</option>
-                  </select>
-                  <input
-                    value={f.help ?? ""}
-                    onChange={(e) => {
-                      const fields = [...form.envFields];
-                      fields[i] = { ...fields[i], help: e.target.value };
-                      updateField("envFields", fields);
-                    }}
-                    placeholder="Aide / exemple (optionnel)"
-                    className="h-10 rounded-lg border border-line px-3 text-sm"
-                  />
-                  <label className="flex items-center gap-1 text-xs text-ink-soft sm:col-span-2">
-                    <input
-                      type="checkbox"
-                      checked={f.required}
-                      onChange={(e) => {
-                        const fields = [...form.envFields];
-                        fields[i] = { ...fields[i], required: e.target.checked };
-                        updateField("envFields", fields);
-                      }}
-                    />
-                    Requis
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateField(
-                        "envFields",
-                        form.envFields.filter((_, j) => j !== i)
-                      )
-                    }
-                    className="rounded p-2 text-destructive hover:bg-red-50 sm:col-span-2 sm:justify-self-end"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                updateField("envFields", [
-                  ...form.envFields,
-                  { key: "", label: "", required: true, type: "text" },
-                ])
-              }
-              className="mt-2 flex items-center gap-1 text-sm text-accent hover:underline"
-            >
-              <Plus className="h-4 w-4" /> Ajouter une variable
-            </button>
-          </div>
-
-          <div className="border-t border-line pt-4">
-            <p className="mb-2 text-sm font-medium text-ink">Clés API requises</p>
-            <div className="flex flex-wrap gap-2">
-              {SECRET_PROVIDERS.map((p) => {
-                const selected = form.requiredSecrets.includes(p.id);
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() =>
-                      updateField(
-                        "requiredSecrets",
-                        selected
-                          ? form.requiredSecrets.filter((s) => s !== p.id)
-                          : [...form.requiredSecrets, p.id]
-                      )
-                    }
-                    className={`rounded-lg border px-3 py-1.5 text-sm ${
-                      selected ? "border-accent bg-accent-light text-accent" : "border-line"
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {(form.type === "agent" || form.type === "workflow") && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-              <p className="text-sm font-semibold text-ink">Expérience utilisateur final</p>
-              <p className="mt-1 text-xs text-ink-soft">
-                Choisissez combien l&apos;agent prépare à la place de l&apos;utilisateur.
-              </p>
-              <div className="mt-3 space-y-2">
-                {PROVISIONING_OPTIONS.map((opt) => (
-                  <label
-                    key={opt.id}
-                    className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
-                      form.provisioningMode === opt.id
-                        ? "border-violet-400 bg-white"
-                        : "border-line bg-card"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="provisioningMode"
-                      checked={form.provisioningMode === opt.id}
-                      onChange={() => {
-                        updateField("provisioningMode", opt.id);
-                        if (opt.id === "managed" && !form.hostingEnabled) {
-                          updateField("hostingEnabled", true);
-                        }
-                      }}
-                      className="mt-1"
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-ink">{opt.label}</p>
-                      <p className="text-xs text-ink-soft">{opt.description}</p>
-                      <p className="mt-1 text-[11px] text-ink-faint">{opt.forUser}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <input
-            value={form.setupTime}
-            onChange={(e) => updateField("setupTime", e.target.value)}
-            placeholder="Temps de setup estimé (ex: 5 min)"
-            className="h-10 w-full rounded-lg border border-line px-3"
-          />
-        </div>
-      )}
-
       {step === 4 && (
         <div className="space-y-4">
-          <h2 className="font-display text-xl font-bold text-ink">Tarification</h2>
+          <h2 className="font-display text-xl font-bold text-ink">Publier</h2>
+          <p className="text-sm text-ink-soft">Tarification et mise en ligne.</p>
 
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <AlertTriangle className="mb-1 inline h-4 w-4" /> Seuls les comptes avec Stripe
@@ -1137,12 +789,40 @@ export function CreateWizard({ categories }: Props) {
               )}
             </div>
           )}
+
+          <dl className="space-y-2 rounded-xl border border-line bg-card2 p-4 text-sm">
+            <div><dt className="text-ink-faint">Titre</dt><dd className="font-medium">{form.title}</dd></div>
+            <div><dt className="text-ink-faint">Type</dt><dd className="font-medium capitalize">{form.type}</dd></div>
+            <div><dt className="text-ink-faint">Étapes</dt><dd className="font-medium">{buildCurrentManifest().steps.length}</dd></div>
+          </dl>
+
+          {hasSharedNodes && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">Environnements partagés</p>
+              <ul className="mt-2 space-y-1 text-xs text-amber-900">
+                {clientRequirements.sharedProvided.map((item) => (
+                  <li key={item.id}>🌐 {item.label}{item.nodeName ? ` (${item.nodeName})` : ""}</li>
+                ))}
+              </ul>
+              <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={sharedPublishAck}
+                  onChange={(e) => setSharedPublishAck(e.target.checked)}
+                  className="mt-0.5"
+                />
+                Je comprends que mes accès seront utilisés par tous les abonnés.
+              </label>
+            </div>
+          )}
+
+          {stepError && <p className="text-sm text-destructive">{stepError}</p>}
         </div>
       )}
 
-      {step === 5 && (
+      {step === 3 && (
         <div>
-          <h2 className="font-display text-xl font-bold text-ink">Test (Playground)</h2>
+          <h2 className="font-display text-xl font-bold text-ink">Tester</h2>
           <p className="mt-2 text-sm text-ink-soft">
             Visualisez l&apos;arborescence, configurez les validations humaines, puis lancez une démo complète.
           </p>
@@ -1224,14 +904,7 @@ export function CreateWizard({ categories }: Props) {
               onChange={(key, value) =>
                 setTestInputs((prev) => ({ ...prev, [key]: value }))
               }
-              requiredConnectors={dedupeConnectors(
-                Array.from(
-                  new Set([
-                    ...form.requiredConnectors,
-                    ...connectorsForSteps(form.agentSteps),
-                  ])
-                )
-              )}
+              requiredConnectors={dedupeConnectors(form.requiredConnectors)}
               provisioningMode={form.provisioningMode}
             />
           )}
@@ -1283,21 +956,6 @@ export function CreateWizard({ categories }: Props) {
               </pre>
             </div>
           )}
-        </div>
-      )}
-
-      {step === 6 && (
-        <div>
-          <h2 className="font-display text-xl font-bold text-ink">Publication</h2>
-          <p className="mt-2 text-sm text-ink-soft">
-            Votre contenu sera soumis à validation avant publication.
-          </p>
-          <dl className="mt-4 space-y-2 text-sm">
-            <div><dt className="text-ink-faint">Titre</dt><dd className="font-medium">{form.title}</dd></div>
-            <div><dt className="text-ink-faint">Type</dt><dd className="font-medium capitalize">{form.type}</dd></div>
-            <div><dt className="text-ink-faint">Tarif</dt><dd className="font-medium">{form.pricingMode}</dd></div>
-            <div><dt className="text-ink-faint">Étapes</dt><dd className="font-medium">{buildCurrentManifest().steps.length}</dd></div>
-          </dl>
         </div>
       )}
 

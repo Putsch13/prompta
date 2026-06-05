@@ -46,37 +46,40 @@ function scanSteps(steps: AgentStep[], stepOffset = 0): CredentialLeakIssue[] {
       issues.push(...scanText(step.source, idx));
     }
     if (step.type === "action") {
+      const allowLiterals = step.sharedEnv === true;
       for (const [key, value] of Object.entries(step.params ?? {})) {
         const required = getRequiredActionParams(step.connector, step.action);
         if (!isBinding(value) && !isResourcePlaceholder(value)) {
-          if (required.includes(key) && (key === "to" || key === "from")) {
-            issues.push({
-              code: "literal_required_param",
-              message: `Étape ${idx + 1} : le paramètre « ${key} » doit être un binding ou {{resource:…}}, pas une valeur en dur.`,
-              stepIndex: idx,
-            });
-          } else if (required.includes(key) && !step.paramMeta?.[key]?.shared) {
-            issues.push({
-              code: "literal_required_param",
-              message: `Étape ${idx + 1} : le paramètre « ${key} » doit être un binding {{variable}} ou une ressource, pas une valeur en dur.`,
-              stepIndex: idx,
-            });
+          if (!allowLiterals) {
+            if (required.includes(key) && (key === "to" || key === "from")) {
+              issues.push({
+                code: "literal_required_param",
+                message: `Étape ${idx + 1} : le paramètre « ${key} » doit être un binding ou {{resource:…}}, pas une valeur en dur.`,
+                stepIndex: idx,
+              });
+            } else if (required.includes(key) && !step.paramMeta?.[key]?.shared) {
+              issues.push({
+                code: "literal_required_param",
+                message: `Étape ${idx + 1} : le paramètre « ${key} » doit être un binding {{variable}} ou une ressource, pas une valeur en dur.`,
+                stepIndex: idx,
+              });
+            }
+            if (EMAIL_RE.test(value)) {
+              issues.push({
+                code: "literal_email_in_param",
+                message: `Étape ${idx + 1} : email en dur dans « ${key} » — utilisez {{variable}} ou {{resource:…}}.`,
+                stepIndex: idx,
+              });
+            }
+            if (PHONE_RE.test(value)) {
+              issues.push({
+                code: "literal_phone_in_param",
+                message: `Étape ${idx + 1} : téléphone en dur dans « ${key} » — utilisez {{variable}}.`,
+                stepIndex: idx,
+              });
+            }
           }
           issues.push(...scanText(value, idx));
-          if (EMAIL_RE.test(value)) {
-            issues.push({
-              code: "literal_email_in_param",
-              message: `Étape ${idx + 1} : email en dur dans « ${key} » — utilisez {{variable}} ou {{resource:…}}.`,
-              stepIndex: idx,
-            });
-          }
-          if (PHONE_RE.test(value)) {
-            issues.push({
-              code: "literal_phone_in_param",
-              message: `Étape ${idx + 1} : téléphone en dur dans « ${key} » — utilisez {{variable}}.`,
-              stepIndex: idx,
-            });
-          }
         }
       }
     }
@@ -116,6 +119,9 @@ export function stripBuilderResources(manifest: AgentManifest): AgentManifest {
         };
       }
       if (step.type !== "action") return step;
+      if (step.sharedEnv) {
+        return step;
+      }
       const params = { ...(step.params ?? {}) };
       const paramMeta = { ...(step.paramMeta ?? {}) };
       for (const [key, meta] of Object.entries(paramMeta)) {
@@ -150,7 +156,11 @@ export function stripManifestForPublish(manifest: AgentManifest): AgentManifest 
       }
     }
     if (step.type === "action") {
-      // paramMeta est interne au builder — retiré du manifeste publié
+      if (step.sharedEnv) {
+        const { paramMeta: _m, ...rest } = step;
+        void _m;
+        return rest;
+      }
       return { type: "action" as const, connector: step.connector, action: step.action, params: cleanParams, outputKey: step.outputKey };
     }
     return { ...step, params: cleanParams };

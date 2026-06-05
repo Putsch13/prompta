@@ -4,10 +4,13 @@ import { useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { getBuilderModels } from "@/lib/catalogs";
-import { getConnectorAction } from "@/lib/connectors/registry";
+import { getConnectorAction, CONNECTORS } from "@/lib/connectors/registry";
 import { ResourcePicker } from "@/components/builder/canvas/ResourcePicker";
-import { defaultScopeForInput } from "@/lib/connectors/param-bindings";
-import type { ParamScope } from "@/lib/connectors/types";
+import { ConnectionStatusRow } from "@/components/builder/canvas/ConnectionStatusRow";
+import {
+  isResourcePlaceholder,
+  resourcePlaceholder,
+} from "@/lib/connectors/param-bindings";
 import {
   addNode,
   createDefaultNode,
@@ -179,35 +182,53 @@ export function NodeInspector({
         )}
 
         {node.kind === "action" && (
-          <div className="space-y-2">
-            <p className="text-[10px] text-ink-faint">
-              Connexion OAuth = « Vos accès » (hors manifeste). Ici : bindings de contenu uniquement.
-            </p>
+          <div className="space-y-3">
             <div>
               <label className="text-xs text-ink-soft">Connecteur</label>
-              <input
+              <select
                 value={node.connectorId ?? ""}
-                onChange={(e) => patch({ connectorId: e.target.value })}
-                placeholder="ex. gmail, slack, linkedin"
-                className="mt-1 h-9 w-full rounded-lg border border-line px-2 font-mono text-sm"
-              />
+                onChange={(e) =>
+                  patch({ connectorId: e.target.value, actionSlug: undefined, params: {} })
+                }
+                className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-sm"
+              >
+                <option value="">— Choisir —</option>
+                {CONNECTORS.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              {node.connectorId && (
+                <div className="mt-1">
+                  <ConnectionStatusRow connectorId={node.connectorId} />
+                </div>
+              )}
             </div>
-            <div>
-              <label className="text-xs text-ink-soft">Action</label>
-              <input
-                value={node.actionSlug ?? ""}
-                onChange={(e) => patch({ actionSlug: e.target.value })}
-                placeholder="ex. gmail.send, slack.send"
-                className="mt-1 h-9 w-full rounded-lg border border-line px-2 font-mono text-sm"
-              />
-            </div>
+            {node.connectorId && (
+              <div>
+                <label className="text-xs text-ink-soft">Action</label>
+                <select
+                  value={node.actionSlug ?? ""}
+                  onChange={(e) => patch({ actionSlug: e.target.value, params: {} })}
+                  className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-sm"
+                >
+                  <option value="">— Choisir —</option>
+                  {(CONNECTORS.find((c) => c.id === node.connectorId)?.actions ?? []).map(
+                    (a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.label}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </div>
+            )}
             {currentNode.connectorId && currentNode.actionSlug && (
               <div className="space-y-3 border-t border-line pt-2">
                 <p className="text-xs font-medium text-ink-soft">Paramètres</p>
                 {(getConnectorAction(currentNode.connectorId, currentNode.actionSlug)?.inputs ?? []).map(
                   (input) => {
-                    const meta = currentNode.paramMeta?.[input.key];
-                    const scope: ParamScope = meta?.scope ?? defaultScopeForInput(input);
                     const isResource =
                       input.kind === "resource" ||
                       input.kind === "identity" ||
@@ -217,28 +238,82 @@ export function NodeInspector({
                       const depValue = input.dependsOn
                         ? currentNode.params?.[input.dependsOn]
                         : undefined;
+                      const parentPinned = input.dependsOn
+                        ? currentNode.pinnedResources?.[input.dependsOn]
+                        : true;
+                      const pinned =
+                        currentNode.pinnedResources?.[input.key] ??
+                        (!!currentNode.params?.[input.key] &&
+                          !isResourcePlaceholder(currentNode.params[input.key] ?? ""));
                       return (
-                        <ResourcePicker
-                          key={input.key}
-                          connectorId={currentNode.connectorId!}
-                          resourceType={input.resourceType}
-                          label={`${input.label}${input.required ? " *" : ""}`}
-                          value={currentNode.params?.[input.key] ?? ""}
-                          scope={scope}
-                          dependsOnValue={depValue}
-                          onChange={(val, newScope) => {
-                            patch({
-                              params: { ...(currentNode.params ?? {}), [input.key]: val },
-                              paramMeta: {
-                                ...(currentNode.paramMeta ?? {}),
-                                [input.key]: {
-                                  scope: newScope,
-                                  resourceType: input.resourceType,
-                                },
-                              },
-                            });
-                          }}
-                        />
+                        <div key={input.key} className="space-y-1">
+                          <label className="flex items-center gap-2 text-[10px] text-ink-soft">
+                            <input
+                              type="checkbox"
+                              checked={pinned}
+                              disabled={!!input.dependsOn && !parentPinned}
+                              onChange={(e) => {
+                                const on = e.target.checked;
+                                const pinnedResources = {
+                                  ...(currentNode.pinnedResources ?? {}),
+                                  [input.key]: on,
+                                };
+                                if (!on) {
+                                  patch({
+                                    pinnedResources,
+                                    params: {
+                                      ...(currentNode.params ?? {}),
+                                      [input.key]: resourcePlaceholder(input.resourceType!),
+                                    },
+                                    paramMeta: {
+                                      ...(currentNode.paramMeta ?? {}),
+                                      [input.key]: {
+                                        scope: "end_user",
+                                        resourceType: input.resourceType,
+                                        shared: currentNode.sharedEnv ?? false,
+                                      },
+                                    },
+                                  });
+                                } else {
+                                  patch({
+                                    pinnedResources,
+                                    params: { ...(currentNode.params ?? {}), [input.key]: "" },
+                                  });
+                                }
+                              }}
+                            />
+                            Utiliser une ressource précise — {input.label}
+                          </label>
+                          {pinned && (
+                            <ResourcePicker
+                              connectorId={currentNode.connectorId!}
+                              resourceType={input.resourceType}
+                              label={input.label}
+                              value={currentNode.params?.[input.key] ?? ""}
+                              scope="builder_test"
+                              pinOnly
+                              dependsOnValue={depValue}
+                              onChange={(val) => {
+                                patch({
+                                  params: { ...(currentNode.params ?? {}), [input.key]: val },
+                                  paramMeta: {
+                                    ...(currentNode.paramMeta ?? {}),
+                                    [input.key]: {
+                                      scope: "builder_test",
+                                      resourceType: input.resourceType,
+                                      shared: currentNode.sharedEnv ?? false,
+                                    },
+                                  },
+                                });
+                              }}
+                            />
+                          )}
+                          {!pinned && (
+                            <p className="text-[10px] text-ink-faint">
+                              Le client choisira : {resourcePlaceholder(input.resourceType)}
+                            </p>
+                          )}
+                        </div>
                       );
                     }
 
@@ -249,50 +324,52 @@ export function NodeInspector({
                           {input.required ? " *" : ""}
                           {input.kind === "input" ? " (variable)" : ""}
                         </label>
-                        <div className="mt-0.5 flex flex-wrap gap-1">
-                          {envFields.map((f) => (
-                            <button
-                              key={f.key}
-                              type="button"
-                              onClick={() =>
-                                patch({
-                                  params: {
-                                    ...(currentNode.params ?? {}),
-                                    [input.key]: `{{${f.key}}}`,
-                                  },
-                                  paramMeta: {
-                                    ...(currentNode.paramMeta ?? {}),
-                                    [input.key]: { scope: "dynamic" },
-                                  },
-                                })
-                              }
-                              className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
-                            >
-                              {f.key}
-                            </button>
-                          ))}
-                          {priorOutputs.map((k) => (
-                            <button
-                              key={k}
-                              type="button"
-                              onClick={() =>
-                                patch({
-                                  params: {
-                                    ...(currentNode.params ?? {}),
-                                    [input.key]: `{{${k}}}`,
-                                  },
-                                  paramMeta: {
-                                    ...(currentNode.paramMeta ?? {}),
-                                    [input.key]: { scope: "dynamic" },
-                                  },
-                                })
-                              }
-                              className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
-                            >
-                              {k}
-                            </button>
-                          ))}
-                        </div>
+                        {input.kind !== "static" && (
+                          <div className="mt-0.5 flex flex-wrap gap-1">
+                            {envFields.map((f) => (
+                              <button
+                                key={f.key}
+                                type="button"
+                                onClick={() =>
+                                  patch({
+                                    params: {
+                                      ...(currentNode.params ?? {}),
+                                      [input.key]: `{{${f.key}}}`,
+                                    },
+                                    paramMeta: {
+                                      ...(currentNode.paramMeta ?? {}),
+                                      [input.key]: { scope: "dynamic" },
+                                    },
+                                  })
+                                }
+                                className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
+                              >
+                                {f.key}
+                              </button>
+                            ))}
+                            {priorOutputs.map((k) => (
+                              <button
+                                key={k}
+                                type="button"
+                                onClick={() =>
+                                  patch({
+                                    params: {
+                                      ...(currentNode.params ?? {}),
+                                      [input.key]: `{{${k}}}`,
+                                    },
+                                    paramMeta: {
+                                      ...(currentNode.paramMeta ?? {}),
+                                      [input.key]: { scope: "dynamic" },
+                                    },
+                                  })
+                                }
+                                className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
+                              >
+                                {k}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <input
                           value={currentNode.params?.[input.key] ?? ""}
                           onChange={(e) =>
@@ -300,11 +377,15 @@ export function NodeInspector({
                               params: { ...(currentNode.params ?? {}), [input.key]: e.target.value },
                               paramMeta: {
                                 ...(currentNode.paramMeta ?? {}),
-                                [input.key]: { scope: "dynamic" },
+                                [input.key]: {
+                                  scope: input.kind === "static" ? "end_user" : "dynamic",
+                                },
                               },
                             })
                           }
-                          placeholder={`{{${input.key}}}`}
+                          placeholder={
+                            input.kind === "static" ? input.label : `{{${input.key}}}`
+                          }
                           className="mt-1 h-8 w-full rounded border border-line px-2 font-mono text-xs"
                         />
                       </div>
@@ -313,6 +394,56 @@ export function NodeInspector({
                 )}
               </div>
             )}
+
+            <div className="space-y-2 border-t border-line pt-3">
+              <p className="text-[10px] font-medium text-ink-soft">Accès pour les abonnés</p>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const paramMeta = { ...(currentNode.paramMeta ?? {}) };
+                    for (const key of Object.keys(currentNode.params ?? {})) {
+                      paramMeta[key] = {
+                        ...paramMeta[key],
+                        scope: paramMeta[key]?.scope ?? "end_user",
+                        shared: false,
+                      };
+                    }
+                    patch({ sharedEnv: false, paramMeta });
+                  }}
+                  className={`rounded px-2 py-1 text-[10px] ${
+                    !currentNode.sharedEnv ? "bg-accent text-white" : "bg-card2 text-ink-soft"
+                  }`}
+                >
+                  👤 Env client
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const paramMeta = { ...(currentNode.paramMeta ?? {}) };
+                    for (const key of Object.keys(currentNode.params ?? {})) {
+                      paramMeta[key] = {
+                        ...paramMeta[key],
+                        scope: paramMeta[key]?.scope ?? "builder_test",
+                        shared: true,
+                      };
+                    }
+                    patch({ sharedEnv: true, paramMeta });
+                  }}
+                  className={`rounded px-2 py-1 text-[10px] ${
+                    currentNode.sharedEnv ? "bg-violet-600 text-white" : "bg-card2 text-ink-soft"
+                  }`}
+                >
+                  🌐 Env partagée
+                </button>
+              </div>
+              {currentNode.sharedEnv && (
+                <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-900">
+                  Vos accès seront utilisés par <strong>tous</strong> les abonnés (usage et coût
+                  à votre charge).
+                </p>
+              )}
+            </div>
           </div>
         )}
 

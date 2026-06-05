@@ -45,7 +45,7 @@ for (const fixture of loadFixtures()) {
     if (fixture.expectErrorCodes?.length) {
       const codes = new Set(issues.filter((i) => i.severity === "error").map((i) => i.code));
       for (const expected of fixture.expectErrorCodes) {
-        assert.ok(codes.has(expected), `${fixture.id}: code manquant ${expected}, got ${[...codes].join(", ")}`);
+        assert.ok(codes.has(expected), `${fixture.id}: code manquant ${expected}, got ${Array.from(codes).join(", ")}`);
       }
     }
   });

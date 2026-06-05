@@ -1,6 +1,7 @@
 import type { AgentManifest } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
+import { runnerRequiredConnectors } from "@/lib/agent/run-connectors";
 
 export interface PreflightIssue {
   code: "missing_key" | "missing_connector";
@@ -12,7 +13,7 @@ export async function validateAgentPreflight(
   manifest: AgentManifest,
   apiKeys: Record<string, string>,
   userId: string,
-  options?: { dryRun?: boolean }
+  options?: { dryRun?: boolean; creatorId?: string }
 ): Promise<PreflightIssue[]> {
   const issues: PreflightIssue[] = [];
   const dryRun = options?.dryRun ?? false;
@@ -44,15 +45,17 @@ export async function validateAgentPreflight(
     }
   }
 
-  if (!dryRun && manifest.connectors.length > 0) {
+  if (!dryRun) {
     const { listUserConnections } = await import("@/lib/connections");
-    const { dedupeConnectors, connectionMatchesConnector } = await import(
-      "@/lib/connectors/resolve-id"
-    );
+    const { connectionMatchesConnector } = await import("@/lib/connectors/resolve-id");
     const connections = await listUserConnections(userId);
     const connected = connections.filter((c) => c.status === "connected");
+    const requiredConnectors = runnerRequiredConnectors(manifest, {
+      userId,
+      creatorId: options?.creatorId,
+    });
 
-    for (const connectorId of dedupeConnectors(manifest.connectors)) {
+    for (const connectorId of requiredConnectors) {
       const ok = connected.some((c) => connectionMatchesConnector(c.connectorId, connectorId));
       if (!ok) {
         issues.push({

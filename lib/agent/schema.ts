@@ -40,6 +40,8 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
         }),
       )
       .optional(),
+    /** Env partagée : accès/ressources du builder pour tous les abonnés */
+    sharedEnv: z.boolean().optional(),
     outputKey: z.string().optional(),
   }),
   z.object({

@@ -6,10 +6,12 @@ process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= "test-service-role-key";
 
 const baseManifest = (steps: AgentManifest["steps"]): AgentManifest => ({
-  version: "1",
-  inputs: [{ key: "nom", label: "Nom", type: "text" }],
+  inputs: [{ key: "nom", label: "Nom", type: "text", required: true }],
   steps,
   connectors: [],
+  secrets: [],
+  tools: [],
+  outputs: ["result"],
   limits: {
     max_steps: 20,
     max_tokens: 50000,

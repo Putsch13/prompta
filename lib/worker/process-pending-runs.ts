@@ -130,6 +130,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
         result = await runAgent(parsed.manifest, {
           userId: claimed.user_id,
           listingId: claimed.listing_id ?? "",
+          creatorId: listing?.creator_id,
           inputs,
           apiKeys: billing.apiKeys,
           runId: claimed.id,

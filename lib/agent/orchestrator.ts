@@ -46,6 +46,8 @@ export interface StepTraceEntry {
 export interface OrchestratorContext {
   userId: string;
   listingId: string;
+  /** Créateur de l'agent — pour résoudre les étapes sharedEnv */
+  creatorId?: string;
   inputs: Record<string, string>;
   /** Valeurs choisies pour {{resource:…}} — clés « stepIndex:paramKey » */
   resources?: Record<string, string>;
@@ -321,7 +323,12 @@ async function executeStep(
     }
 
     if (step.type === "action") {
-      const conn = await getUserConnection(ctx.userId, step.connector);
+      const useCreatorEnv =
+        step.sharedEnv === true &&
+        ctx.creatorId &&
+        ctx.creatorId !== ctx.userId;
+      const connUserId = useCreatorEnv ? ctx.creatorId! : ctx.userId;
+      const conn = await getUserConnection(connUserId, step.connector);
       const params: Record<string, string> = {};
       for (const [k, v] of Object.entries(step.params)) {
         let raw = v;

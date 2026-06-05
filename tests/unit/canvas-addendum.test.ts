@@ -12,10 +12,23 @@ import type { GeneratedAgentPlan } from "../../lib/builder/generate-agent-plan";
 import {
   assertNoLeakedCredentials,
   stripManifestForPublish,
+  stripBuilderResources,
 } from "../../lib/builder/validate-manifest-for-publish";
 import type { AgentManifest } from "../../lib/agent/schema";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+const MIN_MANIFEST = {
+  tools: [] as string[],
+  limits: {
+    max_steps: 10,
+    max_tokens: 8000,
+    timeout_ms: 60000,
+    max_tool_calls: 5,
+    max_output_bytes: 51200,
+  },
+  outputs: ["result"],
+};
 
 test("normalizePlanVariableType — coerce types IA invalides", async () => {
   const {
@@ -178,6 +191,7 @@ test("assertNoLeakedCredentials — rejette clé OpenAI dans prompt", () => {
     inputs: [],
     secrets: ["openai"],
     connectors: [],
+    ...MIN_MANIFEST,
     steps: [
       {
         type: "llm",
@@ -195,6 +209,7 @@ test("assertNoLeakedCredentials — rejette email en dur dans param requis", () 
     inputs: [],
     secrets: [],
     connectors: ["gmail"],
+    ...MIN_MANIFEST,
     steps: [
       {
         type: "action",
@@ -207,9 +222,66 @@ test("assertNoLeakedCredentials — rejette email en dur dans param requis", () 
   assert.throws(() => assertNoLeakedCredentials(manifest));
 });
 
+test("stripBuilderResources — conserve étapes sharedEnv", () => {
+  const manifest: AgentManifest = {
+    kind: "agent",
+    inputs: [],
+    secrets: [],
+    connectors: ["gmail"],
+    ...MIN_MANIFEST,
+    steps: [
+      {
+        type: "action",
+        connector: "gmail",
+        action: "gmail.send",
+        sharedEnv: true,
+        params: { to: "shared@test.com", subject: "Hi", body: "Body" },
+      },
+    ],
+  };
+  const stripped = stripBuilderResources(manifest);
+  const step = stripped.steps[0];
+  assert.equal(step.type, "action");
+  if (step.type === "action") {
+    assert.equal(step.params.to, "shared@test.com");
+    assert.equal(step.sharedEnv, true);
+  }
+  assert.doesNotThrow(() => assertNoLeakedCredentials(manifest));
+});
+
+test("runnerRequiredConnectors — ignore sharedEnv pour abonné", async () => {
+  const { runnerRequiredConnectors } = await import("../../lib/agent/run-connectors");
+  const manifest: AgentManifest = {
+    inputs: [],
+    secrets: [],
+    connectors: ["gmail", "slack"],
+    ...MIN_MANIFEST,
+    steps: [
+      {
+        type: "action",
+        connector: "gmail",
+        action: "gmail.send",
+        sharedEnv: true,
+        params: { to: "{{email}}", subject: "Hi", body: "Body" },
+      },
+      {
+        type: "action",
+        connector: "slack",
+        action: "slack.post",
+        params: { channel: "{{channel}}", text: "Hi" },
+      },
+    ],
+  };
+  const builder = runnerRequiredConnectors(manifest, { userId: "u1", creatorId: "u1" });
+  assert.deepEqual(builder.sort(), ["gmail", "slack"]);
+  const subscriber = runnerRequiredConnectors(manifest, { userId: "u2", creatorId: "u1" });
+  assert.deepEqual(subscriber, ["slack"]);
+});
+
 test("orchestrator — résout connexions et clés depuis le runner courant", () => {
   const src = readFileSync(join(process.cwd(), "lib/agent/orchestrator.ts"), "utf-8");
-  assert.ok(src.includes("getUserConnection(ctx.userId"));
+  assert.ok(src.includes("getUserConnection(connUserId"));
+  assert.ok(src.includes("sharedEnv"));
   assert.ok(src.includes("ctx.apiKeys[provider]"));
 });
 
@@ -219,6 +291,7 @@ test("stripManifestForPublish — conserve bindings uniquement", () => {
     inputs: [{ key: "email", label: "Email", type: "text", required: true }],
     secrets: ["openai"],
     connectors: ["gmail"],
+    ...MIN_MANIFEST,
     steps: [
       {
         type: "action",

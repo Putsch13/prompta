@@ -19,6 +19,8 @@ interface Props {
   onChange: (value: string, scope: ParamScope) => void;
   dependsOnValue?: string;
   label?: string;
+  /** Masque le switch de portée — sélection builder uniquement */
+  pinOnly?: boolean;
 }
 
 const SCOPE_OPTIONS: { id: ParamScope; label: string; hint: string }[] = [
@@ -35,14 +37,17 @@ export function ResourcePicker({
   onChange,
   dependsOnValue,
   label,
+  pinOnly = false,
 }: Props) {
   const [items, setItems] = useState<ResourceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [needsConnection, setNeedsConnection] = useState(false);
   const [query, setQuery] = useState("");
 
+  const effectiveScope: ParamScope = pinOnly ? "builder_test" : scope;
+
   const load = useCallback(async () => {
-    if (scope !== "builder_test") return;
+    if (effectiveScope !== "builder_test") return;
     setLoading(true);
     setNeedsConnection(false);
     try {
@@ -60,21 +65,22 @@ export function ResourcePicker({
     } finally {
       setLoading(false);
     }
-  }, [connectorId, resourceType, dependsOnValue, query, scope]);
+  }, [connectorId, resourceType, dependsOnValue, query, effectiveScope]);
 
   useEffect(() => {
-    if (scope === "builder_test") load();
-  }, [scope, load]);
+    if (effectiveScope === "builder_test") load();
+  }, [effectiveScope, load]);
 
   useEffect(() => {
-    if (scope === "end_user" && !value.startsWith("{{resource:")) {
+    if (!pinOnly && scope === "end_user" && !value.startsWith("{{resource:")) {
       onChange(resourcePlaceholder(resourceType), "end_user");
     }
-  }, [scope, resourceType, value, onChange]);
+  }, [scope, resourceType, value, onChange, pinOnly]);
 
   return (
     <div className="space-y-2 rounded-lg border border-line bg-card2 p-2">
       {label && <p className="text-[10px] font-medium text-ink-soft">{label}</p>}
+      {!pinOnly && (
       <div className="flex flex-wrap gap-1">
         {SCOPE_OPTIONS.map((opt) => (
           <button
@@ -98,8 +104,9 @@ export function ResourcePicker({
           </button>
         ))}
       </div>
+      )}
 
-      {scope === "builder_test" && (
+      {(pinOnly || scope === "builder_test") && (
         <>
           {needsConnection ? (
             <a
@@ -138,13 +145,13 @@ export function ResourcePicker({
         </>
       )}
 
-      {scope === "end_user" && (
+      {!pinOnly && scope === "end_user" && (
         <p className="text-[10px] text-ink-faint">
           L&apos;abonné choisira dans son compte : {resourcePlaceholder(resourceType)}
         </p>
       )}
 
-      {scope === "dynamic" && (
+      {!pinOnly && scope === "dynamic" && (
         <input
           value={value}
           onChange={(e) => onChange(e.target.value, "dynamic")}

@@ -35,6 +35,7 @@ interface Props {
   readOnly?: boolean;
   loading?: boolean;
   validationIssues?: { nodeId?: string; level: string; message: string }[];
+  disconnectedConnectors?: string[];
 }
 
 const NODE_W = 176;
@@ -74,6 +75,7 @@ function NodeCard({
   highlighted,
   readOnly,
   hasError,
+  disconnected,
   onSelect,
   onMoveStart,
   staggerIndex,
@@ -83,6 +85,7 @@ function NodeCard({
   highlighted: boolean;
   readOnly: boolean;
   hasError: boolean;
+  disconnected?: boolean;
   onSelect: () => void;
   onMoveStart?: (e: React.PointerEvent) => void;
   staggerIndex?: number;
@@ -149,6 +152,21 @@ function NodeCard({
         </div>
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">
+        {disconnected && (
+          <span className="rounded bg-amber-50 px-1 py-0.5 text-[9px] font-medium text-amber-700">
+            ⚠️ non connecté
+          </span>
+        )}
+        {node.sharedEnv && (
+          <span className="rounded bg-violet-50 px-1 py-0.5 text-[9px] font-medium text-violet-700">
+            🌐 partagé
+          </span>
+        )}
+        {node.kind === "action" && !node.sharedEnv && node.connectorId && (
+          <span className="rounded bg-blue-50 px-1 py-0.5 text-[9px] font-medium text-blue-700">
+            👤 client
+          </span>
+        )}
         {node.requiresApproval && (
           <span className="rounded bg-amber-50 px-1 py-0.5 text-[9px] font-medium text-amber-700">
             approbation
@@ -173,6 +191,7 @@ export function AgentCanvas({
   readOnly = false,
   loading = false,
   validationIssues = [],
+  disconnectedConnectors = [],
 }: Props) {
   const isMobile = useIsMobile();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -389,6 +408,11 @@ export function AgentCanvas({
               highlighted={highlightedIds.includes(node.id)}
               readOnly={readOnly || !onMoveNode}
               hasError={errorNodeIds.has(node.id)}
+              disconnected={
+                node.kind === "action" &&
+                !!node.connectorId &&
+                disconnectedConnectors.includes(node.connectorId)
+              }
               staggerIndex={loading ? i : undefined}
               onSelect={() => onSelect(node.id)}
               onMoveStart={
