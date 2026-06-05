@@ -17,6 +17,37 @@ import type { AgentManifest } from "../../lib/agent/schema";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+test("normalizePlanVariableType — coerce types IA invalides", async () => {
+  const { normalizePlanVariableType, parseGeneratedAgentPlan } = await import(
+    "../../lib/builder/generate-agent-plan"
+  );
+  assert.equal(normalizePlanVariableType("textarea"), "text");
+  assert.equal(normalizePlanVariableType("string"), "text");
+  assert.equal(normalizePlanVariableType("email"), "email");
+
+  const plan = parseGeneratedAgentPlan({
+    kind: "agent",
+    title: "T",
+    description: "D",
+    objective: "O",
+    variables: [
+      { key: "a", label: "A", type: "textarea", required: true },
+      { key: "b", label: "B", type: "string", required: true },
+    ],
+    steps: [
+      {
+        id: "s1",
+        type: "llm",
+        name: "S",
+        description: "x",
+        outputKey: "out",
+      },
+    ],
+  });
+  assert.equal(plan.variables[0].type, "text");
+  assert.equal(plan.variables[1].type, "text");
+});
+
 test("isBinding — détecte les bindings valides", () => {
   assert.ok(isBinding("{{destinataire_email}}"));
   assert.ok(isBinding("  {{step_analyze_output}}  "));

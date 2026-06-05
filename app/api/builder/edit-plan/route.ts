@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getBuilderApiKey } from "@/lib/builder/api-key";
 import { editAgentPlan } from "@/lib/builder/edit-agent-plan";
-import { GeneratedAgentPlanSchema } from "@/lib/builder/generate-agent-plan";
+import { parseGeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +30,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const parsedPlan = GeneratedAgentPlanSchema.safeParse(plan);
-  if (!parsedPlan.success) {
+  let parsedPlan;
+  try {
+    parsedPlan = parseGeneratedAgentPlan(plan);
+  } catch {
     return NextResponse.json({ error: "Plan invalide." }, { status: 400 });
   }
 
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await editAgentPlan({
-      plan: parsedPlan.data,
+      plan: parsedPlan,
       instruction: instruction.trim(),
       apiKey: keyResult.apiKey,
       resolved: keyResult.resolved,

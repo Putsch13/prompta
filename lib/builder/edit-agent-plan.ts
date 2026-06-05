@@ -1,7 +1,7 @@
 import { callModel } from "@/lib/llm/gateway";
 import type { ResolvedModel } from "@/lib/llm/resolve-model";
 import {
-  GeneratedAgentPlanSchema,
+  parseGeneratedAgentPlan,
   type GeneratedAgentPlan,
 } from "@/lib/builder/generate-agent-plan";
 
@@ -76,7 +76,7 @@ Renvoie le plan JSON complet modifié.`;
   }
 
   const raw = JSON.parse(jsonMatch[0]);
-  const newPlan = GeneratedAgentPlanSchema.parse(raw);
+  const newPlan = parseGeneratedAgentPlan(raw);
   const changedIds = diffPlanIds(plan, newPlan);
   return { plan: newPlan, changedIds };
 }

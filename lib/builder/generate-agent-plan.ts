@@ -2,6 +2,64 @@ import { z } from "zod";
 import { callModel } from "@/lib/llm/gateway";
 import type { ResolvedModel } from "@/lib/llm/resolve-model";
 
+// ─── Normalisation types variables (IA renvoie souvent textarea/string/…) ───
+
+const ALLOWED_VAR_TYPES = ["text", "number", "boolean", "json", "file", "url", "email"] as const;
+export type PlanVariableType = (typeof ALLOWED_VAR_TYPES)[number];
+
+const VARIABLE_TYPE_ALIASES: Record<string, PlanVariableType> = {
+  string: "text",
+  textarea: "text",
+  texte: "text",
+  str: "text",
+  longtext: "text",
+  int: "number",
+  integer: "number",
+  float: "number",
+  numeric: "number",
+  bool: "boolean",
+  list: "json",
+  array: "json",
+  object: "json",
+  document: "file",
+  attachment: "file",
+  uri: "url",
+  link: "url",
+  mail: "email",
+  "e-mail": "email",
+  email_address: "email",
+};
+
+/** Normalise un type de variable IA → valeur acceptée par le schéma. */
+export function normalizePlanVariableType(raw: unknown): PlanVariableType {
+  if (typeof raw !== "string") return "text";
+  const lower = raw.toLowerCase().trim();
+  if ((ALLOWED_VAR_TYPES as readonly string[]).includes(lower)) {
+    return lower as PlanVariableType;
+  }
+  return VARIABLE_TYPE_ALIASES[lower] ?? "text";
+}
+
+/** Pré-traitement du JSON brut IA avant validation Zod. */
+export function coerceGeneratedPlanRaw(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const plan = { ...(raw as Record<string, unknown>) };
+
+  if (Array.isArray(plan.variables)) {
+    plan.variables = plan.variables.map((v) => {
+      if (!v || typeof v !== "object") return v;
+      const entry = v as Record<string, unknown>;
+      return {
+        ...entry,
+        type: normalizePlanVariableType(entry.type),
+        required: entry.required !== false,
+      };
+    });
+  }
+
+  return plan;
+}
+
 // ─── Schema du plan généré par IA ────────────────────────────────────────────
 
 export const GeneratedAgentPlanSchema = z.object({
@@ -12,8 +70,12 @@ export const GeneratedAgentPlanSchema = z.object({
   variables: z.array(z.object({
     key: z.string(),
     label: z.string(),
-    type: z.enum(["text", "number", "boolean", "json", "file", "url", "email"]).default("text"),
+    type: z.preprocess(
+      (val) => normalizePlanVariableType(val),
+      z.enum(["text", "number", "boolean", "json", "file", "url", "email"]),
+    ).default("text"),
     required: z.boolean().default(true),
+    help: z.string().optional(),
   })).default([]),
   requiredConnectors: z.array(z.object({
     connectorId: z.string(),
@@ -58,6 +120,10 @@ export const GeneratedAgentPlanSchema = z.object({
 });
 
 export type GeneratedAgentPlan = z.infer<typeof GeneratedAgentPlanSchema>;
+
+export function parseGeneratedAgentPlan(raw: unknown): GeneratedAgentPlan {
+  return GeneratedAgentPlanSchema.parse(coerceGeneratedPlanRaw(raw));
+}
 
 // ─── Catalogue d'actions compressé pour le prompt ────────────────────────────
 
@@ -107,6 +173,7 @@ Règles strictes :
 16. "entryStepId" = l'unique step sans prédécesseur (aucun autre step ne le liste dans "next").
 17. Si le step B référence {{outputKey_de_A}} dans son prompt ou inputMapping, alors A précède B (A doit apparaître dans la chaîne "next" menant à B).
 18. Tout step doit être atteignable depuis entryStepId. Aucun nœud orphelin.
+19. Chaque variable "type" doit être exactement : text | number | boolean | json | file | url | email (pas "string", "textarea", etc.).
 
 Catalogue d'actions disponibles :
 ${COMPOSIO_CATALOG_COMPRESSED}
@@ -192,6 +259,5 @@ Pour un cas parallèle (publication multi-réseaux), le step amont liste plusieu
   }
 
   const raw = JSON.parse(jsonMatch[0]);
-  const plan = GeneratedAgentPlanSchema.parse(raw);
-  return plan;
+  return parseGeneratedAgentPlan(raw);
 }
