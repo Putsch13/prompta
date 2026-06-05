@@ -63,15 +63,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Manifeste preview invalide" }, { status: 400 });
     }
     const { apiKeys } = await resolveAgentRunKeys(user.id, parsed.data, true, true);
+
+    let previewRunId: string | undefined;
+    if (fullDemo) {
+      const { data: previewRun } = await admin
+        .from("listing_agent_runs")
+        .insert({
+          user_id: user.id,
+          listing_id: listingId ?? null,
+          inputs,
+          status: "running",
+          dry_run: false,
+          started_at: new Date().toISOString(),
+          heartbeat_at: new Date().toISOString(),
+          claimed_by: "preview",
+        })
+        .select("id")
+        .single();
+      previewRunId = previewRun?.id;
+    }
+
     const result = await runAgent(parsed.data, {
       userId: user.id,
       listingId: listingId ?? "preview",
       inputs,
       apiKeys,
+      runId: previewRunId,
       dryRun: !fullDemo,
-      demoMode: true,
+      demoMode: !fullDemo,
     });
-    return NextResponse.json({ preview: true, ...result });
+
+    if (previewRunId) {
+      await admin
+        .from("listing_agent_runs")
+        .update({
+          status: result.status,
+          steps_completed: result.stepsCompleted,
+          output: result.output,
+          error_message: result.error ?? null,
+        })
+        .eq("id", previewRunId);
+    }
+
+    return NextResponse.json({ preview: true, runId: previewRunId, ...result });
   }
 
   if (!listingId || !versionId) {

@@ -5,7 +5,8 @@ import { Plus, Trash2, X } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { getBuilderModels } from "@/lib/catalogs";
 import { getConnectorAction, CONNECTORS } from "@/lib/connectors/registry";
-import { ResourcePicker } from "@/components/builder/canvas/ResourcePicker";
+import { ManualResourceInput, resolveResourceVisibility } from "@/components/builder/canvas/ManualResourceInput";
+import type { ResourceVisibility } from "@/components/builder/canvas/ManualResourceInput";
 import { ConnectionStatusRow } from "@/components/builder/canvas/ConnectionStatusRow";
 import {
   isResourcePlaceholder,
@@ -239,78 +240,77 @@ export function NodeInspector({
                         ? currentNode.params?.[input.dependsOn]
                         : undefined;
                       const parentPinned = input.dependsOn
-                        ? currentNode.pinnedResources?.[input.dependsOn]
+                        ? currentNode.pinnedResources?.[input.dependsOn] ??
+                          (!!depValue && !isResourcePlaceholder(depValue ?? ""))
                         : true;
                       const pinned =
                         currentNode.pinnedResources?.[input.key] ??
                         (!!currentNode.params?.[input.key] &&
                           !isResourcePlaceholder(currentNode.params[input.key] ?? ""));
+                      const meta = currentNode.paramMeta?.[input.key];
+                      const visibility = resolveResourceVisibility(
+                        pinned,
+                        currentNode.params?.[input.key] ?? "",
+                        meta,
+                      );
+
+                      const applyResource = (
+                        val: string,
+                        isPinned: boolean,
+                        vis: ResourceVisibility,
+                      ) => {
+                        const pinnedResources = {
+                          ...(currentNode.pinnedResources ?? {}),
+                          [input.key]: isPinned,
+                        };
+                        if (!isPinned || vis === "client") {
+                          patch({
+                            pinnedResources: { ...pinnedResources, [input.key]: false },
+                            params: {
+                              ...(currentNode.params ?? {}),
+                              [input.key]: resourcePlaceholder(input.resourceType!),
+                            },
+                            paramMeta: {
+                              ...(currentNode.paramMeta ?? {}),
+                              [input.key]: {
+                                scope: "end_user",
+                                resourceType: input.resourceType,
+                                shared: false,
+                              },
+                            },
+                          });
+                          return;
+                        }
+                        const shared = vis === "builder_shared";
+                        patch({
+                          pinnedResources,
+                          params: { ...(currentNode.params ?? {}), [input.key]: val },
+                          paramMeta: {
+                            ...(currentNode.paramMeta ?? {}),
+                            [input.key]: {
+                              scope: "builder_test",
+                              resourceType: input.resourceType,
+                              shared,
+                            },
+                          },
+                          ...(shared ? { sharedEnv: true } : {}),
+                        });
+                      };
+
                       return (
-                        <div key={input.key} className="space-y-1">
-                          <label className="flex items-center gap-2 text-[10px] text-ink-soft">
-                            <input
-                              type="checkbox"
-                              checked={pinned}
-                              disabled={!!input.dependsOn && !parentPinned}
-                              onChange={(e) => {
-                                const on = e.target.checked;
-                                const pinnedResources = {
-                                  ...(currentNode.pinnedResources ?? {}),
-                                  [input.key]: on,
-                                };
-                                if (!on) {
-                                  patch({
-                                    pinnedResources,
-                                    params: {
-                                      ...(currentNode.params ?? {}),
-                                      [input.key]: resourcePlaceholder(input.resourceType!),
-                                    },
-                                    paramMeta: {
-                                      ...(currentNode.paramMeta ?? {}),
-                                      [input.key]: {
-                                        scope: "end_user",
-                                        resourceType: input.resourceType,
-                                        shared: currentNode.sharedEnv ?? false,
-                                      },
-                                    },
-                                  });
-                                } else {
-                                  patch({
-                                    pinnedResources,
-                                    params: { ...(currentNode.params ?? {}), [input.key]: "" },
-                                  });
-                                }
-                              }}
-                            />
-                            Utiliser une ressource précise — {input.label}
-                          </label>
-                          {pinned && (
-                            <ResourcePicker
-                              connectorId={currentNode.connectorId!}
-                              resourceType={input.resourceType}
-                              label={input.label}
-                              value={currentNode.params?.[input.key] ?? ""}
-                              scope="builder_test"
-                              pinOnly
-                              dependsOnValue={depValue}
-                              onChange={(val) => {
-                                patch({
-                                  params: { ...(currentNode.params ?? {}), [input.key]: val },
-                                  paramMeta: {
-                                    ...(currentNode.paramMeta ?? {}),
-                                    [input.key]: {
-                                      scope: "builder_test",
-                                      resourceType: input.resourceType,
-                                      shared: currentNode.sharedEnv ?? false,
-                                    },
-                                  },
-                                });
-                              }}
-                            />
-                          )}
-                          {!pinned && (
-                            <p className="text-[10px] text-ink-faint">
-                              Le client choisira : {resourcePlaceholder(input.resourceType)}
+                        <div key={input.key}>
+                          <ManualResourceInput
+                            resourceType={input.resourceType}
+                            label={input.label}
+                            value={currentNode.params?.[input.key] ?? ""}
+                            pinned={pinned}
+                            visibility={visibility}
+                            disabled={!!input.dependsOn && !parentPinned}
+                            onChange={applyResource}
+                          />
+                          {input.dependsOn && !parentPinned && (
+                            <p className="mt-1 text-[10px] text-amber-700">
+                              Renseignez d&apos;abord {input.dependsOn}.
                             </p>
                           )}
                         </div>

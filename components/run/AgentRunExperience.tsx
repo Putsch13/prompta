@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AgentRunConsole } from "@/components/run/AgentRunConsole";
 import { ActionWorkspacePanel } from "@/components/run/ActionWorkspacePanel";
+import { HumanApprovalModal, type ApprovalDetails } from "@/components/run/HumanApprovalModal";
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 
 type RunStatus = string;
@@ -47,9 +48,11 @@ interface Props {
   pollWhileRunning?: boolean;
   finalOutput?: string;
   onClose?: () => void;
-  onApprove?: (approvalId: string) => Promise<void>;
-  onRetry?: () => void;
+  onApprove?: (approvalId: string, modifiedContent?: string) => Promise<void>;
+  onReject?: (approvalId: string) => Promise<void>;
   approvalId?: string | null;
+  approvalDetails?: ApprovalDetails | null;
+  onRetry?: () => void;
 }
 
 function groupKey(step: DisplayStep): string {
@@ -99,14 +102,18 @@ export function AgentRunExperience({
   finalOutput,
   onClose,
   onApprove,
+  onReject,
   onRetry,
   approvalId,
+  approvalDetails,
 }: Props) {
   const [view, setView] = useState<"live" | "workspace" | "deliverables">("live");
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
-  const [approving, setApproving] = useState(false);
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
   const [loadingDeliverables, setLoadingDeliverables] = useState(false);
+
+  const showApprovalModal =
+    status === "awaiting_approval" && Boolean(approvalId) && Boolean(onApprove);
 
   const displaySteps: DisplayStep[] = useMemo(
     () =>
@@ -119,7 +126,7 @@ export function AgentRunExperience({
         output: s.outputPreview ?? null,
         actionSlug: s.actionSlug ?? null,
       })),
-    [stepTrace]
+    [stepTrace],
   );
 
   const groups = useMemo(() => {
@@ -197,6 +204,22 @@ export function AgentRunExperience({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0b0f14] text-white">
+      <HumanApprovalModal
+        open={showApprovalModal}
+        approval={
+          approvalDetails ??
+          (approvalId
+            ? { id: approvalId, preview: "", label: "Validation humaine requise", stepIndex: stepsCompleted }
+            : null)
+        }
+        onApprove={async (id, content) => {
+          if (!onApprove) return;
+          await onApprove(id, content);
+        }}
+        onReject={async (id) => {
+          if (onReject) await onReject(id);
+        }}
+      />
       <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 sm:px-6">
         <div className="min-w-0">
           <p className="truncate font-display text-lg font-bold">{title}</p>
@@ -252,30 +275,6 @@ export function AgentRunExperience({
           )}
         </div>
       </header>
-
-      {status === "awaiting_approval" && approvalId && onApprove && (
-        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 sm:px-6">
-          <p className="text-sm font-medium text-amber-100">Validation humaine requise</p>
-          <p className="mt-1 text-xs text-amber-100/80">
-            L&apos;agent attend votre accord pour continuer.
-          </p>
-          <button
-            type="button"
-            disabled={approving}
-            onClick={async () => {
-              setApproving(true);
-              try {
-                await onApprove(approvalId);
-              } finally {
-                setApproving(false);
-              }
-            }}
-            className="mt-2 rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-amber-950 disabled:opacity-50"
-          >
-            {approving ? <Loader2 className="inline h-4 w-4 animate-spin" /> : "Approuver et continuer"}
-          </button>
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {view === "live" ? (

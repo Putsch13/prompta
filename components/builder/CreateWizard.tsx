@@ -14,6 +14,7 @@ import { deriveGraphEnv } from "@/lib/builder/derive-graph-env";
 import { deriveClientRequirements } from "@/lib/builder/client-requirements";
 import { ClientRequirementsPanel } from "@/components/builder/canvas/ClientRequirementsPanel";
 import { AgentRunExperience } from "@/components/run/AgentRunExperience";
+import type { ApprovalDetails } from "@/components/run/HumanApprovalModal";
 import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
 import { AgentCanvas } from "@/components/builder/canvas/AgentCanvas";
 import { NodeInspector } from "@/components/builder/canvas/NodeInspector";
@@ -84,7 +85,9 @@ export function CreateWizard({ categories }: Props) {
     stepsCompleted?: number;
     stepTrace?: StepTraceEntry[];
     runId?: string;
+    approvalId?: string;
   } | null>(null);
+  const [testApprovalDetails, setTestApprovalDetails] = useState<ApprovalDetails | null>(null);
   const [testInputs, setTestInputs] = useState<Record<string, string>>({});
   const [stepError, setStepError] = useState<string | null>(null);
   const [disconnectedConnectors, setDisconnectedConnectors] = useState<string[]>([]);
@@ -444,6 +447,91 @@ export function CreateWizard({ categories }: Props) {
     router.push("/dashboard");
   }
 
+  useEffect(() => {
+    if (testResult?.status !== "awaiting_approval" || !testResult.runId) {
+      setTestApprovalDetails(null);
+      return;
+    }
+    let cancelled = false;
+    void fetch(`/api/run/agent/${testResult.runId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data.approval) return;
+        setTestApprovalDetails({
+          id: data.approval.id,
+          label: data.approval.label,
+          preview: data.approval.preview,
+          stepIndex: data.approval.step_index,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [testResult?.status, testResult?.runId]);
+
+  async function pollTestRun(runId: string) {
+    for (let i = 0; i < 120; i++) {
+      await new Promise((r) => setTimeout(r, 800));
+      const res = await fetch(`/api/run/agent/${runId}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.status === "awaiting_approval") {
+        setTestResult((prev) => ({
+          ...(prev ?? { status: "awaiting_approval" }),
+          status: "awaiting_approval",
+          runId,
+          approvalId: data.approval_id,
+          stepsCompleted: data.steps_completed ?? prev?.stepsCompleted,
+        }));
+        return;
+      }
+      if (data.status === "completed" || data.status === "failed") {
+        setTestResult({
+          status: data.status,
+          runId,
+          output: data.output,
+          error: data.error_message,
+          stepsCompleted: data.steps_completed,
+        });
+        return;
+      }
+    }
+  }
+
+  async function handleTestApprove(approvalId: string, modifiedContent?: string) {
+    if (!testResult?.runId) return;
+    setTestRunning(true);
+    const res = await fetch(`/api/run/agent/${testResult.runId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvalId, decision: "approved", modifiedContent }),
+    });
+    if (!res.ok) {
+      setTestResult((prev) => ({ ...prev, status: "failed", error: "Approbation échouée" }));
+      setTestRunning(false);
+      return;
+    }
+    setTestApprovalDetails(null);
+    await pollTestRun(testResult.runId);
+    setTestRunning(false);
+  }
+
+  async function handleTestReject(approvalId: string) {
+    if (!testResult?.runId) return;
+    await fetch(`/api/run/agent/${testResult.runId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvalId, decision: "rejected" }),
+    });
+    setTestApprovalDetails(null);
+    setTestResult((prev) => ({
+      ...prev,
+      status: "failed",
+      error: "Action rejetée — test arrêté.",
+    }));
+  }
+
   async function runPreview() {
     if (!flowPreviewConfirmed && form.agentSteps.length > 0) {
       alert("Validez d'abord l'arborescence de l'agent.");
@@ -451,6 +539,7 @@ export function CreateWizard({ categories }: Props) {
     }
     setTestRunning(true);
     setTestResult(null);
+    setTestApprovalDetails(null);
     setShowTestImmersive(true);
     const manifest = buildCurrentManifest();
     try {
@@ -467,7 +556,15 @@ export function CreateWizard({ categories }: Props) {
       });
       const data = await res.json();
       if (res.ok) {
-        setTestResult(data);
+        setTestResult({
+          status: data.status,
+          output: data.output,
+          error: data.error,
+          stepsCompleted: data.stepsCompleted,
+          stepTrace: data.stepTrace,
+          runId: data.runId,
+          approvalId: data.approvalId,
+        });
       } else {
         setTestResult({ status: "failed", error: data.error || data.message });
       }
@@ -891,7 +988,7 @@ export function CreateWizard({ categories }: Props) {
               <span>
                 <span className="text-sm font-medium text-ink">Démo complète (exécution réelle)</span>
                 <span className="mt-0.5 block text-xs text-ink-soft">
-                  Appels réels aux connecteurs — sans simulation. Les validations humaines sont auto-approuvées dans le builder.
+                  Appels réels aux connecteurs — les validations humaines affichent un popup (non auto-approuvées).
                 </span>
               </span>
             </label>
@@ -913,12 +1010,17 @@ export function CreateWizard({ categories }: Props) {
             <AgentRunExperience
               title={form.title || "Test agent"}
               status={testRunning ? "running" : testResult?.status ?? null}
+              runId={testResult?.runId}
               stepsCompleted={testResult?.stepsCompleted ?? 0}
               totalSteps={previewSteps.length}
               stepTrace={testResult?.stepTrace}
               pollWhileRunning={testRunning}
               errorMessage={testResult?.error ?? null}
               finalOutput={testResult?.output?.result}
+              approvalId={testResult?.approvalId ?? null}
+              approvalDetails={testApprovalDetails}
+              onApprove={handleTestApprove}
+              onReject={handleTestReject}
               onClose={() => setShowTestImmersive(false)}
             />
           )}

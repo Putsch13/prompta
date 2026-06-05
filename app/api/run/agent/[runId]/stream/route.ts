@@ -63,17 +63,32 @@ export async function GET(_request: NextRequest, { params }: Params) {
             .order("step_index", { ascending: true });
 
           let approval_id: string | null = null;
+          let approval: {
+            id: string;
+            label?: string;
+            preview?: string;
+            step_index: number;
+          } | null = null;
           if (run.status === "awaiting_approval") {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data: approval } = await (admin as any)
+            const { data: pending } = await (admin as any)
               .from("agent_approvals")
-              .select("id")
+              .select("id, payload, step_index")
               .eq("run_id", params.runId)
               .eq("status", "pending")
               .order("created_at", { ascending: false })
               .limit(1)
               .maybeSingle();
-            approval_id = approval?.id ?? null;
+            if (pending) {
+              approval_id = pending.id;
+              const payload = (pending.payload ?? {}) as { label?: string; preview?: string };
+              approval = {
+                id: pending.id,
+                label: payload.label,
+                preview: payload.preview,
+                step_index: pending.step_index,
+              };
+            }
           }
 
           send("run", {
@@ -84,6 +99,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
             started_at: run.started_at,
             heartbeat_at: run.heartbeat_at,
             approval_id,
+            approval,
           });
 
           send("steps", { steps: steps ?? [] });

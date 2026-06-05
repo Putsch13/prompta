@@ -37,7 +37,8 @@ export async function createPendingApproval(params: {
 export async function decideApproval(
   approvalId: string,
   userId: string,
-  decision: "approved" | "rejected"
+  decision: "approved" | "rejected",
+  options?: { modifiedContent?: string },
 ): Promise<{ runId: string; stepIndex: number } | null> {
   const { data: approval } = await db()
     .from("agent_approvals")
@@ -55,16 +56,15 @@ export async function decideApproval(
 
   if (!run || run.user_id !== userId) return null;
 
-  await db()
-    .from("agent_approvals")
-    .update({
-      status: decision,
-      decided_at: new Date().toISOString(),
-      decided_by: userId,
-    })
-    .eq("id", approvalId);
-
   if (decision === "rejected") {
+    await db()
+      .from("agent_approvals")
+      .update({
+        status: "rejected",
+        decided_at: new Date().toISOString(),
+        decided_by: userId,
+      })
+      .eq("id", approvalId);
     await db()
       .from("listing_agent_runs")
       .update({ status: "failed", error_message: "Action rejetée par l'utilisateur" })
@@ -72,9 +72,48 @@ export async function decideApproval(
     return null;
   }
 
+  const payload = (approval.payload ?? {}) as { preview?: string; label?: string };
+  const approvedContent = options?.modifiedContent?.trim() || payload.preview || "";
+
+  const { data: runRow } = await db()
+    .from("listing_agent_runs")
+    .select("output, steps_completed")
+    .eq("id", approval.run_id)
+    .single();
+
+  const priorOutput =
+    runRow?.output && typeof runRow.output === "object"
+      ? (runRow.output as Record<string, string>)
+      : {};
+  const stepKey = `step_${approval.step_index}_output`;
+  const mergedOutput = {
+    ...priorOutput,
+    [stepKey]: approvedContent,
+    [`approval_${approval.step_index}`]: approvedContent,
+  };
+
+  await db()
+    .from("agent_approvals")
+    .update({
+      status: "approved",
+      decided_at: new Date().toISOString(),
+      decided_by: userId,
+      payload: {
+        ...payload,
+        approvedContent,
+      },
+    })
+    .eq("id", approvalId);
+
   await db()
     .from("listing_agent_runs")
-    .update({ status: "pending", resume_from_step: approval.step_index + 1 })
+    .update({
+      status: "pending",
+      resume_from_step: approval.step_index + 1,
+      steps_completed: approval.step_index + 1,
+      output: mergedOutput,
+      error_message: null,
+    })
     .eq("id", approval.run_id);
 
   return { runId: approval.run_id, stepIndex: approval.step_index };

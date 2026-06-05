@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Copy, Play, Check, AlertTriangle, Settings } from "lucide-react";
 import { UserSetupWizard } from "@/components/onboarding/UserSetupWizard";
 import { ConnectionsMasque } from "@/components/run/ConnectionsMasque";
+import type { ApprovalDetails } from "@/components/run/HumanApprovalModal";
 import { AgentRunExperience } from "@/components/run/AgentRunExperience";
 import { RunResourceFields } from "@/components/run/RunResourceFields";
 import type { RunResourceField } from "@/lib/connectors/extract-run-resources";
@@ -99,6 +100,7 @@ export function RunPanel({
   const [dryRun, setDryRun] = useState(false);
   const [stepTrace, setStepTrace] = useState<StepTraceEntry[]>([]);
   const [approvalId, setApprovalId] = useState<string | null>(null);
+  const [approvalDetails, setApprovalDetails] = useState<ApprovalDetails | null>(null);
   const [showImmersive, setShowImmersive] = useState(false);
 
   const varNames = promptBody
@@ -207,6 +209,14 @@ export function RunPanel({
           if (data.steps_completed != null) setStepsCompleted(data.steps_completed);
           if (data.status === "awaiting_approval" && data.approval_id) {
             setApprovalId(data.approval_id);
+            if (data.approval) {
+              setApprovalDetails({
+                id: data.approval.id,
+                label: data.approval.label,
+                preview: data.approval.preview,
+                stepIndex: data.approval.step_index,
+              });
+            }
             setRunning(false);
             return true;
           }
@@ -239,21 +249,44 @@ export function RunPanel({
     setRunning(false);
   }
 
-  async function handleApprove(approvalIdParam: string) {
+  async function handleApprove(approvalIdParam: string, modifiedContent?: string) {
     if (!runId) return;
     const res = await fetch(`/api/run/agent/${runId}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ approvalId: approvalIdParam, decision: "approved" }),
+      body: JSON.stringify({
+        approvalId: approvalIdParam,
+        decision: "approved",
+        modifiedContent,
+      }),
     });
     if (!res.ok) {
       setError("Approbation échouée");
       return;
     }
     setApprovalId(null);
+    setApprovalDetails(null);
     setRunning(true);
     setAgentStatus("running");
     await pollRunStatus(runId);
+  }
+
+  async function handleReject(approvalIdParam: string) {
+    if (!runId) return;
+    const res = await fetch(`/api/run/agent/${runId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvalId: approvalIdParam, decision: "rejected" }),
+    });
+    if (!res.ok) {
+      setError("Refus échoué");
+      return;
+    }
+    setApprovalId(null);
+    setApprovalDetails(null);
+    setRunning(false);
+    setAgentStatus("failed");
+    setError("Action rejetée — le run est arrêté.");
   }
 
   const [runMode, setRunMode] = useState<string | null>(null);
@@ -645,7 +678,9 @@ export function RunPanel({
               errorMessage={error}
               finalOutput={agentOutput}
               approvalId={approvalId}
+              approvalDetails={approvalDetails}
               onApprove={handleApprove}
+              onReject={handleReject}
               onRetry={() => void handleAgentRun()}
               onClose={() => setShowImmersive(false)}
             />

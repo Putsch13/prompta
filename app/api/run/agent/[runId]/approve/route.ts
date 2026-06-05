@@ -27,16 +27,25 @@ export async function POST(
   }
 
   const body = await request.json();
-  const { approvalId, decision } = body as {
+  const { approvalId, decision, modifiedContent } = body as {
     approvalId?: string;
     decision?: "approved" | "rejected";
+    modifiedContent?: string;
   };
 
   if (!approvalId || !decision) {
     return NextResponse.json({ error: "approvalId et decision requis" }, { status: 400 });
   }
 
-  const result = await decideApproval(approvalId, user.id, decision);
+  const result = await decideApproval(approvalId, user.id, decision, {
+    modifiedContent: decision === "approved" ? modifiedContent : undefined,
+  });
+  if (!result && decision === "approved") {
+    return NextResponse.json({ error: "Approbation introuvable ou déjà traitée" }, { status: 404 });
+  }
+  if (decision === "rejected") {
+    return NextResponse.json({ ok: true, rejected: true });
+  }
   if (!result || result.runId !== params.runId) {
     return NextResponse.json({ error: "Approbation introuvable ou déjà traitée" }, { status: 404 });
   }
