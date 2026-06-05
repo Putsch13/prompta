@@ -2,7 +2,8 @@ import type { AgentStep, BaseAgentStep } from "@/lib/agent/schema";
 import { AgentStepSchema } from "@/lib/agent/schema";
 import type { GeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
 import { validateAgentManifest, hasBlockingIssues } from "@/lib/builder/validate-agent";
-import { connectorsForSteps } from "@/lib/connectors/registry";
+import { connectorsForSteps, getConnectorAction } from "@/lib/connectors/registry";
+import { isBinding } from "@/lib/connectors/action-requirements";
 
 export const COL_W = 260;
 export const ROW_H = 130;
@@ -30,6 +31,7 @@ export interface PlanNode {
   outputKey: string;
   riskLevel: "low" | "medium" | "high";
   requiresApproval: boolean;
+  params?: Record<string, string>;
   x?: number;
   y?: number;
 }
@@ -89,13 +91,20 @@ function planStepToNode(
         model: defaultModel,
         prompt: step.description,
       };
-    case "action":
+    case "action": {
+      const params = step.inputMapping
+        ? Object.fromEntries(
+            Object.entries(step.inputMapping).map(([k, v]) => [k, String(v)]),
+          )
+        : undefined;
       return {
         ...base,
         kind: "action",
         connectorId: step.connectorId,
         actionSlug: step.actionSlug,
+        params,
       };
+    }
     case "tool": {
       const toolId =
         step.actionSlug === "web_search" ||
@@ -138,6 +147,7 @@ function nodeToPlanStep(node: PlanNode): GeneratedAgentPlan["steps"][number] {
     outputKey: node.outputKey,
     connectorId: node.connectorId,
     actionSlug: node.actionSlug ?? node.toolId,
+    inputMapping: node.params,
     riskLevel: node.riskLevel,
     requiresApproval: node.requiresApproval,
     next: undefined,
@@ -249,7 +259,7 @@ function nodeToAgentStep(node: PlanNode, defaultModel: string): AgentStep {
         type: "action",
         connector: node.connectorId ?? "",
         action: node.actionSlug ?? "",
-        params: {},
+        params: node.params ?? {},
         outputKey: node.outputKey,
       };
     case "tool":
@@ -592,6 +602,239 @@ export function moveNode(graph: PlanGraph, id: string, x: number, y: number): Pl
     ...graph,
     nodes: graph.nodes.map((n) => (n.id === id ? { ...n, x, y } : n)),
   };
+}
+
+function nodeTextFields(node: PlanNode): string[] {
+  const texts = [node.prompt, node.description, node.expression].filter(Boolean) as string[];
+  if (node.params) texts.push(...Object.values(node.params));
+  return texts;
+}
+
+const OUTPUT_REF_RE = /\{\{([\w.]+)\}\}/g;
+
+function referencedOutputKeys(node: PlanNode, knownKeys: Set<string>): Set<string> {
+  const refs = new Set<string>();
+  for (const text of nodeTextFields(node)) {
+    const re = new RegExp(OUTPUT_REF_RE.source, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const root = m[1].split(".")[0];
+      if (knownKeys.has(root)) refs.add(root);
+    }
+  }
+  return refs;
+}
+
+function pathExists(edges: PlanEdge[], from: string, to: string): boolean {
+  const queue = [from];
+  const seen = new Set<string>();
+  while (queue.length) {
+    const id = queue.shift()!;
+    if (id === to) return true;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const e of edges.filter((x) => x.source === id)) {
+      queue.push(e.target);
+    }
+  }
+  return false;
+}
+
+function reachableFrom(entryId: string, edges: PlanEdge[]): Set<string> {
+  const reachable = new Set<string>();
+  const stack = [entryId];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (reachable.has(id)) continue;
+    reachable.add(id);
+    for (const e of edges.filter((x) => x.source === id)) {
+      stack.push(e.target);
+    }
+  }
+  return reachable;
+}
+
+function findChainTail(entryId: string, edges: PlanEdge[], nodes: PlanNode[]): string {
+  let current = entryId;
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  for (;;) {
+    const outs = edges.filter((e) => e.source === current);
+    if (outs.length !== 1) break;
+    const next = outs[0].target;
+    if (!nodeIds.has(next)) break;
+    current = next;
+  }
+  return current;
+}
+
+function countIncoming(edges: PlanEdge[], nodes: PlanNode[]): Map<string, number> {
+  const incoming = new Map<string, number>();
+  for (const n of nodes) incoming.set(n.id, 0);
+  for (const e of edges) {
+    incoming.set(e.target, (incoming.get(e.target) ?? 0) + 1);
+  }
+  return incoming;
+}
+
+function autoBindActionParams(graph: PlanGraph): PlanGraph {
+  const variables = [...(graph.meta?.variables ?? [])];
+  const varKeys = new Set(variables.map((v) => v.key));
+
+  const nodes = graph.nodes.map((node) => {
+    if (node.kind !== "action" || !node.connectorId || !node.actionSlug) return node;
+    const action = getConnectorAction(node.connectorId, node.actionSlug);
+    if (!action) return node;
+
+    const params = { ...(node.params ?? {}) };
+    for (const input of action.inputs.filter((i) => i.required)) {
+      if (isBinding(params[input.key])) continue;
+      const varKey = `${node.connectorId}_${input.key}`.replace(/[^a-z0-9_]/gi, "_").toLowerCase();
+      if (!varKeys.has(varKey)) {
+        variables.push({
+          key: varKey,
+          label: input.label,
+          type: input.type === "textarea" ? "text" : "text",
+          required: true,
+        });
+        varKeys.add(varKey);
+      }
+      params[input.key] = `{{${varKey}}}`;
+    }
+    return { ...node, params };
+  });
+
+  return {
+    ...graph,
+    nodes,
+    meta: { ...graph.meta, variables },
+  };
+}
+
+/** Normalise le graphe : auto-bindings, dépendances de données, reconnexion orphelins. */
+export function normalizeGraph(graph: PlanGraph): PlanGraph {
+  const g = autoBindActionParams(graph);
+  const nodeIds = new Set(g.nodes.map((n) => n.id));
+  const outputKeyToNode = new Map(g.nodes.map((n) => [n.outputKey, n.id]));
+  const knownKeys = new Set(g.nodes.map((n) => n.outputKey));
+
+  let edges = g.edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+  const edgeKeys = new Set<string>();
+  edges = edges.filter((e) => {
+    const k = `${e.source}->${e.target}`;
+    if (edgeKeys.has(k)) return false;
+    edgeKeys.add(k);
+    return true;
+  });
+
+  for (const consumer of g.nodes) {
+    const refs = referencedOutputKeys(consumer, knownKeys);
+    for (const key of Array.from(refs)) {
+      const producerId = outputKeyToNode.get(key);
+      if (!producerId || producerId === consumer.id) continue;
+      if (!pathExists(edges, producerId, consumer.id)) {
+        edges.push({
+          id: edgeId(producerId, consumer.id),
+          source: producerId,
+          target: consumer.id,
+        });
+        edgeKeys.add(`${producerId}->${consumer.id}`);
+      }
+    }
+  }
+
+  let incoming = countIncoming(edges, g.nodes);
+  let entryCandidates = g.nodes.filter((n) => (incoming.get(n.id) ?? 0) === 0);
+  let entryId =
+    entryCandidates.length === 1
+      ? entryCandidates[0].id
+      : g.entryId && entryCandidates.some((c) => c.id === g.entryId)
+        ? g.entryId
+        : entryCandidates[0]?.id ?? g.nodes[0]?.id ?? "";
+
+  if (entryId) {
+    let reachable = reachableFrom(entryId, edges);
+    for (const n of g.nodes) {
+      if (reachable.has(n.id)) continue;
+      const refs = referencedOutputKeys(n, knownKeys);
+      let attached = false;
+      for (const key of Array.from(refs)) {
+        const prod = outputKeyToNode.get(key);
+        if (prod && prod !== n.id) {
+          const k = `${prod}->${n.id}`;
+          if (!edgeKeys.has(k)) {
+            edges.push({ id: edgeId(prod, n.id), source: prod, target: n.id });
+            edgeKeys.add(k);
+          }
+          attached = true;
+          break;
+        }
+      }
+      if (!attached) {
+        const tail = findChainTail(entryId, edges, g.nodes);
+        if (tail && tail !== n.id) {
+          const k = `${tail}->${n.id}`;
+          if (!edgeKeys.has(k)) {
+            edges.push({ id: edgeId(tail, n.id), source: tail, target: n.id });
+            edgeKeys.add(k);
+          }
+        }
+      }
+      reachable = reachableFrom(entryId, edges);
+    }
+  }
+
+  incoming = countIncoming(edges, g.nodes);
+  entryCandidates = g.nodes.filter((n) => (incoming.get(n.id) ?? 0) === 0);
+  if (entryCandidates.length === 1) {
+    entryId = entryCandidates[0].id;
+  } else if (entryCandidates.length > 1 && entryId) {
+    const ordered = topologicalSortByDeps(g.nodes, edges);
+    const first = ordered.find((id) => entryCandidates.some((c) => c.id === id));
+    if (first) entryId = first;
+  }
+
+  return { ...g, edges, entryId };
+}
+
+function topologicalSortByDeps(nodes: PlanNode[], edges: PlanEdge[]): string[] {
+  const ids = nodes.map((n) => n.id);
+  const knownKeys = new Set(nodes.map((n) => n.outputKey));
+  const keyToId = new Map(nodes.map((n) => [n.outputKey, n.id]));
+  const deps = new Map<string, Set<string>>();
+  for (const id of ids) deps.set(id, new Set());
+
+  for (const node of nodes) {
+    for (const key of Array.from(referencedOutputKeys(node, knownKeys))) {
+      const prod = keyToId.get(key);
+      if (prod && prod !== node.id) deps.get(node.id)!.add(prod);
+    }
+    for (const e of edges.filter((x) => x.target === node.id)) {
+      deps.get(node.id)!.add(e.source);
+    }
+  }
+
+  const sorted: string[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
+
+  function visit(id: string) {
+    if (visited.has(id)) return;
+    if (visiting.has(id)) return;
+    visiting.add(id);
+    for (const d of Array.from(deps.get(id) ?? [])) visit(d);
+    visiting.delete(id);
+    visited.add(id);
+    sorted.push(id);
+  }
+
+  for (const id of ids) visit(id);
+  return sorted;
+}
+
+export function graphHasRepairableIssues(graph: PlanGraph): boolean {
+  if (!graph.entryId) return false;
+  const reachable = reachableFrom(graph.entryId, graph.edges);
+  return graph.nodes.some((n) => !reachable.has(n.id));
 }
 
 export function createDefaultNode(

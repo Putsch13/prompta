@@ -8,74 +8,73 @@ import { sanitizeDeliverableFilename } from "../../lib/agent/deliverables";
 import { buildExecutionKey } from "../../lib/agent/idempotency";
 import type { AgentStep } from "../../lib/agent/schema";
 
-test("validateActionParams — action sans params bloquée", () => {
-  const issue = validateActionParams("gmail", "gmail.send", {}, "Étape 1 (Action)");
-  assert.ok(issue);
-  assert.equal(issue?.code, "action_no_params");
+test("validateActionParams — action sans params → warnings non bloquants", () => {
+  const issues = validateActionParams("gmail", "gmail.send", {}, "Étape 1 (Action)");
+  assert.ok(issues.length > 0);
+  assert.ok(issues.every((i) => i.severity === "warning"));
+  assert.ok(issues.some((i) => i.code === "action_param_unmapped"));
 });
 
-test("validateActionParams — Gmail sans to bloqué", () => {
-  const issue = validateActionParams(
+test("validateActionParams — Gmail sans to → warning", () => {
+  const issues = validateActionParams(
     "gmail",
     "gmail.send",
     { subject: "Hello", body: "World" },
     "Étape 1 (Action)",
   );
-  assert.ok(issue);
-  assert.equal(issue?.code, "action_missing_param");
-  assert.match(issue?.message ?? "", /to/i);
+  assert.ok(issues.some((i) => i.code === "action_param_unmapped"));
+  assert.match(issues.find((i) => i.key === "to")?.message ?? "", /to|Destinataire/i);
 });
 
-test("validateActionParams — Gmail complet OK", () => {
-  const issue = validateActionParams(
+test("validateActionParams — Gmail avec bindings OK", () => {
+  const issues = validateActionParams(
     "gmail",
     "gmail.send",
-    { to: "{{email}}", subject: "Hello", body: "World" },
+    { to: "{{email}}", subject: "{{subject}}", body: "{{body}}" },
     "Étape 1 (Action)",
   );
-  assert.equal(issue, null);
+  assert.equal(issues.length, 0);
 });
 
-test("validateAgentManifest — Gmail sans body bloqué", () => {
+test("validateAgentManifest — Gmail params vides ne bloque plus", () => {
   const steps: AgentStep[] = [
     {
       type: "action",
       connector: "gmail",
       action: "gmail.send",
-      params: { to: "{{email}}", subject: "Relance" },
+      params: {},
     },
   ];
   const issues = validateAgentManifest(steps, { connectors: ["gmail"] });
-  assert.ok(hasBlockingIssues(issues));
-  assert.ok(issues.some((i) => i.code === "action_missing_param"));
+  assert.ok(!hasBlockingIssues(issues));
+  assert.ok(issues.some((i) => i.code === "action_param_unmapped"));
 });
 
-test("validateAgentManifest — Slack sans channel bloqué", () => {
+test("validateAgentManifest — Slack sans channel → warning seulement", () => {
   const steps: AgentStep[] = [
     {
       type: "action",
       connector: "slack",
       action: "slack.send",
-      params: { text: "Hello" },
+      params: { text: "{{message}}" },
     },
   ];
   const issues = validateAgentManifest(steps, { connectors: ["slack"] });
-  assert.ok(hasBlockingIssues(issues));
-  assert.ok(issues.some((i) => i.code === "action_missing_param"));
+  assert.ok(!hasBlockingIssues(issues));
+  assert.ok(issues.some((i) => i.code === "action_param_unmapped"));
 });
 
-test("validateAgentManifest — Sheets sans spreadsheetId bloqué", () => {
+test("validateAgentManifest — Sheets sans spreadsheetId → warning", () => {
   const steps: AgentStep[] = [
     {
       type: "action",
       connector: "google_sheets",
       action: "sheets.append",
-      params: { range: "A1", values: "[]" },
+      params: { range: "{{range}}", values: "{{values}}" },
     },
   ];
   const issues = validateAgentManifest(steps, { connectors: ["google_sheets"] });
-  assert.ok(hasBlockingIssues(issues));
-  assert.ok(issues.some((i) => i.code === "action_missing_param"));
+  assert.ok(!hasBlockingIssues(issues));
 });
 
 test("isSubscriptionAccessActive — active reste actif", () => {

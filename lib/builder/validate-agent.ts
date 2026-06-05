@@ -94,16 +94,16 @@ export function validateAgentManifest(
         });
       }
 
-      const paramIssue = validateActionParams(
+      const paramIssues = validateActionParams(
         step.connector,
         step.action,
         step.params,
         `Étape ${i + 1} (Action)`,
       );
-      if (paramIssue) {
+      for (const paramIssue of paramIssues) {
         issues.push({
           stepIndex: i,
-          severity: "error",
+          severity: paramIssue.severity === "error" ? "error" : "warning",
           code: paramIssue.code,
           message: paramIssue.message,
         });

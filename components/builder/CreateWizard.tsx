@@ -20,8 +20,10 @@ import { PlanChat } from "@/components/builder/canvas/PlanChat";
 import {
   graphConnectors,
   graphToSteps,
+  graphHasRepairableIssues,
   layoutGraph,
   moveNode,
+  normalizeGraph,
   planToGraph,
   updateNode,
   validatePlanGraph,
@@ -206,7 +208,7 @@ export function CreateWizard({ categories }: Props) {
 
   function applyPlan(plan: GeneratedAgentPlan) {
     setGeneratedPlan(plan);
-    const graph = layoutGraph(planToGraph(plan, form.models[0]));
+    const graph = layoutGraph(normalizeGraph(planToGraph(plan, form.models[0])));
     commitPlanGraph(graph, false);
     graphHistoryRef.current = { past: [], future: [] };
 
@@ -251,6 +253,21 @@ export function CreateWizard({ categories }: Props) {
         const existing = new Set(prev.envFields.map((f) => f.key));
         setSuggestedVars(keys.filter((k) => !existing.has(k)));
         return prev;
+      });
+    }
+    if (planGraph.meta?.variables?.length) {
+      setForm((prev) => {
+        const existing = new Set(prev.envFields.map((f) => f.key));
+        const newFields = planGraph.meta!.variables!
+          .filter((v) => !existing.has(v.key))
+          .map((v) => ({
+            key: v.key,
+            label: v.label,
+            required: v.required,
+            type: (v.type === "number" || v.type === "file" ? v.type : "text") as EnvField["type"],
+          }));
+        if (!newFields.length) return prev;
+        return { ...prev, envFields: [...prev.envFields, ...newFields] };
       });
     }
     setGraphIssues(validatePlanGraph(planGraph, form.models[0]));
@@ -598,6 +615,17 @@ export function CreateWizard({ categories }: Props) {
                 >
                   Réorganiser
                 </button>
+                {planGraph && graphHasRepairableIssues(planGraph) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      commitPlanGraph(layoutGraph(normalizeGraph(planGraph!)))
+                    }
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 hover:bg-amber-100"
+                  >
+                    Reconnecter automatiquement
+                  </button>
+                )}
               </div>
               <PlanChat
                 graph={planGraph}
@@ -729,6 +757,36 @@ export function CreateWizard({ categories }: Props) {
           <p className="text-sm text-ink-soft">
             Runtime, intégrations, variables d&apos;entrée et clés API requises.
           </p>
+
+          {(form.type === "agent" || form.type === "workflow") &&
+            dedupeConnectors(form.requiredConnectors).length > 0 && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+              <p className="text-sm font-semibold text-ink">Vos accès (pour tester)</p>
+              <p className="mt-1 text-xs text-ink-soft">
+                Connectez vos comptes et clés pour tester dans le builder. Ces accès ne sont{" "}
+                <strong>jamais</strong> inclus dans l&apos;agent vendu — l&apos;abonné final
+                branchera les siens.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {dedupeConnectors(form.requiredConnectors).map((id) => (
+                  <a
+                    key={id}
+                    href={`/api/connectors/${id}/connect?returnUrl=${encodeURIComponent("/dashboard/create")}`}
+                    className="rounded-lg border border-line bg-card px-3 py-1.5 text-xs font-medium text-accent hover:border-accent"
+                  >
+                    Connecter {id}
+                  </a>
+                ))}
+              </div>
+              {form.requiredSecrets.length > 0 && (
+                <p className="mt-2 text-xs text-ink-soft">
+                  Clés BYOK pour les tests :{" "}
+                  {form.requiredSecrets.map((s) => SECRET_PROVIDERS.find((p) => p.id === s)?.label ?? s).join(", ")}
+                  {" "}— à configurer dans Connexions.
+                </p>
+              )}
+            </div>
+          )}
 
           <CatalogMultiSelect
             catalog={TECH_RUNTIMES}

@@ -4,7 +4,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { scanContent } from "@/lib/content-filter";
 import { allFindings } from "@/lib/secrets-scanner";
 import { AgentManifestSchema } from "@/lib/agent/schema";
-import { assertManifestValidForPublish } from "@/lib/builder/validate-manifest-for-publish";
+import {
+  assertManifestValidForPublish,
+  stripManifestForPublish,
+} from "@/lib/builder/validate-manifest-for-publish";
 import { canSellPaid } from "@/lib/platform-access";
 
 export const dynamic = "force-dynamic";
@@ -111,8 +114,9 @@ export async function POST(request: NextRequest) {
       if (!manifestParsed.success) {
         return NextResponse.json({ error: "Manifeste invalide" }, { status: 400 });
       }
+      const publishManifest = stripManifestForPublish(manifestParsed.data);
       try {
-        assertManifestValidForPublish(manifestParsed.data);
+        assertManifestValidForPublish(publishManifest);
       } catch (err) {
         return NextResponse.json(
           { error: err instanceof Error ? err.message : "Manifeste invalide" },
@@ -120,7 +124,7 @@ export async function POST(request: NextRequest) {
         );
       }
       envPayload = {
-        manifest: manifestParsed.data,
+        manifest: publishManifest,
         meta: {
           setup_time: body.setupTime ?? null,
         },

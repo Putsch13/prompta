@@ -5,6 +5,7 @@ import { Loader2, Send, Sparkles } from "lucide-react";
 import {
   graphToPlan,
   layoutGraph,
+  normalizeGraph,
   planToGraph,
   type PlanGraph,
 } from "@/lib/builder/plan-graph";
@@ -76,7 +77,7 @@ export function PlanChat({
       }
       const newPlan = data.plan as GeneratedAgentPlan;
       const changedIds = (data.changedIds as string[]) ?? [];
-      const newGraph = layoutGraph(planToGraph(newPlan, defaultModel));
+      const newGraph = layoutGraph(normalizeGraph(planToGraph(newPlan, defaultModel)));
       onGraphChange(newGraph);
       onChangedIds?.(changedIds);
       setTimeout(() => onChangedIds?.([]), 3000);

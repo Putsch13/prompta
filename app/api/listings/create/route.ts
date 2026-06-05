@@ -5,7 +5,10 @@ import { scanContent } from "@/lib/content-filter";
 import { allFindings } from "@/lib/secrets-scanner";
 import { uniqueSlug } from "@/lib/slug";
 import { AgentManifestSchema } from "@/lib/agent/schema";
-import { assertManifestValidForPublish } from "@/lib/builder/validate-manifest-for-publish";
+import {
+  assertManifestValidForPublish,
+  stripManifestForPublish,
+} from "@/lib/builder/validate-manifest-for-publish";
 import { canSellPaid } from "@/lib/platform-access";
 
 export const dynamic = "force-dynamic";
@@ -96,8 +99,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const publishManifest = stripManifestForPublish(manifestParsed.data);
+
   try {
-    assertManifestValidForPublish(manifestParsed.data);
+    assertManifestValidForPublish(publishManifest);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Manifeste invalide" },
@@ -157,7 +162,7 @@ export async function POST(request: NextRequest) {
   }
 
   const envData = {
-    manifest: manifestParsed.data,
+    manifest: publishManifest,
     meta: {
       setup_time: setupTime || null,
     },

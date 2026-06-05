@@ -21,7 +21,7 @@ export async function validateAgentPreflight(
     if (!apiKeys[secret]) {
       issues.push({
         code: "missing_key",
-        message: `Clé ${secret} manquante — configurez-la dans Connexions.`,
+        message: `Ajoutez votre clé ${secret} pour lancer — configurez-la dans Connexions.`,
       });
     }
   }
@@ -57,7 +57,7 @@ export async function validateAgentPreflight(
       if (!ok) {
         issues.push({
           code: "missing_connector",
-          message: `Connecteur ${connectorId} non connecté — liez-le dans Connexions puis actualisez.`,
+          message: `Connectez ${connectorId} pour lancer — liez votre compte dans Connexions.`,
         });
       }
     }

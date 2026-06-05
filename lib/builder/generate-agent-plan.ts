@@ -103,6 +103,10 @@ Règles strictes :
 12. Pour exécuter plusieurs actions en parallèle (ex. publier sur plusieurs réseaux), crée un step amont puis fais pointer son champ "next" vers tous les steps parallèles.
 13. Pour un embranchement conditionnel, crée un step condition dont "next" liste les steps de chaque branche ; mets "branchLabel" sur chaque step cible (ex. "si urgent", "sinon").
 14. "entryStepId" = id du premier step (défaut : steps[0].id). Sans "next" explicite, les steps sont chaînés séquentiellement.
+15. Pour chaque step action, mappe ses paramètres requis dans "inputMapping" soit à une sortie d'étape ({{outputKey}}), soit à une variable d'entrée {{snake_case}} déclarée aussi dans "variables". Ne mets JAMAIS de valeur réelle (email, nom, clé) en dur.
+16. "entryStepId" = l'unique step sans prédécesseur (aucun autre step ne le liste dans "next").
+17. Si le step B référence {{outputKey_de_A}} dans son prompt ou inputMapping, alors A précède B (A doit apparaître dans la chaîne "next" menant à B).
+18. Tout step doit être atteignable depuis entryStepId. Aucun nœud orphelin.
 
 Catalogue d'actions disponibles :
 ${COMPOSIO_CATALOG_COMPRESSED}
@@ -127,88 +131,48 @@ Génère un plan JSON complet avec cette structure :
   "title": "...",
   "description": "...",
   "objective": "...",
-  "variables": [{ "key": "...", "label": "...", "type": "text", "required": true, "help": "Exemple concret + où trouver l'info" }],
-  "requiredConnectors": [{ "connectorId": "gmail", "reason": "...", "requiredActions": ["read_email"] }],
-  "entryStepId": "read_airtable",
+  "variables": [{ "key": "destinataire_email", "label": "Email du destinataire", "type": "email", "required": true }],
+  "requiredConnectors": [{ "connectorId": "gmail", "reason": "...", "requiredActions": ["gmail.send"] }],
+  "entryStepId": "analyze",
   "steps": [{
-    "id": "read_airtable",
-    "type": "action",
-    "name": "Lire fiche Airtable",
-    "description": "Récupère la fiche source",
-    "outputKey": "airtable_record",
-    "connectorId": "airtable",
-    "actionSlug": "get_record",
-    "riskLevel": "low",
-    "requiresApproval": false,
-    "next": ["generate_post"]
-  }, {
-    "id": "generate_post",
+    "id": "analyze",
     "type": "llm",
-    "name": "Générer le post",
-    "description": "Rédige le contenu à partir de {{airtable_record}}",
-    "outputKey": "post_content",
+    "name": "Analyser et préparer",
+    "description": "Analyse le contexte et prépare le contenu de l'email",
+    "outputKey": "analyze_output",
     "riskLevel": "low",
     "requiresApproval": false,
-    "next": ["post_linkedin", "post_twitter", "post_facebook", "post_instagram"]
+    "next": ["prepare_email"]
   }, {
-    "id": "post_linkedin",
+    "id": "prepare_email",
+    "type": "llm",
+    "name": "Préparer l'email",
+    "description": "Rédige subject et body à partir de {{analyze_output}}",
+    "outputKey": "prepare_email_output",
+    "riskLevel": "low",
+    "requiresApproval": false,
+    "next": ["send_email"]
+  }, {
+    "id": "send_email",
     "type": "action",
-    "name": "Publier LinkedIn",
-    "description": "Publication LinkedIn",
-    "outputKey": "linkedin_result",
-    "connectorId": "linkedin",
-    "actionSlug": "create_post",
-    "branchLabel": "LinkedIn",
+    "name": "Envoyer via Gmail",
+    "description": "Envoie l'email préparé",
+    "outputKey": "send_result",
+    "connectorId": "gmail",
+    "actionSlug": "gmail.send",
+    "inputMapping": {
+      "to": "{{destinataire_email}}",
+      "subject": "{{prepare_email_output}}",
+      "body": "{{prepare_email_output}}"
+    },
     "riskLevel": "high",
     "requiresApproval": true
-  }, {
-    "id": "post_twitter",
-    "type": "action",
-    "name": "Publier X",
-    "description": "Publication X/Twitter",
-    "outputKey": "twitter_result",
-    "connectorId": "twitter",
-    "actionSlug": "create_tweet",
-    "branchLabel": "X",
-    "riskLevel": "high",
-    "requiresApproval": true
-  }, {
-    "id": "post_facebook",
-    "type": "action",
-    "name": "Publier Facebook",
-    "description": "Publication Facebook",
-    "outputKey": "facebook_result",
-    "connectorId": "facebook",
-    "actionSlug": "create_post",
-    "branchLabel": "Facebook",
-    "riskLevel": "high",
-    "requiresApproval": true
-  }, {
-    "id": "post_instagram",
-    "type": "action",
-    "name": "Publier Instagram",
-    "description": "Publication Instagram",
-    "outputKey": "instagram_result",
-    "connectorId": "instagram",
-    "actionSlug": "create_post",
-    "branchLabel": "Instagram",
-    "riskLevel": "high",
-    "requiresApproval": true,
-    "next": ["update_airtable"]
-  }, {
-    "id": "update_airtable",
-    "type": "action",
-    "name": "Mettre à jour Airtable",
-    "description": "Marque la fiche comme publiée",
-    "outputKey": "airtable_updated",
-    "connectorId": "airtable",
-    "actionSlug": "update_record",
-    "riskLevel": "medium",
-    "requiresApproval": false
   }],
   "triggers": [{ "type": "manual" }],
   "policies": { "maxIterations": 1, "requireHumanApprovalForExternalActions": true }
-}`;
+}
+
+Pour un cas parallèle (publication multi-réseaux), le step amont liste plusieurs ids dans "next" et chaque cible a un "branchLabel".`;
 
   const result = await callModel({
     provider: resolved.provider,

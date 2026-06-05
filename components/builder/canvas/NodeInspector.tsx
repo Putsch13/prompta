@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { getBuilderModels } from "@/lib/catalogs";
+import { getConnectorAction } from "@/lib/connectors/registry";
 import {
   addNode,
   createDefaultNode,
@@ -176,6 +177,9 @@ export function NodeInspector({
 
         {node.kind === "action" && (
           <div className="space-y-2">
+            <p className="text-[10px] text-ink-faint">
+              Connexion OAuth = « Vos accès » (hors manifeste). Ici : bindings de contenu uniquement.
+            </p>
             <div>
               <label className="text-xs text-ink-soft">Connecteur</label>
               <input
@@ -190,10 +194,71 @@ export function NodeInspector({
               <input
                 value={node.actionSlug ?? ""}
                 onChange={(e) => patch({ actionSlug: e.target.value })}
-                placeholder="ex. send_email, create_post"
+                placeholder="ex. gmail.send, slack.send"
                 className="mt-1 h-9 w-full rounded-lg border border-line px-2 font-mono text-sm"
               />
             </div>
+            {currentNode.connectorId && currentNode.actionSlug && (
+              <div className="space-y-2 border-t border-line pt-2">
+                <p className="text-xs font-medium text-ink-soft">Paramètres (bindings {"{{variable}}"})</p>
+                {(getConnectorAction(currentNode.connectorId, currentNode.actionSlug)?.inputs ?? []).map(
+                  (input) => (
+                    <div key={input.key}>
+                      <label className="text-[10px] text-ink-faint">
+                        {input.label}
+                        {input.required ? " *" : ""}
+                      </label>
+                      <div className="mt-0.5 flex flex-wrap gap-1">
+                        {envFields.map((f) => (
+                          <button
+                            key={f.key}
+                            type="button"
+                            onClick={() =>
+                              patch({
+                                params: {
+                                  ...(currentNode.params ?? {}),
+                                  [input.key]: `{{${f.key}}}`,
+                                },
+                              })
+                            }
+                            className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
+                          >
+                            {f.key}
+                          </button>
+                        ))}
+                        {priorOutputs.map((k) => (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() =>
+                              patch({
+                                params: {
+                                  ...(currentNode.params ?? {}),
+                                  [input.key]: `{{${k}}}`,
+                                },
+                              })
+                            }
+                            className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
+                          >
+                            {k}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        value={currentNode.params?.[input.key] ?? ""}
+                        onChange={(e) =>
+                          patch({
+                            params: { ...(currentNode.params ?? {}), [input.key]: e.target.value },
+                          })
+                        }
+                        placeholder={`{{${input.key}}}`}
+                        className="mt-1 h-8 w-full rounded border border-line px-2 font-mono text-xs"
+                      />
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
           </div>
         )}
 
