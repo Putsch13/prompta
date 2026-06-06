@@ -7,11 +7,17 @@ import { getBuilderModels } from "@/lib/catalogs";
 import { getConnectorAction, CONNECTORS } from "@/lib/connectors/registry";
 import { ManualResourceInput, resolveResourceVisibility } from "@/components/builder/canvas/ManualResourceInput";
 import type { ResourceVisibility } from "@/components/builder/canvas/ManualResourceInput";
-import { ConnectionStatusRow } from "@/components/builder/canvas/ConnectionStatusRow";
 import {
+  ManualActionParamInput,
+  resolveParamVisibility,
+} from "@/components/builder/canvas/ManualActionParamInput";
+import { defaultParamBindingKey } from "@/lib/builder/run-inputs";
+import {
+  isParamBinding,
   isResourcePlaceholder,
   resourcePlaceholder,
 } from "@/lib/connectors/param-bindings";
+import { ConnectionStatusRow } from "@/components/builder/canvas/ConnectionStatusRow";
 import {
   addNode,
   createDefaultNode,
@@ -313,6 +319,73 @@ export function NodeInspector({
                               Renseignez d&apos;abord {input.dependsOn}.
                             </p>
                           )}
+                        </div>
+                      );
+                    }
+
+                    if (input.required && !isResource) {
+                      const paramBinding = defaultParamBindingKey(
+                        currentNode.connectorId!,
+                        input.key,
+                      );
+                      const rawValue = currentNode.params?.[input.key] ?? "";
+                      const pinned =
+                        currentNode.pinnedResources?.[input.key] ??
+                        (!!rawValue &&
+                          !isParamBinding(rawValue) &&
+                          !isResourcePlaceholder(rawValue));
+                      const meta = currentNode.paramMeta?.[input.key];
+                      const visibility = resolveParamVisibility(pinned, rawValue, meta);
+
+                      const applyParam = (
+                        val: string,
+                        isPinned: boolean,
+                        vis: ResourceVisibility,
+                      ) => {
+                        const pinnedResources = {
+                          ...(currentNode.pinnedResources ?? {}),
+                          [input.key]: isPinned,
+                        };
+                        if (!isPinned || vis === "client") {
+                          patch({
+                            pinnedResources: { ...pinnedResources, [input.key]: false },
+                            params: {
+                              ...(currentNode.params ?? {}),
+                              [input.key]: `{{${paramBinding}}}`,
+                            },
+                            paramMeta: {
+                              ...(currentNode.paramMeta ?? {}),
+                              [input.key]: { scope: "end_user", shared: false },
+                            },
+                          });
+                          return;
+                        }
+                        const shared = vis === "builder_shared";
+                        patch({
+                          pinnedResources,
+                          params: { ...(currentNode.params ?? {}), [input.key]: val },
+                          paramMeta: {
+                            ...(currentNode.paramMeta ?? {}),
+                            [input.key]: {
+                              scope: "builder_test",
+                              shared,
+                            },
+                          },
+                          ...(shared ? { sharedEnv: true } : {}),
+                        });
+                      };
+
+                      return (
+                        <div key={input.key}>
+                          <ManualActionParamInput
+                            label={input.label}
+                            value={rawValue}
+                            bindingKey={paramBinding}
+                            placeholder={input.placeholder ?? input.help ?? input.label}
+                            pinned={pinned}
+                            visibility={visibility}
+                            onChange={applyParam}
+                          />
                         </div>
                       );
                     }

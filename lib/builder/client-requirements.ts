@@ -3,7 +3,7 @@ import {
   isResourcePlaceholder,
 } from "@/lib/connectors/param-bindings";
 import { getConnectorAction } from "@/lib/connectors/registry";
-import { graphToSteps, type PlanGraph } from "@/lib/builder/plan-graph";
+import { graphToSteps, graphRunInputs, type PlanGraph } from "@/lib/builder/plan-graph";
 import type { AgentStep } from "@/lib/agent/schema";
 
 export interface ClientRequirementItem {
@@ -92,12 +92,11 @@ function walkSteps(
 export function deriveClientRequirements(
   graph: PlanGraph | null,
   defaultModel: string,
-  envFields: { key: string; label: string }[] = [],
 ): ClientRequirementsSummary {
   const out: ClientRequirementsSummary = {
     clientConnectors: [],
     clientResources: [],
-    clientVariables: envFields.map((f) => ({ id: f.key, label: f.label || f.key })),
+    clientVariables: [],
     clientSecrets: [],
     sharedProvided: [],
   };
@@ -106,6 +105,13 @@ export function deriveClientRequirements(
 
   const steps = graphToSteps(graph, defaultModel);
   walkSteps(steps, graph, out);
+
+  // Variables texte dérivées des steps (alignées sur manifest.inputs)
+  for (const field of graphRunInputs(graph, defaultModel)) {
+    if (!out.clientVariables.some((v) => v.id === field.key)) {
+      out.clientVariables.push({ id: field.key, label: field.label || field.key });
+    }
+  }
 
   const seenConn = new Set<string>();
   out.clientConnectors = out.clientConnectors.filter((c) => {

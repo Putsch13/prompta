@@ -3,6 +3,7 @@ import type { KeyProvider } from "@/lib/keys";
 import { connectorsForSteps } from "@/lib/connectors/registry";
 import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 import { enrichEnvField } from "@/lib/builder/env-field-hints";
+import { deriveRunInputsFromSteps } from "@/lib/builder/run-inputs";
 import { managedDeliverables } from "@/lib/builder/provisioning";
 
 export interface EnvFieldInput {
@@ -11,6 +12,9 @@ export interface EnvFieldInput {
   required: boolean;
   type?: "text" | "textarea" | "number" | "file" | "list";
   help?: string;
+  connectorId?: string;
+  paramKey?: string;
+  resourceType?: string;
 }
 
 export interface BuildManifestParams {
@@ -19,7 +23,7 @@ export interface BuildManifestParams {
   executionMode?: ExecutionMode;
   promptBody: string;
   steps: AgentStep[];
-  envFields: EnvFieldInput[];
+  envFields?: EnvFieldInput[];
   requiredSecrets: KeyProvider[];
   requiredConnectors?: string[];
   defaultModel?: string;
@@ -50,21 +54,23 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
 
   const provisioningMode = params.provisioningMode ?? "manual";
 
+  const derivedWithMeta = deriveRunInputsFromSteps(steps);
+
   return {
     kind: inferredKind,
     executionMode: inferredMode,
-    inputs: params.envFields
-      .filter((f) => f.key.trim())
-      .map((f) => {
-        const enriched = enrichEnvField(f);
-        return {
-          key: f.key,
-          label: f.label || f.key,
-          type: enriched.type ?? f.type ?? ("text" as const),
-          required: f.required,
-          help: f.help?.trim() ? f.help : enriched.help,
-        };
-      }),
+    inputs: derivedWithMeta.map((field) => {
+      const enriched = enrichEnvField(field);
+      return {
+        key: field.key,
+        label: enriched.label || field.label,
+        type: enriched.type ?? field.type ?? ("text" as const),
+        required: field.required,
+        help: enriched.help?.trim() ? enriched.help : field.help,
+        connectorId: field.connectorId,
+        paramKey: field.paramKey,
+      };
+    }),
     secrets: [...params.requiredSecrets],
     connectors: dedupeConnectors([
       ...connectorsForSteps(steps),

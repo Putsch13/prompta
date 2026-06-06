@@ -23,6 +23,8 @@ interface EnvField {
   help?: string;
   type?: "text" | "textarea" | "number" | "file" | "list";
   required: boolean;
+  connectorId?: string;
+  paramKey?: string;
 }
 
 interface Props {
@@ -103,9 +105,8 @@ export function RunPanel({
   const [approvalDetails, setApprovalDetails] = useState<ApprovalDetails | null>(null);
   const [showImmersive, setShowImmersive] = useState(false);
 
-  const varNames = promptBody
-    ? extractInputVariables(promptBody)
-    : envFields.map((f) => f.key);
+  const varNames =
+    type === "prompt" && promptBody ? extractInputVariables(promptBody) : [];
 
   const [connectionsReady, setConnectionsReady] = useState(true);
 
@@ -546,23 +547,34 @@ export function RunPanel({
             </p>
           )}
 
-          {(envFields.length > 0 || varNames.length > 0) && (
+          {envFields.length > 0 && (
             <EnvFieldInputs
-              fields={
-                envFields.length > 0
-                  ? envFields.map((f) => ({
-                      key: f.key,
-                      label: f.label ?? f.description,
-                      help: f.help,
-                      type: f.type,
-                      required: f.required,
-                    }))
-                  : varNames.map((key) => ({
-                      key,
-                      label: key,
-                      required: true,
-                    }))
+              fields={envFields.map((f) => ({
+                key: f.key,
+                label: f.label ?? f.description,
+                help: f.help,
+                type: f.type,
+                required: f.required,
+                connectorId: f.connectorId,
+                paramKey: f.paramKey,
+              }))}
+              values={variables}
+              onChange={(key, value) =>
+                setVariables((prev) => ({ ...prev, [key]: value }))
               }
+              requiredConnectors={requiredConnectors}
+              provisioningMode={provisioningMode}
+              title="Variables d'entrée"
+            />
+          )}
+
+          {type === "prompt" && varNames.length > 0 && envFields.length === 0 && (
+            <EnvFieldInputs
+              fields={varNames.map((key) => ({
+                key,
+                label: key,
+                required: true,
+              }))}
               values={variables}
               onChange={(key, value) =>
                 setVariables((prev) => ({ ...prev, [key]: value }))

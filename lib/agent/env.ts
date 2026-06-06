@@ -106,5 +106,7 @@ export function envFieldsFromManifest(manifest: AgentManifest) {
     help: i.help,
     type: i.type,
     required: i.required,
+    connectorId: i.connectorId,
+    paramKey: i.paramKey,
   }));
 }

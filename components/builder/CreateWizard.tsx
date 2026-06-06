@@ -20,6 +20,7 @@ import { AgentCanvas } from "@/components/builder/canvas/AgentCanvas";
 import { NodeInspector } from "@/components/builder/canvas/NodeInspector";
 import { PlanChat } from "@/components/builder/canvas/PlanChat";
 import {
+  graphRunInputs,
   graphConnectors,
   graphToSteps,
   graphHasRepairableIssues,
@@ -41,8 +42,6 @@ import {
   getBuilderModels,
 } from "@/lib/catalogs";
 import {
-  extractInputVariables,
-  keyToLabel,
   validateAgentSteps,
 } from "@/lib/builder/variables";
 import { validateAgentManifest, hasBlockingIssues } from "@/lib/builder/validate-agent";
@@ -60,8 +59,10 @@ interface EnvField {
   key: string;
   label: string;
   required: boolean;
-  type: "text" | "textarea" | "number" | "file" | "list";
+  type?: "text" | "textarea" | "number" | "file" | "list";
   help?: string;
+  connectorId?: string;
+  paramKey?: string;
 }
 
 export function CreateWizard({ categories }: Props) {
@@ -154,12 +155,7 @@ export function CreateWizard({ categories }: Props) {
       kind: plan.kind,
       title: plan.title,
       description: plan.description,
-      envFields: plan.variables.map((v) => ({
-        key: v.key,
-        label: v.label,
-        required: v.required,
-        type: (v.type === "text" || v.type === "number" || v.type === "file") ? v.type as "text" | "number" | "file" : "text" as const,
-      })),
+      envFields: graphRunInputs(graph, prev.models[0]),
       requiredConnectors: connectorIds,
     }));
     setSelectedNodeId(null);
@@ -174,45 +170,11 @@ export function CreateWizard({ categories }: Props) {
       ...prev,
       agentSteps: steps,
       requiredConnectors: connectors.length > 0 ? connectors : prev.requiredConnectors,
+      envFields: graphRunInputs(planGraph, form.models[0]),
       ...(planGraph.meta?.title ? { title: planGraph.meta.title } : {}),
       ...(planGraph.meta?.description ? { description: planGraph.meta.description } : {}),
       ...(planGraph.meta?.kind ? { type: planGraph.meta.kind, kind: planGraph.meta.kind } : {}),
     }));
-    const promptText = planGraph.nodes
-      .filter((n) => n.kind === "llm")
-      .map((n) => n.prompt ?? n.description ?? "")
-      .join("\n");
-    if (promptText) {
-      const keys = extractInputVariables(promptText);
-      setForm((prev) => {
-        const existing = new Set(prev.envFields.map((f) => f.key));
-        const newFields = keys
-          .filter((k) => !existing.has(k))
-          .map((k) => ({
-            key: k,
-            label: keyToLabel(k),
-            required: true,
-            type: "text" as const,
-          }));
-        if (!newFields.length) return prev;
-        return { ...prev, envFields: [...prev.envFields, ...newFields] };
-      });
-    }
-    if (planGraph.meta?.variables?.length) {
-      setForm((prev) => {
-        const existing = new Set(prev.envFields.map((f) => f.key));
-        const newFields = planGraph.meta!.variables!
-          .filter((v) => !existing.has(v.key))
-          .map((v) => ({
-            key: v.key,
-            label: v.label,
-            required: v.required,
-            type: (v.type === "number" || v.type === "file" ? v.type : "text") as EnvField["type"],
-          }));
-        if (!newFields.length) return prev;
-        return { ...prev, envFields: [...prev.envFields, ...newFields] };
-      });
-    }
     setGraphIssues(validatePlanGraph(planGraph, form.models[0]));
     const derived = deriveGraphEnv(planGraph, form.models[0]);
     setForm((prev) => ({
@@ -357,7 +319,6 @@ export function CreateWizard({ categories }: Props) {
   const clientRequirements = deriveClientRequirements(
     planGraph,
     form.models[0],
-    form.envFields,
   );
 
   const hasSharedNodes =
@@ -374,7 +335,6 @@ export function CreateWizard({ categories }: Props) {
       executionMode: form.executionMode,
       promptBody: form.promptBody,
       steps,
-      envFields: form.envFields,
       requiredSecrets: form.requiredSecrets,
       requiredConnectors: form.requiredConnectors,
       defaultModel: form.models[0],

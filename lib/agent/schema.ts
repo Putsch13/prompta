@@ -7,6 +7,8 @@ export const AgentInputSchema = z.object({
   type: z.enum(["text", "textarea", "number", "file", "list"]).default("text"),
   required: z.boolean().default(false),
   help: z.string().optional(),
+  connectorId: z.string().optional(),
+  paramKey: z.string().optional(),
 });
 
 // ─── Steps ───────────────────────────────────────────────────────────────────
@@ -132,5 +134,6 @@ export const AgentManifestSchema = z.object({
 
 export type AgentKind = z.infer<typeof AgentKindSchema>;
 export type ExecutionMode = z.infer<typeof ExecutionModeSchema>;
+export type AgentInput = z.infer<typeof AgentInputSchema>;
 export type AgentManifest = z.infer<typeof AgentManifestSchema>;
 export type AgentStep = z.infer<typeof AgentStepSchema>;

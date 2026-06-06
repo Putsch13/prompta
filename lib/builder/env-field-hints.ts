@@ -1,6 +1,6 @@
 /**
  * Infère placeholders, exemples et aide contextuelle pour les variables d'entrée.
- * Complète les champs générés par IA quand l'aide est absente ou vague.
+ * Priorité : registre connecteur > clé param explicite > heuristiques ciblées.
  */
 
 export interface EnvFieldBase {
@@ -9,6 +9,9 @@ export interface EnvFieldBase {
   type?: "text" | "textarea" | "number" | "file" | "list";
   required?: boolean;
   help?: string;
+  connectorId?: string;
+  paramKey?: string;
+  resourceType?: string;
 }
 
 export interface EnrichedEnvField extends EnvFieldBase {
@@ -20,16 +23,20 @@ export interface EnrichedEnvField extends EnvFieldBase {
   inputMode?: "text" | "numeric" | "email" | "url";
 }
 
-function haystack(field: EnvFieldBase): string {
-  return `${field.key} ${field.label} ${field.help ?? ""}`.toLowerCase();
+function isSpreadsheetIdField(field: EnvFieldBase): boolean {
+  const key = field.paramKey ?? field.key;
+  if (/^(spreadsheetId|sheet_id|google_sheets_id)$/i.test(key)) return true;
+  if (/_spreadsheetId$/i.test(field.key)) return true;
+  if (field.resourceType === "google_sheets.spreadsheet") return true;
+  return false;
 }
 
-function matches(text: string, patterns: RegExp[]): boolean {
-  return patterns.some((re) => re.test(text));
+function isRangeField(field: EnvFieldBase): boolean {
+  const key = field.paramKey ?? field.key;
+  return key === "range" || /_range$/i.test(field.key);
 }
 
 export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
-  const text = haystack(field);
   const base: EnrichedEnvField = {
     ...field,
     type: field.type ?? "text",
@@ -38,15 +45,17 @@ export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
     help: field.help?.trim() ?? "",
   };
 
-  if (
-    matches(text, [
-      /sheet/,
-      /spreadsheet/,
-      /google.?sheet/,
-      /feuille/,
-      /identifiant.*base/,
-    ])
-  ) {
+  if (isRangeField(field)) {
+    return {
+      ...base,
+      type: "text",
+      placeholder: "Sheet1!A1:D10",
+      example: "Sheet1!A1:D10",
+      help: base.help || "Plage à lire ou écrire (onglet + cellules).",
+    };
+  }
+
+  if (isSpreadsheetIdField(field)) {
     return {
       ...base,
       type: "text",
@@ -54,26 +63,21 @@ export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
       example: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
       help:
         base.help ||
-        "ID de la feuille Google Sheets à lire/écrire — pas votre email Gmail.",
+        "ID de la feuille Google Sheets — pas votre email Gmail.",
       hintTitle: "Où trouver l'ID Google Sheets ?",
       hintDetail:
         "1. Ouvrez votre feuille dans le navigateur\n" +
         "2. Copiez l'ID dans l'URL : docs.google.com/spreadsheets/d/【CET_ID】/edit\n" +
         "3. Exemple : …/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit\n\n" +
-        "La connexion Google Sheets (OAuth) se fait dans Connexions — ici vous indiquez uniquement quelle feuille utiliser.",
+        "La connexion Google Sheets (OAuth) se fait dans Connexions.",
     };
   }
 
+  const labelKey = `${field.key} ${field.label}`.toLowerCase();
+
   if (
-    matches(text, [
-      /gmail/,
-      /expéditeur/,
-      /expediteur/,
-      /sender/,
-      /from_name/,
-      /nom.*mail/,
-      /nom.*expéd/,
-    ])
+    /gmail|expéditeur|expediteur|sender|from_name|nom.*mail|nom.*expéd/.test(labelKey) &&
+    !isRangeField(field)
   ) {
     return {
       ...base,
@@ -86,11 +90,11 @@ export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
       hintTitle: "Ce champ ≠ connexion Gmail",
       hintDetail:
         "Connectez d'abord Gmail dans Dashboard → Connexions (OAuth).\n" +
-        "Ici, indiquez seulement le nom visible dans l'email envoyé, par ex. « Sophie — Artisan Pro ».",
+        "Ici, indiquez seulement le nom visible dans l'email envoyé.",
     };
   }
 
-  if (matches(text, [/région/, /region/, /zone/, /secteur.*geo/, /ville/])) {
+  if (/région|region|zone|secteur.*geo|ville/.test(labelKey)) {
     return {
       ...base,
       placeholder: "Occitanie, Toulouse et environs",
@@ -99,16 +103,7 @@ export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
     };
   }
 
-  if (
-    matches(text, [
-      /mot.?clé/,
-      /keyword/,
-      /métier/,
-      /artisan/,
-      /secteur/,
-      /niche/,
-    ])
-  ) {
+  if (/mot.?clé|keyword|métier|artisan|secteur|niche/.test(labelKey)) {
     return {
       ...base,
       type: base.type === "number" ? "text" : base.type,
@@ -120,16 +115,7 @@ export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
     };
   }
 
-  if (
-    matches(text, [
-      /max/,
-      /nombre/,
-      /limit/,
-      /contact/,
-      /prospect/,
-      /quota/,
-    ])
-  ) {
+  if (/max|nombre|limit|contact|prospect|quota/.test(labelKey)) {
     return {
       ...base,
       type: "number",
@@ -142,15 +128,7 @@ export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
     };
   }
 
-  if (
-    matches(text, [
-      /offre/,
-      /proposition/,
-      /pitch/,
-      /message.*commercial/,
-      /accroche/,
-    ])
-  ) {
+  if (/offre|proposition|pitch|message.*commercial|accroche/.test(labelKey)) {
     return {
       ...base,
       type: "textarea",
@@ -162,7 +140,7 @@ export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
     };
   }
 
-  if (matches(text, [/email.*dest/, /destinataire/, /recipient/])) {
+  if (/email.*dest|destinataire|recipient/.test(labelKey)) {
     return {
       ...base,
       type: "text",
@@ -172,7 +150,7 @@ export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
     };
   }
 
-  if (matches(text, [/url/, /lien/, /site/])) {
+  if (/url|lien|site/.test(labelKey) && field.paramKey !== "range") {
     return {
       ...base,
       type: "text",

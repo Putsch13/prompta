@@ -12,6 +12,8 @@ export interface ActionInput {
   resourceType?: string;
   defaultScope?: ParamScope;
   dependsOn?: string;
+  help?: string;
+  placeholder?: string;
 }
 
 export interface ConnectorAction {

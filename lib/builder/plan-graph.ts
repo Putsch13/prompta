@@ -6,6 +6,7 @@ import { connectorsForSteps, getConnectorAction } from "@/lib/connectors/registr
 import { isBinding } from "@/lib/connectors/action-requirements";
 import type { ParamMeta } from "@/lib/connectors/param-bindings";
 
+export { graphRunInputs, deriveRunInputsFromSteps, deriveManifestInputsFromSteps } from "@/lib/builder/run-inputs";
 export const COL_W = 260;
 export const ROW_H = 130;
 
