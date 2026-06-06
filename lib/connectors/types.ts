@@ -14,6 +14,8 @@ export interface ActionInput {
   dependsOn?: string;
   help?: string;
   placeholder?: string;
+  /** Appliqué si le param est vide ou non résolu à l'exécution. */
+  defaultValue?: string;
 }
 
 export interface ConnectorAction {

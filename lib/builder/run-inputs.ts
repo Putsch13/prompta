@@ -4,6 +4,7 @@ import { extractInputVariables, isFakeVariable, keyToLabel } from "@/lib/builder
 import { graphToSteps, type PlanGraph } from "@/lib/builder/plan-graph";
 import { isParamBinding, isResourcePlaceholder } from "@/lib/connectors/param-bindings";
 import { getConnectorAction } from "@/lib/connectors/registry";
+import { inputHasRuntimeDefault } from "@/lib/connectors/param-defaults";
 import type { ActionInput } from "@/lib/connectors/types";
 
 const BINDING_KEY_RE = /^\s*\{\{([\w.]+)\}\}\s*$/;
@@ -151,6 +152,18 @@ export function deriveRunInputsFromSteps(
 
         const bound = bindingKey(rawValue);
         if (bound) {
+          if (inputDef && inputHasRuntimeDefault(inputDef)) {
+            if (meta?.scope !== "end_user") continue;
+            addField(bound, {
+              label: inputDef?.label ?? keyToLabel(bound),
+              required: false,
+              type: registryFieldType(inputDef),
+              help: registryHelp(inputDef),
+              connectorId: step.connector,
+              paramKey,
+            });
+            continue;
+          }
           addField(bound, {
             label: inputDef?.label ?? keyToLabel(bound),
             required: inputDef?.required ?? true,

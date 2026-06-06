@@ -1,4 +1,5 @@
 import type { ExecuteContext, ExecuteResult } from "./types";
+import { isAllRangeValue } from "./param-defaults";
 
 async function fetchPrimaryGmailAddress(token: string): Promise<string | undefined> {
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs", {
@@ -70,14 +71,58 @@ async function sheetsRead(ctx: ExecuteContext, params: Record<string, string>): 
   if (isPlaceholderValue(params.spreadsheetId)) {
     throw new Error("Paramètre « Feuille de calcul » non renseigné");
   }
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${params.spreadsheetId}/values/${encodeURIComponent(params.range)}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${ctx.accessToken}` } });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Google Sheets : ${res.status} — ${err.slice(0, 200)}`);
+
+  const token = ctx.accessToken;
+  const spreadsheetId = params.spreadsheetId;
+  const range = params.range?.trim() ?? "";
+  const tab = params.tab?.trim();
+
+  async function fetchSheetTitles(): Promise<string[]> {
+    const metaRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!metaRes.ok) {
+      const err = await metaRes.text();
+      throw new Error(`Google Sheets : ${metaRes.status} — ${err.slice(0, 200)}`);
+    }
+    const meta = (await metaRes.json()) as {
+      sheets?: { properties?: { title?: string } }[];
+    };
+    return (meta.sheets ?? [])
+      .map((s) => s.properties?.title)
+      .filter((t): t is string => !!t?.trim());
   }
-  const data = await res.json();
-  return { output: JSON.stringify(data.values ?? [], null, 2), metadata: data };
+
+  async function fetchValues(rangeA1: string): Promise<unknown[][]> {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(rangeA1)}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Google Sheets : ${res.status} — ${err.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { values?: unknown[][] };
+    return data.values ?? [];
+  }
+
+  if (isAllRangeValue(range)) {
+    const titles = tab ? [tab] : await fetchSheetTitles();
+    const sheets: { sheet: string; values: unknown[][] }[] = [];
+    for (const title of titles) {
+      sheets.push({ sheet: title, values: await fetchValues(title) });
+    }
+    return {
+      output: JSON.stringify(sheets, null, 2),
+      metadata: { mode: "all_sheets", sheetCount: sheets.length },
+    };
+  }
+
+  const effectiveRange = range || tab || "Sheet1";
+  const values = await fetchValues(effectiveRange);
+  return {
+    output: JSON.stringify(values, null, 2),
+    metadata: { range: effectiveRange },
+  };
 }
 
 async function sheetsAppend(ctx: ExecuteContext, params: Record<string, string>): Promise<ExecuteResult> {

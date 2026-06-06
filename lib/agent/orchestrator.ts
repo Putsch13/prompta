@@ -5,6 +5,7 @@ import { getUserConnection } from "@/lib/connections";
 import { isResourcePlaceholder } from "@/lib/connectors/param-bindings";
 import { getConnectorAction } from "@/lib/connectors/registry";
 import { formatActionError, isUnresolvedParamValue } from "@/lib/connectors/format-action-error";
+import { applyActionParamDefaults } from "@/lib/connectors/param-defaults";
 import { AgentManifestSchema, type AgentManifest, type AgentStep, type BaseAgentStep, type ParallelStep } from "./schema";
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
 import { logRunActivity } from "./activity-log";
@@ -350,6 +351,11 @@ async function executeStep(
         }
         params[k] = interpolate(raw, vars);
       }
+
+      Object.assign(
+        params,
+        applyActionParamDefaults(step.connector, step.action, params),
+      );
 
       const actionDef = getConnectorAction(step.connector, step.action);
       for (const input of actionDef?.inputs ?? []) {

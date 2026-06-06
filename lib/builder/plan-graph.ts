@@ -4,6 +4,7 @@ import type { GeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
 import { validateAgentManifest, hasBlockingIssues } from "@/lib/builder/validate-agent";
 import { connectorsForSteps, getConnectorAction } from "@/lib/connectors/registry";
 import { isBinding } from "@/lib/connectors/action-requirements";
+import { seedActionParamDefaults } from "@/lib/connectors/param-defaults";
 import type { ParamMeta } from "@/lib/connectors/param-bindings";
 
 export { graphRunInputs, deriveRunInputsFromSteps, deriveManifestInputsFromSteps } from "@/lib/builder/run-inputs";
@@ -694,9 +695,20 @@ function autoBindActionParams(graph: PlanGraph): PlanGraph {
     const action = getConnectorAction(node.connectorId, node.actionSlug);
     if (!action) return node;
 
-    const params = { ...(node.params ?? {}) };
+    const params = { ...(node.params ?? {}), ...seedActionParamDefaults(node.connectorId, node.actionSlug) };
+    const paramMeta = { ...(node.paramMeta ?? {}) };
+    for (const input of action.inputs) {
+      if (input.defaultValue !== undefined && params[input.key] === input.defaultValue) {
+        paramMeta[input.key] = {
+          ...paramMeta[input.key],
+          scope: paramMeta[input.key]?.scope ?? "builder_test",
+        };
+      }
+    }
     for (const input of action.inputs.filter((i) => i.required)) {
       if (isBinding(params[input.key])) continue;
+      if (input.defaultValue !== undefined && params[input.key] === input.defaultValue) continue;
+      if (input.kind === "resource" || input.kind === "identity" || input.resourceType) continue;
       const varKey = `${node.connectorId}_${input.key}`.replace(/[^a-z0-9_]/gi, "_").toLowerCase();
       if (!varKeys.has(varKey)) {
         variables.push({
@@ -709,7 +721,7 @@ function autoBindActionParams(graph: PlanGraph): PlanGraph {
       }
       params[input.key] = `{{${varKey}}}`;
     }
-    return { ...node, params };
+    return { ...node, params, paramMeta };
   });
 
   return {

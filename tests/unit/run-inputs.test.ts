@@ -5,7 +5,47 @@ import { deriveRunInputsFromSteps } from "../../lib/builder/run-inputs";
 import { buildManifest } from "../../lib/builder/manifest";
 import { enrichEnvField } from "../../lib/builder/env-field-hints";
 
-test("deriveRunInputsFromSteps — sheet épinglé + plage binding → seule la plage", () => {
+test("deriveRunInputsFromSteps — sheet épinglé + plage par défaut → aucun champ plage", () => {
+  const steps: AgentManifest["steps"] = [
+    {
+      type: "action",
+      connector: "google_sheets",
+      action: "sheets.read",
+      params: {
+        spreadsheetId: "1abc-pinned-id",
+        range: "*",
+      },
+      paramMeta: {
+        spreadsheetId: { scope: "builder_test" },
+        range: { scope: "builder_test" },
+      },
+    },
+  ];
+
+  assert.equal(deriveRunInputsFromSteps(steps).length, 0);
+});
+
+test("deriveRunInputsFromSteps — sheet épinglé + plage binding → pas de champ (défaut runtime)", () => {
+  const steps: AgentManifest["steps"] = [
+    {
+      type: "action",
+      connector: "google_sheets",
+      action: "sheets.read",
+      params: {
+        spreadsheetId: "1abc-pinned-id",
+        range: "{{google_sheets_range}}",
+      },
+      paramMeta: {
+        spreadsheetId: { scope: "builder_test" },
+      },
+    },
+  ];
+
+  const fields = deriveRunInputsFromSteps(steps);
+  assert.equal(fields.length, 0);
+});
+
+test("deriveRunInputsFromSteps — plage optionnelle au client", () => {
   const steps: AgentManifest["steps"] = [
     {
       type: "action",
@@ -23,11 +63,9 @@ test("deriveRunInputsFromSteps — sheet épinglé + plage binding → seule la 
   ];
 
   const fields = deriveRunInputsFromSteps(steps);
-  assert.deepEqual(
-    fields.map((f) => f.key),
-    ["google_sheets_range"],
-  );
-  assert.equal(fields[0].paramKey, "range");
+  assert.equal(fields.length, 1);
+  assert.equal(fields[0].key, "google_sheets_range");
+  assert.equal(fields[0].required, false);
 });
 
 test("deriveRunInputsFromSteps — sheet + plage épinglés → aucun champ", () => {
@@ -81,10 +119,11 @@ test("buildManifest — inputs dérivés des steps, pas des envFields parallèle
       action: "sheets.read",
       params: {
         spreadsheetId: "pinned-id",
-        range: "{{google_sheets_range}}",
+        range: "*",
       },
       paramMeta: {
         spreadsheetId: { scope: "builder_test" },
+        range: { scope: "builder_test" },
       },
     },
   ];
@@ -99,10 +138,7 @@ test("buildManifest — inputs dérivés des steps, pas des envFields parallèle
     requiredSecrets: [],
   });
 
-  assert.deepEqual(
-    manifest.inputs.map((i) => i.key),
-    ["google_sheets_range"],
-  );
+  assert.deepEqual(manifest.inputs.map((i) => i.key), []);
 });
 
 test("enrichEnvField — plage ≠ aide ID Sheets", () => {
@@ -112,7 +148,7 @@ test("enrichEnvField — plage ≠ aide ID Sheets", () => {
     paramKey: "range",
     required: true,
   });
-  assert.match(f.help, /Plage/i);
+  assert.match(f.help, /classeur/i);
   assert.equal(f.placeholder, "Sheet1!A1:D10");
   assert.doesNotMatch(f.help, /ID de la feuille/i);
 });

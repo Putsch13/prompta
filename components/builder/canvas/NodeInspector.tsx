@@ -7,10 +7,12 @@ import { getBuilderModels } from "@/lib/catalogs";
 import { getConnectorAction, CONNECTORS } from "@/lib/connectors/registry";
 import { ManualResourceInput, resolveResourceVisibility } from "@/components/builder/canvas/ManualResourceInput";
 import type { ResourceVisibility } from "@/components/builder/canvas/ManualResourceInput";
+import { seedActionParamDefaults } from "@/lib/connectors/param-defaults";
 import {
   ManualActionParamInput,
   resolveParamVisibility,
 } from "@/components/builder/canvas/ManualActionParamInput";
+import { OptionalActionParamInput } from "@/components/builder/canvas/OptionalActionParamInput";
 import { defaultParamBindingKey } from "@/lib/builder/run-inputs";
 import {
   isParamBinding,
@@ -217,7 +219,12 @@ export function NodeInspector({
                 <label className="text-xs text-ink-soft">Action</label>
                 <select
                   value={node.actionSlug ?? ""}
-                  onChange={(e) => patch({ actionSlug: e.target.value, params: {} })}
+                  onChange={(e) =>
+                    patch({
+                      actionSlug: e.target.value,
+                      params: seedActionParamDefaults(node.connectorId!, e.target.value),
+                    })
+                  }
                   className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-sm"
                 >
                   <option value="">— Choisir —</option>
@@ -319,6 +326,39 @@ export function NodeInspector({
                               Renseignez d&apos;abord {input.dependsOn}.
                             </p>
                           )}
+                        </div>
+                      );
+                    }
+
+                    if (!isResource && input.defaultValue !== undefined) {
+                      const paramBinding = defaultParamBindingKey(
+                        currentNode.connectorId!,
+                        input.key,
+                      );
+                      const rawValue = currentNode.params?.[input.key] ?? input.defaultValue;
+                      return (
+                        <div key={input.key}>
+                          <OptionalActionParamInput
+                            label={input.label}
+                            value={rawValue}
+                            defaultValue={input.defaultValue}
+                            defaultHint={
+                              input.key === "range"
+                                ? "tout le classeur (tous les onglets)"
+                                : "valeur standard de l'outil"
+                            }
+                            bindingKey={paramBinding}
+                            placeholder={input.placeholder ?? input.help ?? input.label}
+                            onChange={(val, _mode, meta) => {
+                              patch({
+                                params: { ...(currentNode.params ?? {}), [input.key]: val },
+                                paramMeta: {
+                                  ...(currentNode.paramMeta ?? {}),
+                                  [input.key]: meta,
+                                },
+                              });
+                            }}
+                          />
                         </div>
                       );
                     }

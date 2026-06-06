@@ -51,7 +51,7 @@ export function enrichEnvField(field: EnvFieldBase): EnrichedEnvField {
       type: "text",
       placeholder: "Sheet1!A1:D10",
       example: "Sheet1!A1:D10",
-      help: base.help || "Plage à lire ou écrire (onglet + cellules).",
+      help: base.help || "Par défaut : tout le classeur. Ex. Sheet1!A1:D10 pour une zone précise.",
     };
   }
 
