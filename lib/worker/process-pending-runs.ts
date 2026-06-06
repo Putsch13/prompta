@@ -112,6 +112,8 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
       );
 
       const inputs = (claimed.inputs as Record<string, string>) ?? {};
+      const { buildRunResourcesFromInputs } = await import("@/lib/agent/build-run-resources");
+      const { cleanInputs, resources } = buildRunResourcesFromInputs(parsed.manifest, inputs);
 
       const heartbeatTimer = setInterval(async () => {
         try {
@@ -131,7 +133,8 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
           userId: claimed.user_id,
           listingId: claimed.listing_id ?? "",
           creatorId: listing?.creator_id,
-          inputs,
+          inputs: cleanInputs,
+          resources,
           apiKeys: billing.apiKeys,
           runId: claimed.id,
           dryRun: claimed.dry_run ?? false,

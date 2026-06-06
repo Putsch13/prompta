@@ -19,8 +19,13 @@ function walkSteps(steps: AgentStep[], fields: RunResourceField[], offset = 0): 
     const idx = offset + i;
 
     if (step.type === "parallel") {
-      for (const branch of step.branches) {
-        walkSteps(branch.steps as AgentStep[], fields, idx);
+      for (let branchIdx = 0; branchIdx < step.branches.length; branchIdx++) {
+        const branch = step.branches[branchIdx];
+        for (let s = 0; s < branch.steps.length; s++) {
+          const subStep = branch.steps[s] as AgentStep;
+          const subIdx = idx * 100 + branchIdx * 10 + s;
+          walkSteps([subStep], fields, subIdx);
+        }
       }
       continue;
     }

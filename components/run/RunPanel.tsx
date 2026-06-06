@@ -291,13 +291,15 @@ export function RunPanel({
 
   const [runMode, setRunMode] = useState<string | null>(null);
 
-  async function handleAgentRun() {
+  async function handleAgentRun(runDryRun: boolean = dryRun) {
     if (!versionId) return;
 
-    for (const field of resourceFields) {
-      if (!resourceValues[field.id]) {
-        setError(`Choisissez : ${field.label}`);
-        return;
+    if (!runDryRun) {
+      for (const field of resourceFields) {
+        if (!resourceValues[field.id]) {
+          setError(`Choisissez : ${field.label}`);
+          return;
+        }
       }
     }
 
@@ -310,6 +312,7 @@ export function RunPanel({
     setStepTrace([]);
     setApprovalId(null);
     setShowImmersive(true);
+    setDryRun(runDryRun);
 
     // Preflight: check if user can run
     try {
@@ -352,8 +355,8 @@ export function RunPanel({
           listingId,
           versionId,
           inputs: { ...variables, ...resourceValues },
-          dryRun,
-          async: !dryRun,
+          dryRun: runDryRun,
+          async: !runDryRun,
         }),
       });
       const data = await res.json();
@@ -390,7 +393,7 @@ export function RunPanel({
       } else if (data.runId) {
         setAgentStatus(data.status === "queued" ? "queued" : "running");
         setStepsCompleted(data.steps_completed ?? 0);
-        if (!dryRun) {
+        if (!runDryRun) {
           router.push(`/dashboard/runs?id=${data.runId}`);
           return;
         }
@@ -608,29 +611,32 @@ export function RunPanel({
           />
 
           {requiredConnectors.length > 0 && (
-            <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-ink-soft">
-              <input
-                type="checkbox"
-                checked={dryRun}
-                onChange={(e) => setDryRun(e.target.checked)}
-                className="rounded border-line"
-              />
-              Mode aperçu — simuler les actions connecteur sans effet réel
-            </label>
+            <p className="mt-3 text-xs text-ink-soft">
+              Utilisez <strong>Aperçu</strong> pour simuler sans toucher vos comptes, ou{" "}
+              <strong>Exécuter pour de vrai</strong> pour appeler les API réelles.
+            </p>
           )}
 
-          <button
-            onClick={handleAgentRun}
-            disabled={running || (!canAccess && !isFree) || (!dryRun && !connectionsReady)}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            <Play className="h-4 w-4" />
-            {running
-              ? "Exécution…"
-              : dryRun
-                ? "Aperçu (dry-run)"
-                : "Lancer l'agent"}
-          </button>
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => void handleAgentRun(true)}
+              disabled={running || (!canAccess && !isFree)}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-card py-2.5 text-sm font-medium text-ink disabled:opacity-50"
+            >
+              <Play className="h-4 w-4" />
+              {running && dryRun ? "Aperçu…" : "Aperçu (simulation)"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleAgentRun(false)}
+              disabled={running || (!canAccess && !isFree) || !connectionsReady}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-medium text-white disabled:opacity-50"
+            >
+              <Play className="h-4 w-4" />
+              {running && !dryRun ? "Exécution…" : "Exécuter pour de vrai"}
+            </button>
+          </div>
 
           {!canAccess && !isFree && !runMode && (
             <p className="mt-2 text-center text-xs text-ink-soft">
@@ -708,7 +714,7 @@ export function RunPanel({
                   </button>
                 )}
                 <button
-                  onClick={handleAgentRun}
+                  onClick={() => void handleAgentRun(dryRun)}
                   className="rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
                 >
                   Réessayer

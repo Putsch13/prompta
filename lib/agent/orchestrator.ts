@@ -3,6 +3,8 @@ import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
 import { executeConnectorAction } from "@/lib/connectors/execute";
 import { getUserConnection } from "@/lib/connections";
 import { isResourcePlaceholder } from "@/lib/connectors/param-bindings";
+import { getConnectorAction } from "@/lib/connectors/registry";
+import { formatActionError, isUnresolvedParamValue } from "@/lib/connectors/format-action-error";
 import { AgentManifestSchema, type AgentManifest, type AgentStep, type BaseAgentStep, type ParallelStep } from "./schema";
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
 import { logRunActivity } from "./activity-log";
@@ -38,9 +40,11 @@ export interface StepTraceEntry {
   label: string;
   status: "success" | "failed" | "skipped" | "running";
   outputPreview?: string;
+  errorMessage?: string;
   durationMs?: number;
   model?: string;
   actionSlug?: string;
+  simulated?: boolean;
 }
 
 export interface OrchestratorContext {
@@ -333,14 +337,29 @@ async function executeStep(
       for (const [k, v] of Object.entries(step.params)) {
         let raw = v;
         if (isResourcePlaceholder(v)) {
-          const override = ctx.resources?.[`${stepIndex}:${k}`];
-          if (override) raw = override;
-          else {
+          const resourceKey = `${stepIndex}:${k}`;
+          const override =
+            ctx.resources?.[resourceKey] ??
+            ctx.inputs?.[resourceKey];
+          if (override) {
+            raw = override;
+          } else {
             const rt = v.trim().slice("{{resource:".length, -2);
             raw = ctx.inputs[`resource:${rt}`] ?? v;
           }
         }
         params[k] = interpolate(raw, vars);
+      }
+
+      const actionDef = getConnectorAction(step.connector, step.action);
+      for (const input of actionDef?.inputs ?? []) {
+        if (!input.required) continue;
+        const val = params[input.key];
+        if (isUnresolvedParamValue(val)) {
+          throw new Error(
+            `Paramètre « ${input.label} » non renseigné — choisissez la ressource ou renseignez la valeur.`,
+          );
+        }
       }
 
       if (runId && stepDbId) {
@@ -415,10 +434,11 @@ async function executeStep(
         };
       } catch (err) {
         if (executionId && runId && !simulated) {
-          const message = err instanceof Error ? err.message : "Erreur action externe";
+          const message = formatActionError(step.connector, step.action, err);
           await failExecution(executionId, message).catch(() => undefined);
+          throw new Error(message);
         }
-        throw err;
+        throw new Error(formatActionError(step.connector, step.action, err));
       }
     }
 
@@ -613,8 +633,11 @@ export async function runAgent(
   const resources: Record<string, string> = { ...(context.resources ?? {}) };
   const cleanInputs: Record<string, string> = {};
   for (const [k, v] of Object.entries(runInputs)) {
-    if (/^\d+:[\w]+$/.test(k)) resources[k] = v;
-    else cleanInputs[k] = v;
+    if (/^\d+:\w+$/.test(k)) {
+      if (v?.trim()) resources[k] = v.trim();
+    } else {
+      cleanInputs[k] = v;
+    }
   }
   runInputs = cleanInputs;
   const docText = await resolveDocumentFromInputs(context.userId, runInputs).catch(() => null);
@@ -860,6 +883,10 @@ export async function runAgent(
           durationMs: Date.now() - stepStartedAt,
           model: step.type === "llm" ? step.model : usage?.model,
           actionSlug: step.type === "action" ? step.action : undefined,
+          simulated:
+            effectiveContext.dryRun === true &&
+            (step.type === "action" || step.type === "tool") &&
+            content.includes("[APERÇU"),
         });
 
         if (context.onProgress) {
@@ -921,7 +948,8 @@ export async function runAgent(
           stepType: failStep.type,
           label: describeStep(failStep, failIndex),
           status: "failed",
-          outputPreview: message,
+          outputPreview: message.slice(0, 800),
+          errorMessage: message,
         });
       }
       return { status, stepsCompleted, output: outputs, error: message, usage: usageLog, stepTrace };

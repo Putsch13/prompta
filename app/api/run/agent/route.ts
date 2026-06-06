@@ -56,6 +56,15 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient();
   const { runAgent } = await import("@/lib/agent/orchestrator");
+  const {
+    buildRunResourcesFromInputs,
+    validateRunResourcesForExecution,
+  } = await import("@/lib/agent/build-run-resources");
+
+  function prepareRunContext(manifest: import("@/lib/agent/schema").AgentManifest, rawInputs: Record<string, string>) {
+    const { cleanInputs, resources } = buildRunResourcesFromInputs(manifest, rawInputs);
+    return { inputs: cleanInputs, resources };
+  }
 
   if (preview && previewManifest) {
     const parsed = AgentManifestSchema.safeParse(previewManifest);
@@ -63,6 +72,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Manifeste preview invalide" }, { status: 400 });
     }
     const { apiKeys } = await resolveAgentRunKeys(user.id, parsed.data, true, true);
+    const previewDryRun = !fullDemo;
+    if (!previewDryRun) {
+      const resourceIssues = validateRunResourcesForExecution(parsed.data, inputs);
+      if (resourceIssues.length > 0) {
+        return NextResponse.json(
+          {
+            error: "configuration_incomplete",
+            message: resourceIssues[0].message,
+            issues: resourceIssues,
+          },
+          { status: 400 },
+        );
+      }
+    }
+    const { inputs: previewInputs, resources: previewResources } = prepareRunContext(parsed.data, inputs);
 
     let previewRunId: string | undefined;
     if (fullDemo) {
@@ -71,7 +95,7 @@ export async function POST(request: NextRequest) {
         .insert({
           user_id: user.id,
           listing_id: listingId ?? null,
-          inputs,
+          inputs: { ...previewInputs, ...previewResources },
           status: "running",
           dry_run: false,
           started_at: new Date().toISOString(),
@@ -86,11 +110,12 @@ export async function POST(request: NextRequest) {
     const result = await runAgent(parsed.data, {
       userId: user.id,
       listingId: listingId ?? "preview",
-      inputs,
+      inputs: previewInputs,
+      resources: previewResources,
       apiKeys,
       runId: previewRunId,
-      dryRun: !fullDemo,
-      demoMode: !fullDemo,
+      dryRun: previewDryRun,
+      demoMode: previewDryRun,
     });
 
     if (previewRunId) {
@@ -242,6 +267,23 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (!dryRun) {
+    const resourceIssues = validateRunResourcesForExecution(parsedEnv.manifest, inputs);
+    if (resourceIssues.length > 0) {
+      return NextResponse.json(
+        {
+          error: "configuration_incomplete",
+          message: resourceIssues[0].message,
+          issues: resourceIssues,
+        },
+        { status: 400 },
+      );
+    }
+  }
+
+  const { inputs: runInputs, resources: runResources } = prepareRunContext(parsedEnv.manifest, inputs);
+  const storedInputs = { ...runInputs, ...runResources };
+
   const runAsync =
     dryRun ? false : runAsyncParam !== undefined ? Boolean(runAsyncParam) : true;
 
@@ -252,7 +294,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         listing_id: listingId,
         version_id: versionId,
-        inputs,
+        inputs: storedInputs,
         status: "pending",
         dry_run: dryRun,
         used_credits: billing.usedCredits,
@@ -298,7 +340,7 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       listing_id: listingId,
       version_id: versionId,
-      inputs,
+      inputs: storedInputs,
       status: "running",
       dry_run: dryRun,
       used_credits: billing.usedCredits,
@@ -329,7 +371,8 @@ export async function POST(request: NextRequest) {
     userId: user.id,
     listingId,
     creatorId: listing.creator_id,
-    inputs,
+    inputs: runInputs,
+    resources: runResources,
     apiKeys: billing.apiKeys,
     runId: agentRun?.id,
     dryRun,

@@ -1,11 +1,32 @@
 import type { ExecuteContext, ExecuteResult } from "./types";
 
+async function fetchPrimaryGmailAddress(token: string): Promise<string | undefined> {
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return undefined;
+  const data = (await res.json()) as {
+    sendAs?: { sendAsEmail?: string; isPrimary?: boolean }[];
+  };
+  const primary = data.sendAs?.find((s) => s.isPrimary)?.sendAsEmail;
+  return primary ?? data.sendAs?.[0]?.sendAsEmail;
+}
+
+function isPlaceholderValue(v?: string): boolean {
+  if (!v?.trim()) return true;
+  return v.trim().startsWith("{{");
+}
+
 async function gmailSend(
   ctx: ExecuteContext,
   params: Record<string, string>
 ): Promise<ExecuteResult> {
   if (!ctx.accessToken) throw new Error("Connexion Gmail requise");
-  const fromLine = params.from ? `From: ${params.from}\r\n` : "";
+  let from = params.from?.trim();
+  if (isPlaceholderValue(from)) {
+    from = (await fetchPrimaryGmailAddress(ctx.accessToken)) ?? "";
+  }
+  const fromLine = from ? `From: ${from}\r\n` : "";
   const raw = [
     fromLine,
     `To: ${params.to}`,
@@ -46,9 +67,15 @@ async function gmailRead(ctx: ExecuteContext, params: Record<string, string>): P
 
 async function sheetsRead(ctx: ExecuteContext, params: Record<string, string>): Promise<ExecuteResult> {
   if (!ctx.accessToken) throw new Error("Connexion Google requise");
+  if (isPlaceholderValue(params.spreadsheetId)) {
+    throw new Error("Paramètre « Feuille de calcul » non renseigné");
+  }
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${params.spreadsheetId}/values/${encodeURIComponent(params.range)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${ctx.accessToken}` } });
-  if (!res.ok) throw new Error(`Google Sheets : ${res.status}`);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Google Sheets : ${res.status} — ${err.slice(0, 200)}`);
+  }
   const data = await res.json();
   return { output: JSON.stringify(data.values ?? [], null, 2), metadata: data };
 }

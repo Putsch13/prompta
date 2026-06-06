@@ -46,6 +46,7 @@ type DisplayStep = {
   model: string | null;
   actionSlug: string | null;
   error: string | null;
+  simulated?: boolean;
 };
 
 function normalizeStatus(s: string | null | undefined): RunStatus {
@@ -142,7 +143,8 @@ function mapTraceStep(s: StepTraceEntry, i: number): DisplayStep {
     durationMs: s.durationMs ?? null,
     model: s.model ?? null,
     actionSlug: s.actionSlug ?? null,
-    error: null,
+    error: s.errorMessage ?? (s.status === "failed" ? s.outputPreview ?? null : null),
+    simulated: s.simulated ?? s.outputPreview?.includes("[APERÇU") ?? false,
   };
 }
 
@@ -492,6 +494,11 @@ export function AgentRunConsole({
                           {step.actionSlug && (
                             <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
                               {step.actionSlug}
+                            </span>
+                          )}
+                          {step.simulated && (
+                            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                              Aperçu — rien n&apos;a été envoyé
                             </span>
                           )}
                           {step.durationMs != null && (
