@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2, Plus, Trash2, X } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { getBuilderModels } from "@/lib/catalogs";
-import { getConnectorAction, CONNECTORS } from "@/lib/connectors/registry";
+import { CONNECTORS } from "@/lib/connectors/registry";
+import { actionInputsForStep } from "@/lib/connectors/action-inputs";
+import type { ComposioToolEntry } from "@/lib/composio/catalog";
 import { ManualResourceInput, resolveResourceVisibility } from "@/components/builder/canvas/ManualResourceInput";
 import type { ResourceVisibility } from "@/components/builder/canvas/ManualResourceInput";
 import { seedActionParamDefaults } from "@/lib/connectors/param-defaults";
@@ -78,6 +80,43 @@ export function NodeInspector({
   envFields = [],
 }: Props) {
   const [addKind, setAddKind] = useState<PlanNodeKind>("llm");
+
+  // Catalogue Composio (300+ connecteurs) — chargé une fois, fusionné avec les
+  // connecteurs natifs curatés. Hooks AVANT toute early return.
+  const [composioToolkits, setComposioToolkits] = useState<{ id: string; label: string }[]>([]);
+  const [composioTools, setComposioTools] = useState<ComposioToolEntry[]>([]);
+  const [loadingTools, setLoadingTools] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/composio/toolkits")
+      .then((r) => r.json())
+      .then((d) =>
+        setComposioToolkits(
+          (d.toolkits ?? []).map((t: { id: string; label: string }) => ({
+            id: t.id,
+            label: t.label,
+          })),
+        ),
+      )
+      .catch(() => undefined);
+  }, []);
+
+  const inspectedConnectorId = node?.connectorId;
+  const isComposioConnector =
+    !!inspectedConnectorId && !CONNECTORS.some((c) => c.id === inspectedConnectorId);
+
+  useEffect(() => {
+    if (!inspectedConnectorId || !isComposioConnector) {
+      setComposioTools([]);
+      return;
+    }
+    setLoadingTools(true);
+    fetch(`/api/composio/tools?toolkit=${encodeURIComponent(inspectedConnectorId)}`)
+      .then((r) => r.json())
+      .then((d) => setComposioTools(d.tools ?? []))
+      .catch(() => setComposioTools([]))
+      .finally(() => setLoadingTools(false));
+  }, [inspectedConnectorId, isComposioConnector]);
 
   // Pilier B (P2.4) : Inspecteur = consommateur du Résolveur, phase build.
   // Hooks AVANT toute early return (rules-of-hooks). Tolérant à node/graph null.
@@ -219,17 +258,38 @@ export function NodeInspector({
               <label className="text-xs text-ink-soft">Connecteur</label>
               <select
                 value={node.connectorId ?? ""}
-                onChange={(e) =>
-                  patch({ connectorId: e.target.value, actionSlug: undefined, params: {} })
-                }
+                onChange={(e) => {
+                  const id = e.target.value;
+                  const composio = composioToolkits.find((t) => t.id === id);
+                  patch({
+                    connectorId: id,
+                    connectorLabel: composio?.label,
+                    actionSlug: undefined,
+                    params: {},
+                    actionInputs: undefined,
+                  });
+                }}
                 className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-sm"
               >
                 <option value="">— Choisir —</option>
-                {CONNECTORS.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
+                <optgroup label="Connecteurs recommandés">
+                  {CONNECTORS.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </optgroup>
+                {composioToolkits.length > 0 && (
+                  <optgroup label={`Catalogue Composio (${composioToolkits.length})`}>
+                    {composioToolkits
+                      .filter((t) => !CONNECTORS.some((c) => c.id === t.id))
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
               </select>
               {node.connectorId && (
                 <div className="mt-1">
@@ -240,31 +300,67 @@ export function NodeInspector({
             {node.connectorId && (
               <div>
                 <label className="text-xs text-ink-soft">Action</label>
-                <select
-                  value={node.actionSlug ?? ""}
-                  onChange={(e) =>
-                    patch({
-                      actionSlug: e.target.value,
-                      params: seedActionParamDefaults(node.connectorId!, e.target.value),
-                    })
-                  }
-                  className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-sm"
-                >
-                  <option value="">— Choisir —</option>
-                  {(CONNECTORS.find((c) => c.id === node.connectorId)?.actions ?? []).map(
-                    (a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.label}
-                      </option>
-                    ),
-                  )}
-                </select>
+                {isComposioConnector ? (
+                  <>
+                    <select
+                      value={node.actionSlug ?? ""}
+                      onChange={(e) => {
+                        const slug = e.target.value;
+                        const tool = composioTools.find((t) => t.slug === slug);
+                        patch({
+                          actionSlug: slug,
+                          params: {},
+                          actionInputs: tool?.inputs,
+                        });
+                      }}
+                      disabled={loadingTools}
+                      className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-sm"
+                    >
+                      <option value="">— Choisir —</option>
+                      {composioTools.map((t) => (
+                        <option key={t.slug} value={t.slug}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                    {loadingTools && (
+                      <p className="mt-1 flex items-center gap-1 text-[10px] text-ink-faint">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Chargement des actions…
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <select
+                    value={node.actionSlug ?? ""}
+                    onChange={(e) =>
+                      patch({
+                        actionSlug: e.target.value,
+                        params: seedActionParamDefaults(node.connectorId!, e.target.value),
+                        actionInputs: undefined,
+                      })
+                    }
+                    className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-sm"
+                  >
+                    <option value="">— Choisir —</option>
+                    {(CONNECTORS.find((c) => c.id === node.connectorId)?.actions ?? []).map(
+                      (a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.label}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                )}
               </div>
             )}
             {currentNode.connectorId && currentNode.actionSlug && (
               <div className="space-y-3 border-t border-line pt-2">
                 <p className="text-xs font-medium text-ink-soft">Paramètres</p>
-                {(getConnectorAction(currentNode.connectorId, currentNode.actionSlug)?.inputs ?? []).map(
+                {actionInputsForStep({
+                  connector: currentNode.connectorId,
+                  action: currentNode.actionSlug,
+                  inputsSchema: currentNode.actionInputs,
+                }).map(
                   (input) => {
                     const isResource =
                       input.kind === "resource" ||

@@ -6,6 +6,7 @@ import { connectorsForSteps, getConnectorAction } from "@/lib/connectors/registr
 import { isBinding } from "@/lib/connectors/action-requirements";
 import { seedActionParamDefaults } from "@/lib/connectors/param-defaults";
 import type { ParamMeta } from "@/lib/connectors/param-bindings";
+import type { ActionInput } from "@/lib/connectors/types";
 
 export { graphRunInputs, deriveRunInputsFromSteps, deriveManifestInputsFromSteps } from "@/lib/builder/run-inputs";
 export const COL_W = 260;
@@ -29,6 +30,10 @@ export interface PlanNode {
   prompt?: string;
   connectorId?: string;
   actionSlug?: string;
+  /** Libellé lisible du connecteur (catalogue Composio). */
+  connectorLabel?: string;
+  /** Snapshot du schéma d'entrées (outils Composio hors registre natif). */
+  actionInputs?: ActionInput[];
   toolId?: "web_search" | "http_fetch" | "file_read";
   expression?: string;
   outputKey: string;
@@ -271,6 +276,9 @@ function nodeToAgentStep(node: PlanNode, defaultModel: string): AgentStep {
         paramMeta: node.paramMeta,
         sharedEnv: node.sharedEnv,
         outputKey: node.outputKey,
+        ...(node.actionInputs && node.actionInputs.length > 0
+          ? { inputsSchema: node.actionInputs }
+          : {}),
       };
     case "tool":
       return {

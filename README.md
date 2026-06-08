@@ -122,13 +122,17 @@ En prod : un **Background Worker** Render avec `npm run worker`. Filet de sécur
 
 ---
 
-## Ajouter un connecteur
+## Connecteurs : catalogue dynamique (300+) + registre natif
 
-Tout est déclaratif. Voir **[docs/ADD-CONNECTOR.md](./docs/ADD-CONNECTOR.md)**. En résumé :
+Deux niveaux complémentaires :
 
-1. Déclarer le connecteur et ses actions dans `lib/connectors/registry.ts` (chaque entrée requise a un `kind`, un `help` et un `placeholder` ; pas de valeur magique type `"*"`).
-2. Déclarer les types de ressources listables dans `lib/connectors/resource-types.ts`.
-3. Le validateur `lib/connectors/registry-conformance.ts` (testé en CI) refuse toute définition non conforme.
+- **Catalogue Composio (300+ apps)** — exposé dynamiquement, **sans code par app**. Le builder d'agent (`NodeInspector`) liste tous les toolkits Composio (`/api/composio/toolkits`) et, à la sélection, toutes leurs actions avec leur schéma d'entrées (`/api/composio/tools?toolkit=…`, `lib/composio/catalog.ts`). Le schéma de l'outil est **snapshoté** sur l'étape (`inputsSchema`, voir `lib/agent/schema.ts`) pour que contrat/résolveur/exécution fonctionnent sur n'importe quel outil (`lib/connectors/action-inputs.ts`). L'exécution route directement les slugs `UPPER_SNAKE` vers Composio (`lib/connectors/execute.ts`).
+- **Registre natif curaté** — pour Gmail/Sheets/Slack… une UX soignée (libellés FR, ressources listables, defaults). Voir **[docs/ADD-CONNECTOR.md](./docs/ADD-CONNECTOR.md)** :
+  1. Déclarer le connecteur et ses actions dans `lib/connectors/registry.ts` (chaque entrée requise a un `kind`, un `help`, un `placeholder` ; pas de valeur magique type `"*"`).
+  2. Déclarer les types de ressources listables dans `lib/connectors/resource-types.ts`.
+  3. Le validateur `lib/connectors/registry-conformance.ts` (testé en CI) refuse toute définition non conforme.
+
+Le registre natif est **prioritaire** sur le catalogue (même `id`) ; toute autre app passe par le catalogue dynamique.
 
 ---
 

@@ -20,11 +20,12 @@ export interface ComposioToolEntry {
     key: string;
     label: string;
     required: boolean;
-    type?: string;
-    kind?: "static" | "input" | "step_ref" | "resource" | "identity";
+    type?: "text" | "textarea" | "email";
+    kind: "static" | "input" | "step_ref" | "resource" | "identity";
     resourceType?: string;
     defaultScope?: "builder_test" | "end_user" | "dynamic";
     dependsOn?: string;
+    help?: string;
   }[];
 }
 
@@ -74,6 +75,28 @@ function categoryLabel(raw?: unknown): string {
   return CATEGORY_LABELS[key.toLowerCase()] ?? key.replace(/-/g, " ");
 }
 
+/** Devine un libellé lisible depuis une clé snake_case. */
+function humanizeKey(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
+/** Mappe un type JSON-schema + nom de clé → type de widget ActionInput. */
+function widgetType(key: string, jsonType?: string): "text" | "textarea" | "email" {
+  const k = key.toLowerCase();
+  if (/email|recipient|sender/.test(k)) return "email";
+  if (
+    /body|message|content|text|description|prompt|html|markdown|note|comment/.test(k) ||
+    jsonType === "object" ||
+    jsonType === "array"
+  ) {
+    return "textarea";
+  }
+  return "text";
+}
+
 function parseToolInputs(
   parameters: Record<string, unknown> | undefined
 ): ComposioToolEntry["inputs"] {
@@ -84,18 +107,28 @@ function parseToolInputs(
   const required = new Set((parameters?.required as string[] | undefined) ?? []);
   return Object.entries(props).map(([key, meta]) => {
     const resourceType = inferComposioResourceType(key);
+    const label = meta.title?.trim() || humanizeKey(key);
+    if (resourceType) {
+      return {
+        key,
+        label,
+        required: required.has(key),
+        type: "text" as const,
+        kind: "resource" as const,
+        resourceType,
+        defaultScope: "end_user" as const,
+        help: meta.description,
+      };
+    }
     return {
       key,
-      label: meta.title ?? meta.description ?? key,
+      label,
       required: required.has(key),
-      type: meta.type,
-      ...(resourceType
-        ? {
-            kind: "resource" as const,
-            resourceType,
-            defaultScope: "end_user" as const,
-          }
-        : {}),
+      type: widgetType(key, meta.type),
+      // `kind` toujours défini → ActionInput valide pour le contrat/résolveur.
+      kind: "input" as const,
+      defaultScope: "dynamic" as const,
+      help: meta.description,
     };
   });
 }

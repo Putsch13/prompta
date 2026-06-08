@@ -87,8 +87,11 @@ export async function executeConnectorAction(
     const composioOn = isComposioEnabled();
 
     // 1) Action déjà au format Composio (UPPER_SNAKE) → exécution Composio directe.
+    //    Le toolkit vient du connecteur de l'étape (slug du catalogue) si dispo,
+    //    sinon on le déduit du préfixe du slug (ex. GOOGLESHEETS_… → googlesheets).
     if (composioOn && !isNativeAction(actionId)) {
-      return runComposio(actionId, ctx.userId, params, actionId.split("_")[0]?.toLowerCase());
+      const toolkitSlug = ctx.connector?.trim() || actionId.split("_")[0]?.toLowerCase();
+      return runComposio(actionId, ctx.userId, params, toolkitSlug);
     }
 
     // 2) Action native MAIS la connexion de l'utilisateur passe par Composio :

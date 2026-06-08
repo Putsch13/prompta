@@ -42,6 +42,28 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
         }),
       )
       .optional(),
+    /**
+     * Snapshot du schéma d'entrées d'un outil Composio arbitraire (hors registre
+     * natif). Permet au contrat/résolveur/inspecteur de fonctionner pour
+     * n'importe lequel des 300+ connecteurs sans entrée codée en dur.
+     */
+    inputsSchema: z
+      .array(
+        z.object({
+          key: z.string(),
+          label: z.string(),
+          type: z.enum(["text", "textarea", "email"]).optional(),
+          required: z.boolean().optional(),
+          kind: z.enum(["static", "input", "step_ref", "resource", "identity"]),
+          resourceType: z.string().optional(),
+          defaultScope: z.enum(["builder_test", "end_user", "dynamic"]).optional(),
+          dependsOn: z.string().optional(),
+          help: z.string().optional(),
+          placeholder: z.string().optional(),
+          defaultValue: z.string().optional(),
+        }),
+      )
+      .optional(),
     /** Env partagée : accès/ressources du builder pour tous les abonnés */
     sharedEnv: z.boolean().optional(),
     outputKey: z.string().optional(),

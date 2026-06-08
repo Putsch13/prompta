@@ -15,7 +15,7 @@ import {
   type ParamMeta,
   type ParamScope,
 } from "@/lib/connectors/param-bindings";
-import { getConnectorAction } from "@/lib/connectors/registry";
+import { actionInputsForStep } from "@/lib/connectors/action-inputs";
 import type { ActionInput } from "@/lib/connectors/types";
 import { inputHasRuntimeDefault } from "@/lib/connectors/param-defaults";
 import {
@@ -180,12 +180,12 @@ function walkSteps(
 
     if (step.type !== "action") continue;
 
-    const actionDef = getConnectorAction(step.connector, step.action);
+    const actionInputs = actionInputsForStep(step);
     const stepShared = step.sharedEnv === true;
 
     for (const [paramKey, rawValue] of Object.entries(step.params ?? {})) {
       const meta = step.paramMeta?.[paramKey] as ParamMeta | undefined;
-      const inputDef = actionDef?.inputs.find((i) => i.key === paramKey);
+      const inputDef = actionInputs.find((i) => i.key === paramKey);
       const label = inputDef?.label ?? keyToLabel(paramKey);
       const help = inputDef?.help?.trim() || undefined;
       const placeholder = inputDef?.placeholder?.trim() || undefined;
