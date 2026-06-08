@@ -5,7 +5,7 @@ import { ComposioExecutionError, executeComposioTool } from "@/lib/composio/exec
 import { composioMappingFor } from "./native-to-composio";
 import { toComposioToolkitSlug, isSameConnector } from "./resolve-id";
 import { CONNECTORS } from "./registry";
-import { resolveComposioToolSlug } from "@/lib/composio/resolve-native-action";
+import { resolveComposioToolSlug, actionVerb } from "@/lib/composio/resolve-native-action";
 
 /** Le connecteur existe-t-il dans le registre natif maison ? */
 function hasNativeConnector(connectorId?: string): boolean {
@@ -108,13 +108,24 @@ export async function executeConnectorAction(
 
     // 0bis) Action au format natif (connector.verb) MAIS connecteur Composio-only
     //       (aucun registre natif) → le plan a inventé une action inexistante.
-    //       On la résout vers le vrai slug Composio via le catalogue.
-    if (composioOn && isNativeAction(actionId) && !hasNativeConnector(ctx.connector)) {
+    //       On la résout vers le vrai slug Composio via le catalogue. En cas
+    //       d'échec, message CLAIR (ne pas retomber sur « reconnectez en natif »
+    //       qui devient un trompeur « Connectez … » après mapping).
+    if (isNativeAction(actionId) && !hasNativeConnector(ctx.connector)) {
       const connectorId = ctx.connector?.trim() || actionId.split(".")[0] || "";
+      const toolkit = toComposioToolkitSlug(connectorId);
+      if (!composioOn) {
+        throw new Error(
+          `Le connecteur ${toolkit} fonctionne via Composio, mais COMPOSIO_API_KEY n'est pas configurée côté serveur.`,
+        );
+      }
       const resolvedSlug = await resolveComposioToolSlug(connectorId, actionId);
       if (resolvedSlug) {
-        return runComposio(resolvedSlug, ctx.userId, params, toComposioToolkitSlug(connectorId));
+        return runComposio(resolvedSlug, ctx.userId, params, toolkit);
       }
+      throw new Error(
+        `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit}. Ouvrez l'étape dans le builder et choisissez une action existante.`,
+      );
     }
 
     // 2) Action native MAIS la connexion de l'utilisateur passe par Composio :

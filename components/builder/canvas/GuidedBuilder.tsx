@@ -35,6 +35,7 @@ import {
   type PlanNode,
 } from "@/lib/builder/plan-graph";
 import { computeReadiness } from "@/lib/builder/agent-readiness";
+import { enrichComposioActions } from "@/lib/builder/enrich-composio-actions";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -211,6 +212,10 @@ export function GuidedBuilder({
         const changed = (data.changedIds as string[]) ?? [];
         setHighlightedIds(changed);
         setTimeout(() => setHighlightedIds([]), 3500);
+        // Résout les actions Composio-only inventées → vrais outils + schéma réel.
+        void enrichComposioActions(newGraph).then((enriched) => {
+          if (enriched !== newGraph) onGraphChange(layoutGraph(normalizeGraph(enriched)));
+        });
       }
       if (typeof data.focusStepId === "string") onSelect(data.focusStepId);
       if (Array.isArray(data.completedStepIds)) setCompletedIds(data.completedStepIds);

@@ -30,6 +30,7 @@ import type { ApprovalDetails } from "@/components/run/HumanApprovalModal";
 import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
 import { AgentCanvas } from "@/components/builder/canvas/AgentCanvas";
 import { GuidedBuilder } from "@/components/builder/canvas/GuidedBuilder";
+import { enrichComposioActions } from "@/lib/builder/enrich-composio-actions";
 import {
   graphRunInputs,
   graphConnectors,
@@ -163,6 +164,10 @@ export function CreateWizard({ categories }: Props) {
     const graph = layoutGraph(normalizeGraph(planToGraph(plan, form.models[0])));
     commitPlanGraph(graph, false);
     graphHistoryRef.current = { past: [], future: [] };
+    // Résout les actions Composio-only inventées → vrais outils + schéma réel.
+    void enrichComposioActions(graph).then((enriched) => {
+      if (enriched !== graph) commitPlanGraph(layoutGraph(normalizeGraph(enriched)), false);
+    });
 
     const connectorIds = plan.requiredConnectors.map((c) => c.connectorId);
     setForm((prev) => ({
