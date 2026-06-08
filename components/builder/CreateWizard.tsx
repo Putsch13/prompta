@@ -3,7 +3,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, AlertTriangle, Check, Wand2 } from "lucide-react";
+import {
+  Loader2,
+  AlertTriangle,
+  Check,
+  Wand2,
+  PenLine,
+  Boxes,
+  SlidersHorizontal,
+  Play,
+  Rocket,
+  ArrowLeft,
+  ArrowRight,
+} from "lucide-react";
 import { EnvFieldInputs } from "@/components/builder/EnvFieldInputs";
 import { CatalogMultiSelect } from "@/components/builder/CatalogMultiSelect";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
@@ -49,7 +61,15 @@ import type { GeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
 import type { AgentStep, AgentKind, ExecutionMode } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 
-const STEPS = ["Décrire", "Construire", "Détails", "Tester", "Publier"];
+const STEP_META = [
+  { label: "Décrire", icon: PenLine, hint: "Ton objectif en une phrase" },
+  { label: "Construire", icon: Boxes, hint: "Le flux, les outils, les ressources" },
+  { label: "Détails", icon: SlidersHorizontal, hint: "Titre, catégorie, modèles" },
+  { label: "Tester", icon: Play, hint: "Lance et vérifie en réel" },
+  { label: "Publier", icon: Rocket, hint: "Mets ton agent en ligne" },
+] as const;
+
+const STEPS = STEP_META.map((s) => s.label);
 
 interface Props {
   categories: { id: string; name: string; slug: string }[];
@@ -543,15 +563,60 @@ export function CreateWizard({ categories }: Props) {
   }
 
   return (
-    <div className="rounded-xl border border-line bg-card p-6">
-      <div className="mb-8 flex gap-1">
-        {STEPS.map((label, i) => (
-          <div key={label} className="flex-1">
-            <div className={`h-1 rounded-full ${i <= step ? "bg-accent" : "bg-line"}`} />
-            <p className="mt-1 hidden text-[10px] text-ink-faint sm:block">{label}</p>
-          </div>
-        ))}
-      </div>
+    <div className="rounded-2xl border border-line bg-card p-6 shadow-sm">
+      <nav className="mb-8" aria-label="Étapes de création">
+        <ol className="flex items-center">
+          {STEP_META.map((meta, i) => {
+            const StepIcon = meta.icon;
+            const done = i < step;
+            const current = i === step;
+            const reachable = i <= step;
+            return (
+              <li key={meta.label} className="flex flex-1 items-center last:flex-none">
+                <button
+                  type="button"
+                  disabled={!reachable}
+                  onClick={() => reachable && setStep(i)}
+                  className={`group flex items-center gap-3 text-left outline-none ${
+                    reachable ? "cursor-pointer" : "cursor-default"
+                  }`}
+                >
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold transition-all ${
+                      done
+                        ? "border-accent bg-accent text-white"
+                        : current
+                          ? "border-accent bg-accent/10 text-accent ring-4 ring-accent/10"
+                          : "border-line bg-card text-ink-faint"
+                    }`}
+                  >
+                    {done ? <Check className="h-4 w-4" /> : <StepIcon className="h-4 w-4" />}
+                  </span>
+                  <span className="hidden md:block">
+                    <span
+                      className={`block text-sm font-semibold leading-tight ${
+                        current || done ? "text-ink" : "text-ink-faint"
+                      }`}
+                    >
+                      {meta.label}
+                    </span>
+                    <span className="block text-[11px] leading-tight text-ink-faint">
+                      {meta.hint}
+                    </span>
+                  </span>
+                </button>
+                {i < STEP_META.length - 1 && (
+                  <span
+                    className={`mx-3 h-px flex-1 transition-colors ${
+                      i < step ? "bg-accent" : "bg-line"
+                    }`}
+                  />
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
 
       {step === 0 && (
         <div>
@@ -564,7 +629,7 @@ export function CreateWizard({ categories }: Props) {
             onChange={(e) => setObjectiveText(e.target.value)}
             placeholder="Ex. Quand je reçois un email de réclamation, analyser le sentiment, chercher le client dans HubSpot et rédiger une réponse empathique…"
             rows={4}
-            className="mt-4 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm"
+            className="mt-4 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm outline-none transition-shadow focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
           <div className="mt-4">
             <p className="mb-1 text-xs font-medium text-ink-soft">Modèle IA pour la génération</p>
@@ -584,10 +649,10 @@ export function CreateWizard({ categories }: Props) {
             type="button"
             onClick={handleGeneratePlan}
             disabled={planLoading}
-            className="mt-3 flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="mt-4 inline-flex h-11 items-center gap-2 rounded-lg bg-accent px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent/90 disabled:opacity-50"
           >
             {planLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-            {planLoading ? "Analyse en cours…" : "Générer le plan"}
+            {planLoading ? "Analyse en cours…" : "Générer mon agent"}
           </button>
 
           {generatedPlan && (
@@ -611,10 +676,10 @@ export function CreateWizard({ categories }: Props) {
 
       {step === 1 && (
         <div className="space-y-4">
-          <h2 className="font-display text-xl font-bold text-ink">Construire le squelette</h2>
+          <h2 className="font-display text-xl font-bold text-ink">Compose le flux de ton agent</h2>
           <p className="text-sm text-ink-soft">
-            Sur chaque nœud : connectez l&apos;outil, choisissez une ressource précise si besoin,
-            et décidez si l&apos;env est partagée ou laissée au client.
+            Sur chaque nœud : connecte l&apos;outil, choisis une ressource dans la liste si besoin,
+            et décide si l&apos;accès est partagé ou laissé au client.
           </p>
           {!planGraph ? (
             <p className="text-sm text-amber-700">Générez d&apos;abord un plan à l&apos;étape « Décrire ».</p>
@@ -1031,12 +1096,13 @@ export function CreateWizard({ categories }: Props) {
         </div>
       )}
 
-      <div className="mt-8 flex justify-between">
+      <div className="mt-8 flex items-center justify-between border-t border-line pt-6">
         <button
           onClick={() => setStep((s) => Math.max(0, s - 1))}
           disabled={step === 0}
-          className="rounded-lg border border-line px-4 py-2 text-sm disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-card2 disabled:opacity-40"
         >
+          <ArrowLeft className="h-4 w-4" />
           Retour
         </button>
         {step < STEPS.length - 1 ? (
@@ -1044,25 +1110,27 @@ export function CreateWizard({ categories }: Props) {
             onClick={() => {
               if (canContinueFromStep(step)) setStep((s) => s + 1);
             }}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent/90"
           >
             Continuer
+            <ArrowRight className="h-4 w-4" />
           </button>
         ) : (
           <div className="flex gap-2">
             <button
               onClick={() => handleSubmit(false)}
               disabled={saving}
-              className="rounded-lg border border-line px-4 py-2 text-sm"
+              className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-card2 disabled:opacity-50"
             >
               Brouillon
             </button>
             <button
               onClick={() => handleSubmit(true)}
               disabled={saving}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent/90 disabled:opacity-50"
             >
-              {saving ? "Envoi…" : "Publier"}
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
+              {saving ? "Envoi…" : "Publier l'agent"}
             </button>
           </div>
         )}
