@@ -138,6 +138,10 @@ Le registre natif est **prioritaire** sur le catalogue (même `id`) ; toute autr
 
 Tout paramètre `*_id` d'un toolkit Composio devient une **ressource listable** (type synthétique `composio:<toolkit>:<param>`, `lib/connectors/resource-types.ts`). Au moment du listing, `lib/composio/discover-list-action.ts` inspecte les outils du toolkit et choisit la meilleure action « lister/rechercher » (score sur verbes `LIST/SEARCH/…`, nom de ressource, nombre d'entrées requises), l'exécute, puis parse la sortie via un parseur récursif générique (`parseComposioResourceList`). Aucun candidat crédible → repli sur la saisie manuelle d'ID.
 
+### Wizard co-construit avec l'IA
+
+L'étape « Co-construire » (`components/builder/canvas/GuidedBuilder.tsx`) place l'arborescence en grand puis un **Copilote** qui guide nœud par nœud. La complétude est calculée de façon **déterministe** (`lib/builder/agent-readiness.ts`, sans dépendre du JSON d'un LLM) : par nœud, ce qui manque (connecteur, paramètre requis, prompt, condition). Le copilote propose des **actions fiables** (« Demander à l'abonné », « Générer par IA », « Valeur fixe ») et un **champ libre** qui passe par le moteur d'édition de plan (`/api/builder/edit-plan`). Boutons : mode manuel ↔ guidé, ajouter un nœud, tout compléter par IA, évaluer la progression. Quand tout est prêt → CTA « Lancer le test ».
+
 ### Champs en IA (génération automatique)
 
 Sur un paramètre en **champ libre**, le builder propose « Remplir par IA » (`components/builder/canvas/AiFillField.tsx`) : on choisit un modèle et on décrit la valeur attendue (le prompt peut référencer `{{variables}}` et sorties d'étapes). Au run, l'orchestrateur génère la valeur via le modèle (`aiFills` sur l'étape action, `lib/agent/schema.ts` / `lib/agent/orchestrator.ts`). Ces paramètres ne sont **pas** demandés à l'abonné (`lib/agent/contract.ts`).

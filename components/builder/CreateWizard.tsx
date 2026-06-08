@@ -29,22 +29,18 @@ import { AgentRunExperience } from "@/components/run/AgentRunExperience";
 import type { ApprovalDetails } from "@/components/run/HumanApprovalModal";
 import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
 import { AgentCanvas } from "@/components/builder/canvas/AgentCanvas";
-import { NodeInspector } from "@/components/builder/canvas/NodeInspector";
-import { PlanChat } from "@/components/builder/canvas/PlanChat";
+import { GuidedBuilder } from "@/components/builder/canvas/GuidedBuilder";
 import {
   graphRunInputs,
   graphConnectors,
   graphToSteps,
-  graphHasRepairableIssues,
   layoutGraph,
   moveNode,
   normalizeGraph,
   planToGraph,
-  updateNode,
   validatePlanGraph,
   hasBlockingGraphIssues,
   type PlanGraph,
-  type PlanNode,
 } from "@/lib/builder/plan-graph";
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 import { injectHumanApprovals } from "@/lib/connectors/approvals-inject";
@@ -63,7 +59,7 @@ import type { KeyProvider } from "@/lib/keys";
 
 const STEP_META = [
   { label: "Décrire", icon: PenLine, hint: "Ton objectif en une phrase" },
-  { label: "Construire", icon: Boxes, hint: "Le flux, les outils, les ressources" },
+  { label: "Co-construire", icon: Boxes, hint: "Guidé par l'IA, étape par étape" },
   { label: "Détails", icon: SlidersHorizontal, hint: "Titre, catégorie, modèles" },
   { label: "Tester", icon: Play, hint: "Lance et vérifie en réel" },
   { label: "Publier", icon: Rocket, hint: "Mets ton agent en ligne" },
@@ -122,7 +118,6 @@ export function CreateWizard({ categories }: Props) {
   const [generatedPlan, setGeneratedPlan] = useState<GeneratedAgentPlan | null>(null);
   const [planGraph, setPlanGraph] = useState<PlanGraph | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [highlightedIds, setHighlightedIds] = useState<string[]>([]);
   const [graphIssues, setGraphIssues] = useState<ReturnType<typeof validatePlanGraph>>([]);
   const graphHistoryRef = useRef<{ past: PlanGraph[]; future: PlanGraph[] }>({ past: [], future: [] });
 
@@ -246,15 +241,6 @@ export function CreateWizard({ categories }: Props) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [planGraph]);
-
-  function handleNodeInspectorChange(node: PlanNode) {
-    if (!planGraph || !selectedNodeId) return;
-    commitPlanGraph(updateNode(planGraph, selectedNodeId, node));
-  }
-
-  function handleGraphMutation(graph: PlanGraph) {
-    commitPlanGraph(graph);
-  }
 
   async function handleGeneratePlan() {
     if (objectiveText.trim().length < 10) {
@@ -676,76 +662,30 @@ export function CreateWizard({ categories }: Props) {
 
       {step === 1 && (
         <div className="space-y-4">
-          <h2 className="font-display text-xl font-bold text-ink">Compose le flux de ton agent</h2>
-          <p className="text-sm text-ink-soft">
-            Sur chaque nœud : connecte l&apos;outil, choisis une ressource dans la liste si besoin,
-            et décide si l&apos;accès est partagé ou laissé au client.
-          </p>
+          <div>
+            <h2 className="font-display text-xl font-bold text-ink">Co-construis ton agent avec l&apos;IA</h2>
+            <p className="text-sm text-ink-soft">
+              L&apos;arborescence est en haut. Le copilote te guide étape par étape, complète pour toi,
+              et te dit quand tout est prêt à tester.
+            </p>
+          </div>
           {!planGraph ? (
             <p className="text-sm text-amber-700">Générez d&apos;abord un plan à l&apos;étape « Décrire ».</p>
           ) : (
             <>
-              <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-                <AgentCanvas
-                  graph={planGraph}
-                  selectedId={selectedNodeId ?? undefined}
-                  onSelect={setSelectedNodeId}
-                  onMoveNode={(id, x, y) => {
-                    commitPlanGraph(moveNode(planGraph, id, x, y));
-                  }}
-                  highlightedIds={highlightedIds}
-                  validationIssues={graphIssues}
-                  disconnectedConnectors={disconnectedConnectors}
-                />
-                <NodeInspector
-                  node={planGraph.nodes.find((n) => n.id === selectedNodeId) ?? null}
-                  graph={planGraph}
-                  onChange={handleNodeInspectorChange}
-                  onGraphChange={handleGraphMutation}
-                  onClose={() => setSelectedNodeId(null)}
-                  defaultModel={form.models[0]}
-                  envFields={form.envFields}
-                />
-              </div>
-              {graphIssues.length > 0 && (
-                <ul className="space-y-1 rounded-lg border border-line bg-card2 p-3 text-xs">
-                  {graphIssues.map((issue, i) => (
-                    <li
-                      key={i}
-                      className={issue.level === "error" ? "text-destructive" : "text-amber-700"}
-                    >
-                      {issue.nodeId ? `[${issue.nodeId}] ` : ""}
-                      {issue.message}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => commitPlanGraph(layoutGraph(planGraph))}
-                  className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft hover:bg-card2"
-                >
-                  Réorganiser
-                </button>
-                {graphHasRepairableIssues(planGraph) && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      commitPlanGraph(layoutGraph(normalizeGraph(planGraph)))
-                    }
-                    className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800"
-                  >
-                    Reconnecter automatiquement
-                  </button>
-                )}
-              </div>
-              <PlanChat
+              <GuidedBuilder
                 graph={planGraph}
                 onGraphChange={(g) => commitPlanGraph(g)}
-                onChangedIds={setHighlightedIds}
-                modelId={builderModel}
+                selectedNodeId={selectedNodeId}
+                onSelect={setSelectedNodeId}
+                onMoveNode={(id, x, y) => commitPlanGraph(moveNode(planGraph, id, x, y))}
                 defaultModel={form.models[0]}
+                modelId={builderModel}
+                envFields={form.envFields}
+                disconnectedConnectors={disconnectedConnectors}
+                onGoToTest={() => {
+                  if (canContinueFromStep(1)) setStep(3);
+                }}
               />
               <ClientRequirementsPanel
                 summary={clientRequirements}
