@@ -128,22 +128,73 @@ async function listComposioResources(
 
   const { executeComposioTool } = await import("@/lib/composio/execute");
   try {
-    const result = await executeComposioTool(def.listAction, userId, {}, {
+    // Beaucoup de tools de listing acceptent un parent (ex. AIRTABLE_LIST_TABLES
+    // attend base_id) et/ou une recherche : on passe ce qu'on a, best-effort.
+    const args: Record<string, string> = {};
+    if (parent && def.parentType) {
+      const parentDef = getResourceType(def.parentType);
+      const parentKey = parentDef ? composioParamForResource(parentDef.id) : undefined;
+      if (parentKey) args[parentKey] = parent;
+    }
+    if (q) args.query = q;
+
+    const result = await executeComposioTool(def.listAction, userId, args, {
       toolkitSlug: toComposioToolkitSlug(def.connectorId),
     });
-    const parsed = JSON.parse(result.output || "{}") as {
-      items?: ResourceListItem[];
-      bases?: { id: string; name: string }[];
-      tables?: { id: string; name: string }[];
-    };
-    if (parsed.items) return { items: parsed.items };
-    if (parsed.bases) return { items: parsed.bases.map((b) => ({ id: b.id, label: b.name })) };
-    if (parsed.tables) return { items: parsed.tables.map((t) => ({ id: t.id, label: t.name, parentId: parent })) };
-    return { items: [] };
+    const items = parseComposioResourceList(result.output, parent);
+    return { items };
   } catch {
     return { items: [] };
   }
 }
+
+/** Devine la clé d'argument Composio pour un id de ressource parent. */
+function composioParamForResource(resourceTypeId: string): string | undefined {
+  const leaf = resourceTypeId.split(".")[1];
+  if (!leaf) return undefined;
+  // ex. airtable.base → base_id ; notion.database → database_id
+  return `${leaf}_id`;
+}
+
+function firstString(o: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === "string" && v.trim()) return v;
+    if (typeof v === "number") return String(v);
+  }
+  return undefined;
+}
+
+const ID_KEYS = [
+  "id",
+  "spreadsheetId",
+  "spreadsheet_id",
+  "fileId",
+  "file_id",
+  "page_id",
+  "database_id",
+  "base_id",
+  "table_id",
+  "channel_id",
+  "calendar_id",
+  "gid",
+  "key",
+  "uuid",
+  "number",
+];
+const LABEL_KEYS = [
+  "name",
+  "title",
+  "label",
+  "display_name",
+  "displayName",
+  "full_name",
+  "fullName",
+  "summary",
+  "subject",
+  "email",
+  "channel_name",
+];
 
 /** Un objet ressemble-t-il à un spreadsheet (a un id + un nom) ? */
 function toSpreadsheetItem(o: Record<string, unknown>): ResourceListItem | null {
@@ -155,19 +206,26 @@ function toSpreadsheetItem(o: Record<string, unknown>): ResourceListItem | null 
   return { id, label: String(label) };
 }
 
-/**
- * Composio renvoie des formes variables (`{spreadsheets}`, `{files}`, `{data:{…}}`,
- * `{response_data:{…}}`…). On cherche récursivement le **premier tableau d'objets
- * spreadsheet-like** plutôt que d'énumérer chaque clé connue.
- */
-function parseComposioSpreadsheetOutput(output: string): ResourceListItem[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(output);
-  } catch {
-    return [];
-  }
+/** Objet générique de ressource Composio (id + libellé devinés). */
+function toResourceItem(parent?: string) {
+  return (o: Record<string, unknown>): ResourceListItem | null => {
+    const id = firstString(o, ID_KEYS);
+    if (!id) return null;
+    const rawLabel = firstString(o, LABEL_KEYS);
+    return { id, label: rawLabel ?? id, ...(parent ? { parentId: parent } : {}) };
+  };
+}
 
+/**
+ * Cherche récursivement le **premier tableau d'objets** qu'on sait transformer
+ * en items (via `toItem`). Composio renvoie des formes variables (`{results}`,
+ * `{bases}`, `{files}`, `{data:{…}}`, `{response_data:{…}}`…) ; ce parseur
+ * générique évite d'énumérer chaque clé connue par toolkit.
+ */
+function findFirstItemArray(
+  parsed: unknown,
+  toItem: (o: Record<string, unknown>) => ResourceListItem | null,
+): ResourceListItem[] {
   const seen = new Set<unknown>();
   const stack: unknown[] = [parsed];
   while (stack.length) {
@@ -178,7 +236,7 @@ function parseComposioSpreadsheetOutput(output: string): ResourceListItem[] {
     if (Array.isArray(node)) {
       const items = node
         .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
-        .map(toSpreadsheetItem)
+        .map(toItem)
         .filter((x): x is ResourceListItem => x !== null);
       if (items.length > 0) return items;
       for (const child of node) stack.push(child);
@@ -190,6 +248,23 @@ function parseComposioSpreadsheetOutput(output: string): ResourceListItem[] {
     }
   }
   return [];
+}
+
+function parseComposioSpreadsheetOutput(output: string): ResourceListItem[] {
+  try {
+    return findFirstItemArray(JSON.parse(output), toSpreadsheetItem);
+  } catch {
+    return [];
+  }
+}
+
+/** Parseur générique : tout toolkit Composio (Notion, Airtable, GitHub…). */
+export function parseComposioResourceList(output: string, parent?: string): ResourceListItem[] {
+  try {
+    return findFirstItemArray(JSON.parse(output), toResourceItem(parent));
+  } catch {
+    return [];
+  }
 }
 
 function parseComposioSheetTabs(output: string, spreadsheetId: string): ResourceListItem[] {

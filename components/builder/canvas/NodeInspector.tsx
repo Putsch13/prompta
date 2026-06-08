@@ -86,6 +86,7 @@ export function NodeInspector({
   const [composioToolkits, setComposioToolkits] = useState<{ id: string; label: string }[]>([]);
   const [composioTools, setComposioTools] = useState<ComposioToolEntry[]>([]);
   const [loadingTools, setLoadingTools] = useState(false);
+  const [toolQuery, setToolQuery] = useState("");
 
   useEffect(() => {
     fetch("/api/composio/toolkits")
@@ -302,6 +303,15 @@ export function NodeInspector({
                 <label className="text-xs text-ink-soft">Action</label>
                 {isComposioConnector ? (
                   <>
+                    {composioTools.length > 6 && (
+                      <input
+                        type="search"
+                        value={toolQuery}
+                        onChange={(e) => setToolQuery(e.target.value)}
+                        placeholder="Filtrer les actions…"
+                        className="mt-1 h-8 w-full rounded-lg border border-line px-2 text-xs"
+                      />
+                    )}
                     <select
                       value={node.actionSlug ?? ""}
                       onChange={(e) => {
@@ -317,17 +327,41 @@ export function NodeInspector({
                       className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-sm"
                     >
                       <option value="">— Choisir —</option>
-                      {composioTools.map((t) => (
-                        <option key={t.slug} value={t.slug}>
-                          {t.name}
-                        </option>
-                      ))}
+                      {composioTools
+                        .filter((t) => {
+                          const q = toolQuery.trim().toLowerCase();
+                          if (!q) return true;
+                          return (
+                            t.name.toLowerCase().includes(q) ||
+                            t.slug.toLowerCase().includes(q) ||
+                            (t.description ?? "").toLowerCase().includes(q)
+                          );
+                        })
+                        .map((t) => (
+                          <option key={t.slug} value={t.slug}>
+                            {t.name}
+                          </option>
+                        ))}
                     </select>
                     {loadingTools && (
                       <p className="mt-1 flex items-center gap-1 text-[10px] text-ink-faint">
                         <Loader2 className="h-3 w-3 animate-spin" /> Chargement des actions…
                       </p>
                     )}
+                    {node.actionSlug && (() => {
+                      const sel = composioTools.find((t) => t.slug === node.actionSlug);
+                      if (!sel) return null;
+                      return (
+                        <div className="mt-1 rounded-lg bg-card2 px-2 py-1.5">
+                          <p className="font-mono text-[10px] text-ink-faint">{sel.slug}</p>
+                          {sel.description && (
+                            <p className="mt-0.5 line-clamp-3 text-[11px] text-ink-soft">
+                              {sel.description}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : (
                   <select
