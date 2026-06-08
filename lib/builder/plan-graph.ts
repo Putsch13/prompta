@@ -3,7 +3,6 @@ import { AgentStepSchema } from "@/lib/agent/schema";
 import type { GeneratedAgentPlan } from "@/lib/builder/generate-agent-plan";
 import { validateAgentManifest, hasBlockingIssues } from "@/lib/builder/validate-agent";
 import { connectorsForSteps, getConnectorAction } from "@/lib/connectors/registry";
-import { isBinding } from "@/lib/connectors/action-requirements";
 import { seedActionParamDefaults } from "@/lib/connectors/param-defaults";
 import type { ParamMeta } from "@/lib/connectors/param-bindings";
 import type { ActionInput } from "@/lib/connectors/types";
@@ -720,8 +719,10 @@ function autoBindActionParams(graph: PlanGraph): PlanGraph {
       }
     }
     for (const input of action.inputs.filter((i) => i.required)) {
-      if (isBinding(params[input.key])) continue;
-      if (input.defaultValue !== undefined && params[input.key] === input.defaultValue) continue;
+      // Préserver TOUTE valeur déjà fixée (littéral builder/copilote, binding, défaut).
+      // Sinon on écraserait une valeur que le copilote vient de renseigner.
+      const existing = params[input.key];
+      if (existing !== undefined && String(existing).trim() !== "") continue;
       if (input.kind === "resource" || input.kind === "identity" || input.resourceType) continue;
       const varKey = `${node.connectorId}_${input.key}`.replace(/[^a-z0-9_]/gi, "_").toLowerCase();
       if (!varKeys.has(varKey)) {

@@ -65,17 +65,26 @@ Méthode :
    "completedStepIds", puis passe à l'étape suivante en posant sa question.
 5. Quand TOUTES les étapes sont finalisées, mets "done": true et annonce que c'est prêt à tester.
 
-Comment intégrer les réponses au plan :
+Comment intégrer les réponses au plan — RÈGLE CLÉ :
+- Quand l'utilisateur te donne une valeur CONCRÈTE (un contexte, un texte, une URL, un ID, un choix),
+  ÉCRIS-LA TELLE QUELLE (valeur littérale) dans "inputMapping" du paramètre concerné.
+  → Ces valeurs figées sont utilisées directement et NE seront PAS redemandées au lancement du test.
+  → N'invente PAS de variable {{...}} pour une valeur que l'utilisateur vient de te donner.
+- N'utilise une variable {{snake_case}} (+ déclaration dans "variables") QUE si la valeur doit être
+  fournie DIFFÉREMMENT par chaque abonné à chaque exécution. Dans ce cas, dis-le clairement
+  à l'utilisateur (« ce champ sera demandé à chaque utilisation »).
 - Persona/rôle + contexte d'analyse → réécris la "description" de l'étape LLM en une consigne riche
   (rôle, objectif, ton, format), en référençant les sorties amont {{outputKey}} et docs/ressources.
 - Choix de modèle pour une étape LLM → renseigne le champ "model" de cette étape avec l'id catalogue exact.
-- Ressource (fichier, feuille, base, canal…) → mappe le paramètre concerné dans "inputMapping".
-  Si l'utilisateur ne connaît pas l'ID, indique qu'il peut la choisir dans le sélecteur sous le chat.
-- Paramètre à demander à l'abonné → lie-le à {{snake_case}} et déclare la variable dans "variables".
+- Ressource (fichier, feuille, base, canal…) :
+  • si l'utilisateur te donne l'URL/ID → écris-le littéralement dans "inputMapping" ;
+  • s'il ne connaît pas l'ID → demande-lui de la CHOISIR dans le sélecteur de ressources sous le chat,
+    et NE passe pas à l'étape suivante / NE mets pas "done" tant que ce n'est pas fait.
 - Contenu rédactionnel (objet, corps, slides) → crée si besoin une étape LLM amont qui le produit.
-- Connecteur non connecté (voir contexte) → demande d'abord de le connecter (bouton sous le chat) avant de configurer.
+- Connecteur listé comme "à connecter" dans le contexte → demande d'abord de le connecter
+  (bouton sous le chat) avant de configurer. S'il est déjà connecté, n'en parle pas.
 - Action qui écrit/envoie → riskLevel "high" et requiresApproval true. Préserve les ids non concernés.
-- Ne mets JAMAIS de fausses valeurs réelles (email, nom, clé) en dur.
+- Ne mets JAMAIS de fausses valeurs (email, nom, clé) inventées en dur — uniquement ce que l'utilisateur a fourni.
 
 Format de SORTIE — réponds UNIQUEMENT avec un JSON strict, sans markdown :
 {

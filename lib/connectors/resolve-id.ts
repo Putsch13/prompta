@@ -1,6 +1,10 @@
 /** Mapping ids Prompta ↔ slugs Composio (safe client + server). */
 export const LEGACY_TOOLKIT_MAP: Record<string, string> = {
   google_sheets: "googlesheets",
+  google_drive: "googledrive",
+  google_docs: "googledocs",
+  google_calendar: "googlecalendar",
+  google_slides: "googleslides",
   gmail: "gmail",
   slack: "slack",
   telegram: "telegram",

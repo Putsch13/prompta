@@ -185,6 +185,34 @@ test("normalizeGraph — auto-bind params action requis", () => {
   assert.ok((normalized.meta?.variables?.length ?? 0) > 0);
 });
 
+test("normalizeGraph — préserve une valeur littérale fixée (pas d'écrasement)", () => {
+  const graph: PlanGraph = {
+    entryId: "s1",
+    nodes: [
+      {
+        id: "s1",
+        kind: "action",
+        name: "Send",
+        connectorId: "gmail",
+        actionSlug: "gmail.send",
+        outputKey: "out",
+        riskLevel: "high",
+        requiresApproval: true,
+        params: { to: "ops@exemple.com" },
+      },
+    ],
+    edges: [],
+  };
+  const normalized = normalizeGraph(graph);
+  assert.equal(normalized.nodes[0].params?.to, "ops@exemple.com");
+});
+
+test("connectionMatchesConnector — google_drive ↔ googledrive", async () => {
+  const { connectionMatchesConnector } = await import("../../lib/connectors/resolve-id");
+  assert.ok(connectionMatchesConnector("googledrive", "google_drive"));
+  assert.ok(connectionMatchesConnector("google_drive", "googledrive"));
+});
+
 test("assertNoLeakedCredentials — rejette clé OpenAI dans prompt", () => {
   const manifest: AgentManifest = {
     kind: "agent",
