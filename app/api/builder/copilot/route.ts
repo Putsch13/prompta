@@ -7,6 +7,7 @@ import { planToGraph } from "@/lib/builder/plan-graph";
 import { computeReadiness } from "@/lib/builder/agent-readiness";
 import { MODEL_CATALOG } from "@/lib/llm/providers";
 import { listUserConnections } from "@/lib/connections";
+import { connectionMatchesConnector } from "@/lib/connectors/resolve-id";
 
 export const dynamic = "force-dynamic";
 
@@ -27,15 +28,17 @@ async function buildContext(userId: string, plan: ReturnType<typeof parseGenerat
   } catch {
     connections = [];
   }
-  const connectedMap = new Map(connections.filter((c) => c.status === "connected").map((c) => [c.connectorId, c]));
+  const connectedConns = connections.filter((c) => c.status === "connected");
+  const matchConn = (id: string) =>
+    connectedConns.find((c) => connectionMatchesConnector(c.connectorId, id));
 
   const connectedConnectors = Array.from(usedConnectors)
-    .filter((id) => connectedMap.has(id))
+    .filter((id) => matchConn(id))
     .map((id) => {
-      const c = connectedMap.get(id)!;
+      const c = matchConn(id)!;
       return { id, account: c.accountEmail ?? c.accountName ?? c.workspaceName ?? undefined };
     });
-  const disconnectedConnectors = Array.from(usedConnectors).filter((id) => !connectedMap.has(id));
+  const disconnectedConnectors = Array.from(usedConnectors).filter((id) => !matchConn(id));
 
   return {
     models: MODEL_CATALOG.map((m) => ({ id: m.id, label: m.label, provider: m.provider })),

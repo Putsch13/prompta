@@ -3,6 +3,7 @@ import { executeNativeConnectorAction } from "./execute-native";
 import { isComposioEnabled } from "@/lib/composio/client";
 import { ComposioExecutionError, executeComposioTool } from "@/lib/composio/execute";
 import { composioMappingFor } from "./native-to-composio";
+import { toComposioToolkitSlug } from "./resolve-id";
 
 /** Actions legacy maison (gmail.send, slack.send…) */
 function isNativeAction(actionId: string): boolean {
@@ -90,7 +91,10 @@ export async function executeConnectorAction(
     //    Le toolkit vient du connecteur de l'étape (slug du catalogue) si dispo,
     //    sinon on le déduit du préfixe du slug (ex. GOOGLESHEETS_… → googlesheets).
     if (composioOn && !isNativeAction(actionId)) {
-      const toolkitSlug = ctx.connector?.trim() || actionId.split("_")[0]?.toLowerCase();
+      // Normalise le slug toolkit (ex. google_drive → googledrive) pour éviter
+      // que la classe de bug Drive se reproduise sur n'importe quel connecteur.
+      const rawToolkit = ctx.connector?.trim() || actionId.split("_")[0]?.toLowerCase() || "";
+      const toolkitSlug = rawToolkit ? toComposioToolkitSlug(rawToolkit) : undefined;
       return runComposio(actionId, ctx.userId, params, toolkitSlug);
     }
 

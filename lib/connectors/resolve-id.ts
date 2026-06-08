@@ -20,20 +20,31 @@ for (const [legacy, composio] of Object.entries(LEGACY_TOOLKIT_MAP)) {
   REVERSE_LEGACY[composio] = legacy;
 }
 
+/**
+ * Clé de comparaison robuste, agnostique aux séparateurs et à la casse.
+ * Évite la classe de bug « google_drive ≠ googledrive » pour TOUS les
+ * connecteurs (300+ toolkits Composio), pas seulement ceux mappés à la main.
+ */
+export function canonicalConnectorKey(id: string): string {
+  return id.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 /** Id canonique Composio (googlesheets, gmail…). */
 export function normalizeConnectorId(id: string): string {
   return toComposioToolkitSlug(id);
 }
 
-/** Tous les ids équivalents à tester en base (legacy + Composio). */
+/** Tous les ids équivalents à tester en base (legacy + Composio + forme sans séparateur). */
 export function connectorLookupIds(id: string): string[] {
   const canonical = normalizeConnectorId(id);
   const legacy = REVERSE_LEGACY[canonical];
-  return Array.from(new Set([id, canonical, legacy].filter(Boolean)));
+  const stripped = canonicalConnectorKey(id);
+  return Array.from(new Set([id, canonical, legacy, stripped].filter(Boolean)));
 }
 
 export function isSameConnector(a: string, b: string): boolean {
-  return normalizeConnectorId(a) === normalizeConnectorId(b);
+  if (normalizeConnectorId(a) === normalizeConnectorId(b)) return true;
+  return canonicalConnectorKey(a) === canonicalConnectorKey(b);
 }
 
 /** Déduplique une liste en gardant le slug canonique. */
@@ -53,5 +64,8 @@ export function connectionMatchesConnector(
   storedConnectorId: string,
   requiredId: string
 ): boolean {
-  return connectorLookupIds(requiredId).includes(storedConnectorId);
+  if (connectorLookupIds(requiredId).includes(storedConnectorId)) return true;
+  // Filet de sécurité générique : comparaison sans séparateur ni casse
+  // (couvre tout toolkit Composio, même non mappé explicitement).
+  return canonicalConnectorKey(storedConnectorId) === canonicalConnectorKey(requiredId);
 }

@@ -213,6 +213,16 @@ test("connectionMatchesConnector — google_drive ↔ googledrive", async () => 
   assert.ok(connectionMatchesConnector("google_drive", "googledrive"));
 });
 
+test("connectionMatchesConnector — robuste séparateurs/casse pour app arbitraire", async () => {
+  const { connectionMatchesConnector } = await import("../../lib/connectors/resolve-id");
+  // App non mappée explicitement : le filet générique doit matcher.
+  assert.ok(connectionMatchesConnector("google_calendar", "googlecalendar"));
+  assert.ok(connectionMatchesConnector("GoogleCalendar", "google_calendar"));
+  assert.ok(connectionMatchesConnector("active_campaign", "activecampaign"));
+  // Connecteurs distincts ne doivent pas matcher.
+  assert.ok(!connectionMatchesConnector("gmail", "slack"));
+});
+
 test("assertNoLeakedCredentials — rejette clé OpenAI dans prompt", () => {
   const manifest: AgentManifest = {
     kind: "agent",
