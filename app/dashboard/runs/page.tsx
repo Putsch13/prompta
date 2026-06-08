@@ -40,7 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
   suspended: "text-orange-600",
 };
 
-type RunFilter = "active" | "approval" | "done";
+type RunFilter = "all" | "active" | "approval" | "done";
 
 export default function RunsHistoryPage() {
   return (
@@ -63,7 +63,10 @@ function RunsHistoryContent() {
   const [loading, setLoading] = useState(true);
   const [relancing, setRelancing] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(focusRunId);
-  const [filter, setFilter] = useState<RunFilter>("active");
+  const [filter, setFilter] = useState<RunFilter>("all");
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(
+    searchParams.get("agent")
+  );
 
   function loadRuns() {
     fetch("/api/runs")
@@ -166,7 +169,38 @@ function RunsHistoryContent() {
     );
   }
 
-  const filtered = runs.filter((run) => {
+  // Regroupe les runs par agent (listing) pour une vue type Render : on
+  // sélectionne un agent à gauche, on voit ses runs + logs + erreurs à droite.
+  const agents = (() => {
+    const map = new Map<
+      string,
+      { id: string; title: string; slug: string | null; count: number; lastStatus: string }
+    >();
+    for (const run of runs) {
+      const id = run.listing_id ?? "__sans_agent__";
+      const title = run.listing?.title ?? "Run isolé";
+      const existing = map.get(id);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(id, {
+          id,
+          title,
+          slug: run.listing?.slug ?? null,
+          count: 1,
+          lastStatus: run.status,
+        });
+      }
+    }
+    return Array.from(map.values());
+  })();
+
+  const agentRuns = selectedAgent
+    ? runs.filter((r) => (r.listing_id ?? "__sans_agent__") === selectedAgent)
+    : runs;
+
+  const filtered = agentRuns.filter((run) => {
+    if (filter === "all") return true;
     if (filter === "active") {
       return run.status === "pending" || run.status === "queued" || run.status === "running";
     }
@@ -176,37 +210,77 @@ function RunsHistoryContent() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-bold text-ink">Historique des runs</h1>
+      <h1 className="font-display text-2xl font-bold text-ink">Runs &amp; logs</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Suivez vos agents en cours, validations en attente et runs terminés.
+        Sélectionnez un agent pour suivre ses exécutions, validations et erreurs.
       </p>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {(
-          [
-            { id: "active" as const, label: "En cours" },
-            { id: "approval" as const, label: "En attente de validation" },
-            { id: "done" as const, label: "Terminés" },
-          ] as const
-        ).map((f) => (
+      <div className="mt-6 grid gap-6 lg:grid-cols-[260px_1fr]">
+        {/* Colonne agents */}
+        <aside className="space-y-1">
+          <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+            Mes agents
+          </p>
           <button
-            key={f.id}
             type="button"
-            onClick={() => setFilter(f.id)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-              filter === f.id ? "bg-accent text-white" : "bg-card2 text-ink-soft"
+            onClick={() => setSelectedAgent(null)}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+              selectedAgent === null ? "bg-accent/10 text-accent" : "text-ink-soft hover:bg-card2"
             }`}
           >
-            {f.label}
+            <span className="font-medium">Tous les runs</span>
+            <span className="rounded-full bg-line px-1.5 py-0.5 text-[10px]">{runs.length}</span>
           </button>
-        ))}
-      </div>
+          {agents.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => setSelectedAgent(a.id)}
+              className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                selectedAgent === a.id ? "bg-accent/10 text-accent" : "text-ink-soft hover:bg-card2"
+              }`}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${(STATUS_COLORS[a.lastStatus] ?? "text-ink-faint").replace("text-", "bg-")}`} />
+                <span className="truncate font-medium">{a.title}</span>
+              </span>
+              <span className="rounded-full bg-line px-1.5 py-0.5 text-[10px]">{a.count}</span>
+            </button>
+          ))}
+          {agents.length === 0 && (
+            <p className="px-2 text-xs text-ink-faint">Aucun agent exécuté.</p>
+          )}
+        </aside>
 
-      {filtered.length === 0 ? (
+        {/* Colonne runs de l'agent sélectionné */}
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                { id: "all" as const, label: "Tout" },
+                { id: "active" as const, label: "En cours" },
+                { id: "approval" as const, label: "Validation" },
+                { id: "done" as const, label: "Terminés" },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilter(f.id)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  filter === f.id ? "bg-accent text-white" : "bg-card2 text-ink-soft"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
         <div className="mt-8 rounded-xl border border-dashed border-line bg-card p-12 text-center">
-          <p className="text-ink-soft">Aucun run pour le moment.</p>
-          <Link href="/explore" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
-            Explorer →
+          <p className="text-ink-soft">Aucun run dans cette vue.</p>
+          <Link href="/dashboard/contenus" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
+            Voir mes agents →
           </Link>
         </div>
       ) : (
@@ -294,6 +368,8 @@ function RunsHistoryContent() {
           ))}
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 }

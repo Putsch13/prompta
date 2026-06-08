@@ -12,8 +12,11 @@ import {
   X,
   AlertTriangle,
   Send,
+  Play,
 } from "lucide-react";
 import Link from "next/link";
+import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
+import type { AgentStep } from "@/lib/agent/schema";
 
 interface EnvField {
   key: string;
@@ -50,12 +53,19 @@ export default function EditListingPage() {
   const [bundleSecretWarning, setBundleSecretWarning] = useState<string[]>([]);
 
   const [listingStatus, setListingStatus] = useState("draft");
+  const [listingSlug, setListingSlug] = useState<string | null>(null);
+
+  // Agent : arborescence dédiée (steps du manifeste). On conserve le manifeste
+  // complet pour le réattacher tel quel à la sauvegarde (ne rien perdre).
+  const [agentSteps, setAgentSteps] = useState<AgentStep[] | null>(null);
+  const [agentManifest, setAgentManifest] = useState<Record<string, unknown> | null>(null);
+  const [provisioningMode, setProvisioningMode] = useState<string>("manual");
 
   useEffect(() => {
     async function load() {
       const { data: listing } = await supabase
         .from("listings")
-        .select("title, description, price_cents, status, current_version_id")
+        .select("title, description, price_cents, status, slug, current_version_id")
         .eq("id", id)
         .single();
 
@@ -68,6 +78,7 @@ export default function EditListingPage() {
       setDescription(listing.description || "");
       setPriceCents(listing.price_cents);
       setListingStatus(listing.status);
+      setListingSlug(listing.slug ?? null);
 
       if (listing.current_version_id) {
         const { data: version } = await supabase
@@ -84,10 +95,20 @@ export default function EditListingPage() {
             fields?: EnvField[];
             dependencies?: string;
             setup_time?: string;
+            manifest?: { steps?: AgentStep[]; provisioning_mode?: string };
           } | null;
           if (env?.fields) setEnvFields(env.fields);
           if (env?.dependencies) setDependencies(env.dependencies);
           if (env?.setup_time) setSetupTime(env.setup_time);
+
+          const steps = env?.manifest?.steps;
+          if (Array.isArray(steps) && steps.length > 0) {
+            setAgentSteps(steps);
+            setAgentManifest(env!.manifest as Record<string, unknown>);
+            if (env?.manifest?.provisioning_mode) {
+              setProvisioningMode(env.manifest.provisioning_mode);
+            }
+          }
         }
       }
 
@@ -168,6 +189,8 @@ export default function EditListingPage() {
           fields: envFields,
           dependencies: dependencies || null,
           setup_time: setupTime || null,
+          // Préserve le manifeste complet de l'agent : sans lui, l'agent ne tournerait plus.
+          ...(agentManifest ? { manifest: agentManifest } : {}),
         })),
         bundle_path: bundlePath,
       })
@@ -211,6 +234,24 @@ export default function EditListingPage() {
         d&apos;écrasement).
       </p>
 
+      {agentSteps && (
+        <div className="mt-6">
+          <AgentFlowPreview steps={agentSteps} provisioningMode={provisioningMode} />
+          {listingSlug && (
+            <Link
+              href={`/listing/${listingSlug}?run=1`}
+              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+            >
+              <Play className="h-4 w-4" /> Lancer / tester l&apos;agent
+            </Link>
+          )}
+          <p className="mt-2 text-xs text-muted">
+            Le détail des étapes se modifie dans le builder. Ici, ajustez les
+            métadonnées (titre, description, prix) et l&apos;environnement.
+          </p>
+        </div>
+      )}
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -243,19 +284,21 @@ export default function EditListingPage() {
           />
         </div>
 
-        {/* Contenu du prompt */}
-        <div>
-          <label htmlFor="promptBody" className="block text-sm font-medium">
-            Contenu du prompt
-          </label>
-          <textarea
-            id="promptBody"
-            rows={8}
-            value={promptBody}
-            onChange={(e) => setPromptBody(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-card px-4 py-3 font-mono text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-y"
-          />
-        </div>
+        {/* Contenu du prompt (uniquement pour les prompts, pas les agents) */}
+        {!agentSteps && (
+          <div>
+            <label htmlFor="promptBody" className="block text-sm font-medium">
+              Contenu du prompt
+            </label>
+            <textarea
+              id="promptBody"
+              rows={8}
+              value={promptBody}
+              onChange={(e) => setPromptBody(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-card px-4 py-3 font-mono text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-y"
+            />
+          </div>
+        )}
 
         {/* Prix */}
         <div>

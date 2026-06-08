@@ -134,8 +134,10 @@ export function mapAgentError(
   if (/Sheets.*403|spreadsheet.*403/i.test(raw)) {
     return {
       code: "sheets_forbidden",
-      message: "Autorisation Sheets manquante.",
-      hint: "Reconnectez Google avec le scope Sheets/Drive.",
+      message:
+        "Le compte Google connecté n'a pas l'autorisation de lire cette feuille.",
+      hint:
+        "Deux causes possibles : (1) la feuille n'est pas partagée avec le compte connecté → partagez-la ; (2) la connexion a un scope limité (accès aux seuls fichiers créés par l'app) → reconnectez Google en autorisant l'accès complet à Sheets/Drive.",
       raw, connector, action,
     };
   }

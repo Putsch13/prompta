@@ -2,17 +2,85 @@ import { saveComposioConnection, isComposioToolkitConnected, getUserConnection }
 import { getComposioClient, toComposioToolkitSlug } from "./client";
 import { profileFromComposioAccount } from "@/lib/connectors/fetch-account-profile";
 
+/**
+ * Scopes OAuth requis par toolkit (auth Composio « managed »).
+ *
+ * Sans ces scopes, Composio crée l'auth config avec un accès minimal (souvent
+ * `drive.file` côté Google = uniquement les fichiers créés par l'app), ce qui
+ * provoque un 403 « autorisation manquante » à la lecture d'une feuille
+ * existante. On les fixe explicitement pour que la connexion demande le bon
+ * niveau d'accès dès le consentement OAuth.
+ */
+const TOOLKIT_SCOPES: Record<string, string[]> = {
+  googlesheets: [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.readonly",
+  ],
+  gmail: [
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
+  ],
+  googledrive: ["https://www.googleapis.com/auth/drive"],
+  googledocs: [
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/drive.readonly",
+  ],
+  googlecalendar: ["https://www.googleapis.com/auth/calendar"],
+};
+
+function scopesFor(toolkitSlug: string): string[] | undefined {
+  return TOOLKIT_SCOPES[toolkitSlug];
+}
+
 async function getAuthConfigId(toolkitSlug: string): Promise<string> {
   const composio = getComposioClient();
+  const scopes = scopesFor(toolkitSlug);
+
   const listed = await composio.authConfigs.list({ toolkit: toolkitSlug });
   const existing = listed.items?.[0]?.id;
-  if (existing) return existing;
+  if (existing) {
+    // Best-effort : aligne les scopes d'une config existante (créée avant ce
+    // correctif) pour qu'une reconnexion obtienne le bon niveau d'accès.
+    if (scopes) {
+      try {
+        await composio.authConfigs.update(existing, {
+          type: "default",
+          scopes: scopes.join(" "),
+        });
+      } catch (err) {
+        console.warn(
+          `[composio] maj scopes auth config ${toolkitSlug} échouée (non bloquant):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+    return existing;
+  }
 
-  const created = await composio.authConfigs.create(toolkitSlug, {
-    type: "use_composio_managed_auth",
-    name: `Prompta — ${toolkitSlug}`,
-  });
-  return created.id;
+  try {
+    const created = await composio.authConfigs.create(toolkitSlug, {
+      type: "use_composio_managed_auth",
+      name: `Prompta — ${toolkitSlug}`,
+      ...(scopes ? { credentials: { scopes } } : {}),
+    });
+    return created.id;
+  } catch (err) {
+    // Si les scopes ne sont pas acceptés par l'app managed, on retombe sur une
+    // création sans scope plutôt que de bloquer toute connexion.
+    if (scopes) {
+      console.warn(
+        `[composio] création auth config ${toolkitSlug} avec scopes échouée, retry sans scopes:`,
+        err instanceof Error ? err.message : err,
+      );
+      const created = await composio.authConfigs.create(toolkitSlug, {
+        type: "use_composio_managed_auth",
+        name: `Prompta — ${toolkitSlug}`,
+      });
+      return created.id;
+    }
+    throw err;
+  }
 }
 
 export async function startComposioAuth(

@@ -102,7 +102,13 @@ update profiles set is_admin = true, unrestricted_usage = true where username = 
 1. **Build** — `/dashboard/new` puis l'éditeur (`components/builder/`). Les entrées requises sont dérivées des étapes (contrat).
 2. **Connexions** — `/dashboard/connexions` : brancher Gmail, Sheets, Slack… Le picker liste ensuite les ressources sans copier d'ID.
 3. **Run** — bouton **Lancer** = exécution réelle (`dryRun: false`, `async: true`). **Aperçu** = exécution à blanc explicite.
-4. **Debug** — `/dashboard/runs` : logs par étape, erreurs traduites en actions concrètes (`lib/agent/error-map.ts`).
+4. **Debug** — `/dashboard/runs` : vue par agent (sélection d'un agent → ses runs, logs par étape et erreurs), erreurs traduites en actions concrètes (`lib/agent/error-map.ts`).
+
+> Éditer un agent depuis la bibliothèque (`/dashboard/contenus`) rouvre son arborescence dédiée ; le manifeste complet est préservé à chaque nouvelle version.
+
+### Dépannage Google (403 « autorisation manquante »)
+
+Un 403 sur `sheets.read`/Drive vient quasi toujours des **scopes OAuth** de l'auth config Composio. Les scopes requis sont désormais fixés à la création **et** réalignés sur les configs existantes (`lib/composio/connect.ts`, `TOOLKIT_SCOPES`). Après ce correctif, **reconnectez Google** une fois pour que le nouveau jeton porte le scope `spreadsheets`. Causes restantes possibles : la feuille n'est pas partagée avec le compte connecté, ou l'app OAuth managed Composio n'autorise pas le scope (fallback automatique sans scope).
 
 ### Worker
 
