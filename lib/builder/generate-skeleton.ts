@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { callModel } from "@/lib/llm/gateway";
+import { parseLlmJson } from "@/lib/llm/json";
 import { getAgentTemplate, AGENT_TEMPLATES } from "@/lib/templates/agent-templates";
 import type { AgentStep } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
@@ -112,9 +113,9 @@ Réponds avec ce JSON exact :
       tokenParam: resolved.tokenParam,
     });
 
-    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("JSON absent");
-    const parsed = GeneratedSkeletonSchema.parse(JSON.parse(jsonMatch[0]));
+    const rawJson = parseLlmJson(result.content);
+    if (!rawJson) throw new Error("JSON absent");
+    const parsed = GeneratedSkeletonSchema.parse(rawJson);
 
     parsed.requiredSecrets = (parsed.requiredSecrets ?? ["openai"]).filter((s): s is KeyProvider =>
       VALID_SECRETS.has(s as KeyProvider)

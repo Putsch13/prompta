@@ -8,6 +8,7 @@
  */
 
 import { callModel } from "@/lib/llm/gateway";
+import { parseLlmJson } from "@/lib/llm/json";
 import type { ResolvedModel } from "@/lib/llm/resolve-model";
 import { parseGeneratedAgentPlan, type GeneratedAgentPlan } from "./generate-agent-plan";
 import { diffPlanIds } from "./edit-agent-plan";
@@ -168,12 +169,7 @@ export async function runCopilotTurn(opts: {
     tokenParam: resolved.tokenParam,
   });
 
-  const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error("Le copilote n'a pas renvoyé de JSON exploitable.");
-  }
-
-  const raw = JSON.parse(jsonMatch[0]) as {
+  type RawTurn = {
     assistant?: string;
     awaitingUser?: boolean;
     done?: boolean;
@@ -181,6 +177,36 @@ export async function runCopilotTurn(opts: {
     completedStepIds?: string[];
     plan?: unknown;
   };
+
+  let raw = parseLlmJson<RawTurn>(result.content);
+
+  // Relance de réparation : on redemande au modèle de renvoyer un JSON valide.
+  if (!raw) {
+    try {
+      const fix = await callModel({
+        provider: resolved.provider,
+        model: resolved.apiModel,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Tu corriges du JSON invalide. Renvoie UNIQUEMENT un objet JSON valide, sans texte ni markdown.",
+          },
+          { role: "user", content: result.content },
+        ],
+        apiKey,
+        maxTokens: 4000,
+        tokenParam: resolved.tokenParam,
+      });
+      raw = parseLlmJson<RawTurn>(fix.content);
+    } catch {
+      raw = null;
+    }
+  }
+
+  if (!raw) {
+    throw new Error("Le copilote a renvoyé une réponse mal formée. Réessayez.");
+  }
 
   let newPlan: GeneratedAgentPlan | undefined;
   let changedIds: string[] = [];

@@ -10,6 +10,7 @@
  */
 
 import { checkBudget, recordSpend, estimateCost, getBudget } from "./budget";
+import { parseLlmJson } from "@/lib/llm/json";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = process.env.AGENT_MODEL || "claude-sonnet-4-6";
@@ -104,7 +105,9 @@ export async function callClaudeJSON<T = unknown>(
   opts: CallOptions
 ): Promise<{ data: T; meta: ClaudeResult }> {
   const meta = await callClaude(opts);
-  const clean = meta.text.replace(/```json|```/g, "").trim();
-  const data = JSON.parse(clean) as T;
+  const data = parseLlmJson<T>(meta.text);
+  if (data === null) {
+    throw new Error("Réponse JSON invalide du modèle.");
+  }
   return { data, meta };
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { callModel } from "@/lib/llm/gateway";
+import { parseLlmJson } from "@/lib/llm/json";
 import type { ResolvedModel } from "@/lib/llm/resolve-model";
 
 // ─── Normalisation types variables (IA renvoie souvent textarea/string/…) ───
@@ -341,11 +342,9 @@ Pour un cas parallèle (publication multi-réseaux), le step amont liste plusieu
     tokenParam: resolved.tokenParam,
   });
 
-  const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+  const raw = parseLlmJson(result.content);
+  if (!raw) {
     throw new Error("Le modèle n'a pas retourné de JSON valide.");
   }
-
-  const raw = JSON.parse(jsonMatch[0]);
   return parseGeneratedAgentPlan(raw);
 }

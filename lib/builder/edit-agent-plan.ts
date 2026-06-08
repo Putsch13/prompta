@@ -1,4 +1,5 @@
 import { callModel } from "@/lib/llm/gateway";
+import { parseLlmJson } from "@/lib/llm/json";
 import type { ResolvedModel } from "@/lib/llm/resolve-model";
 import {
   parseGeneratedAgentPlan,
@@ -70,12 +71,10 @@ Renvoie le plan JSON complet modifié.`;
     tokenParam: resolved.tokenParam,
   });
 
-  const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+  const raw = parseLlmJson(result.content);
+  if (!raw) {
     throw new Error("Le modèle n'a pas retourné de JSON valide.");
   }
-
-  const raw = JSON.parse(jsonMatch[0]);
   const newPlan = parseGeneratedAgentPlan(raw);
   const changedIds = diffPlanIds(plan, newPlan);
   return { plan: newPlan, changedIds };
