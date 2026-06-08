@@ -37,11 +37,20 @@ export async function executeComposioTool(
       : await getUserConnection(userId, toolkitSlug);
     const connectedAccountId = options?.connectedAccountId ?? conn?.accessToken;
 
+    // Composio exige une version de toolkit en exécution manuelle. On épingle
+    // une version si fournie (option ou env COMPOSIO_TOOLKIT_VERSION), sinon on
+    // exécute la dernière version en neutralisant la vérification stricte —
+    // sans quoi l'appel lève « Toolkit version not specified ».
+    const pinnedVersion =
+      options?.actionVersion ?? process.env.COMPOSIO_TOOLKIT_VERSION?.trim();
+
     const result = await composio.tools.execute(toolSlug, {
       userId,
       ...(connectedAccountId ? { connectedAccountId } : {}),
       arguments: parsedArgs,
-      ...(options?.actionVersion ? { version: options.actionVersion } : {}),
+      ...(pinnedVersion
+        ? { version: pinnedVersion }
+        : { dangerouslySkipVersionCheck: true }),
     });
 
     const successful = (result as { successful?: boolean }).successful ?? true;

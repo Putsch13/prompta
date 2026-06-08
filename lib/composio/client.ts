@@ -15,7 +15,10 @@ export function getComposioClient(): Composio {
     throw new Error("COMPOSIO_API_KEY non configurée");
   }
   if (!instance) {
-    instance = new Composio({ apiKey });
+    // « latest » par défaut : on ne veut pas épingler une version de toolkit
+    // côté plateforme multi-outils. La vérification stricte est neutralisée à
+    // l'exécution via dangerouslySkipVersionCheck (voir executeComposioTool).
+    instance = new Composio({ apiKey, toolkitVersions: "latest" });
   }
   return instance;
 }
