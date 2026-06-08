@@ -30,6 +30,8 @@ export const CONNECTORS: Connector[] = [
             kind: "input",
             type: "email",
             defaultScope: "dynamic",
+            help: "Adresse email du destinataire (souvent issue d'une étape précédente).",
+            placeholder: "alice@example.com",
           },
           {
             key: "subject",
@@ -54,7 +56,7 @@ export const CONNECTORS: Connector[] = [
       {
         id: "gmail.read",
         label: "Lire les emails récents",
-        inputs: [{ key: "query", label: "Filtre Gmail (optionnel)", required: false, defaultValue: "", help: "Vide = emails récents. Ex. is:unread" }],
+        inputs: [{ key: "query", label: "Filtre Gmail (optionnel)", required: false, kind: "input", defaultValue: "", help: "Vide = emails récents. Ex. is:unread" }],
       },
     ],
   },

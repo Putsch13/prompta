@@ -6,6 +6,8 @@ import {
   resourcePlaceholder,
 } from "@/lib/connectors/param-bindings";
 import { getConnectorAction } from "@/lib/connectors/registry";
+import { buildContract } from "@/lib/agent/contract";
+import { resolveAgentInterface } from "@/lib/agent/resolve-interface";
 
 export interface CredentialLeakIssue {
   code: string;
@@ -191,9 +193,39 @@ export function getManifestValidationErrors(manifest: AgentManifest): string[] {
     .map((i) => i.message);
 }
 
+/**
+ * P2.5 : assertion supplémentaire via le Résolveur en phase « sell ».
+ *
+ * Garantit qu'aucune valeur builder épinglée non-shared ne traîne dans le
+ * manifeste publié (compl. anti-fuite). Si le strip a oublié quelque chose,
+ * le résolveur le verra encore en source=pinned (au lieu de ask), et on rejette.
+ */
+function assertSellPhaseConsistent(stripped: AgentManifest): void {
+  try {
+    const contract = buildContract(stripped.steps);
+    const resolved = resolveAgentInterface(contract, { phase: "sell" });
+    // En phase sell, plus aucun `pinned` non-shared ne doit subsister.
+    const leftovers = resolved.filter(
+      (r) => r.source === "pinned" && r.required,
+    );
+    if (leftovers.length > 0) {
+      const detail = leftovers
+        .map((l) => `${l.connectorParam?.connector ?? "?"}.${l.connectorParam?.key ?? l.key}`)
+        .join(", ");
+      throw new Error(
+        `Manifeste : ${leftovers.length} valeur(s) builder épinglée(s) non purgée(s) : ${detail}`,
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Manifeste")) throw err;
+    // best-effort : si le contrat ne peut pas être bâti (manifest atypique), on n'empêche pas la publication
+  }
+}
+
 export function assertManifestValidForPublish(manifest: AgentManifest): void {
   const stripped = stripManifestForPublish(manifest);
   assertNoLeakedCredentials(stripped);
+  assertSellPhaseConsistent(stripped);
   const errors = getManifestValidationErrors(stripped);
   if (errors.length > 0) {
     throw new Error(errors[0]);

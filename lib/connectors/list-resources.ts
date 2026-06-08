@@ -259,6 +259,17 @@ export class InsufficientScopesError extends Error {
   }
 }
 
+/**
+ * P4.3 : Composio par défaut, natif en secours.
+ *
+ * Stratégie :
+ *  1. Si Composio est activé ET l'utilisateur a une connexion Composio pour ce
+ *     connecteur → on tente d'abord Composio (résultats riches, scoping uniforme).
+ *  2. Si Composio échoue OU n'est pas applicable → on retombe sur le natif si
+ *     `listVia === "native"`, sinon on propage l'erreur Composio.
+ *  3. Les erreurs « besoin de connexion / scopes insuffisants » remontent telles
+ *     quelles pour que l'UI puisse afficher un bouton « Reconnecter ».
+ */
 export async function listConnectorResources(opts: {
   userId: string;
   connectorId: string;
@@ -281,14 +292,31 @@ export async function listConnectorResources(opts: {
   const status = connections.find(
     (c) => connectionMatchesConnector(c.connectorId, connectorId) && c.status === "connected",
   );
-  const useComposioList =
-    isComposioEnabled() && status?.provider === "composio" && resourceType.startsWith("google_sheets");
+
+  const composioEnabled = isComposioEnabled();
+  const userHasComposio = status?.provider === "composio";
+  const composioCanList = composioEnabled && userHasComposio && !!def.listAction;
 
   const ctx: ExecuteContext = { userId, accessToken: conn.accessToken };
-  let result: ListResourcesResult;
-  if (useComposioList) {
-    result = await listComposioGoogleSheetsResources(resourceType, userId, connectorId, parent, q);
-  } else if (def.listVia === "native") {
+  let result: ListResourcesResult | null = null;
+
+  if (composioCanList) {
+    try {
+      if (resourceType.startsWith("google_sheets.")) {
+        result = await listComposioGoogleSheetsResources(resourceType, userId, connectorId, parent, q);
+      } else {
+        result = await listComposioResources(resourceType, userId, connectorId, parent, q);
+      }
+    } catch (err) {
+      if (err instanceof NeedsConnectionError || err instanceof InsufficientScopesError) {
+        throw err;
+      }
+      // Erreurs Composio non bloquantes → on retombera sur le natif si possible
+      result = null;
+    }
+  }
+
+  if ((!result || result.items.length === 0) && def.listVia === "native") {
     if (resourceType.startsWith("google_sheets.")) {
       assertGoogleSheetsScopes(connectorId, status?.scopes);
     }
@@ -303,12 +331,21 @@ export async function listConnectorResources(opts: {
       ) {
         throw new InsufficientScopesError("google_sheets");
       }
-      throw err;
+      if (!result) throw err;
     }
-  } else {
-    result = await listComposioResources(resourceType, userId, connectorId, parent, q);
   }
 
+  // Dernier secours : Composio générique si rien d'autre n'a marché
+  if ((!result || result.items.length === 0) && composioEnabled && def.listVia === "composio") {
+    try {
+      result = await listComposioResources(resourceType, userId, connectorId, parent, q);
+    } catch (err) {
+      if (err instanceof NeedsConnectionError || err instanceof InsufficientScopesError) throw err;
+      if (!result) throw err;
+    }
+  }
+
+  result = result ?? { items: [] };
   cache.set(ck, { at: Date.now(), data: result });
   return result;
 }

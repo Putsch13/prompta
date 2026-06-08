@@ -23,6 +23,7 @@ import {
   isFakeVariable,
   keyToLabel,
 } from "@/lib/builder/variables";
+import { stepKey, walkWithIndex } from "@/lib/agent/step-key";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -122,31 +123,18 @@ function isLiteralValue(value: string | undefined, meta?: ParamMeta): boolean {
 // ─── Dérivation ──────────────────────────────────────────────────────────────
 
 /**
- * Walk identique à `extract-run-resources.ts` (index parallèle aligné sur
- * l'orchestrateur : `idx * 100 + branchIdx * 10 + s`).
+ * Walk unifié — utilise `walkWithIndex` (lib/agent/step-key.ts) pour partager
+ * exactement le même index global que l'orchestrateur et le résolveur.
  */
 function walkSteps(
   steps: AgentStep[],
   outputKeys: Set<string>,
   acc: NeededInput[],
   pinnedAcc: NeededInput[],
-  offset = 0,
 ): void {
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    const idx = offset + i;
-
-    if (step.type === "parallel") {
-      for (let bIdx = 0; bIdx < step.branches.length; bIdx++) {
-        const branch = step.branches[bIdx];
-        for (let s = 0; s < branch.steps.length; s++) {
-          const subStep = branch.steps[s] as AgentStep;
-          const subIdx = idx * 100 + bIdx * 10 + s;
-          walkSteps([subStep], outputKeys, acc, pinnedAcc, subIdx);
-        }
-      }
-      continue;
-    }
+  for (const w of walkWithIndex(steps)) {
+    const step = w.step;
+    const idx = w.stepIndex;
 
     if (step.type === "llm") {
       for (const key of extractInputVariables(step.prompt)) {
@@ -206,7 +194,7 @@ function walkSteps(
       // 1) Placeholder ressource {{resource:type}}
       if (isResourcePlaceholder(rawValue)) {
         const resourceType = rawValue.trim().slice("{{resource:".length, -2);
-        const fieldKey = `${idx}:${paramKey}`;
+        const fieldKey = stepKey(idx, paramKey);
         const source: NeededInputSource = stepShared
           ? "shared"
           : meta?.shared
@@ -231,7 +219,7 @@ function walkSteps(
       // 2) Littéral épinglé (builder_test/shared) → pas demandé
       if (isLiteralValue(rawValue, meta)) {
         pinnedAcc.push({
-          key: `${idx}:${paramKey}`,
+          key: stepKey(idx, paramKey),
           source: sourceFromMeta(meta),
           kind,
           connectorParam: { connector: step.connector, key: paramKey, stepIndex: idx },
@@ -247,7 +235,7 @@ function walkSteps(
       // 3) Étape shared (env créateur) → ressource/champ déjà fourni
       if (stepShared) {
         pinnedAcc.push({
-          key: `${idx}:${paramKey}`,
+          key: stepKey(idx, paramKey),
           source: "shared",
           kind,
           connectorParam: { connector: step.connector, key: paramKey, stepIndex: idx },
@@ -321,15 +309,17 @@ function dedupeByKey(inputs: NeededInput[]): NeededInput[] {
   return Array.from(map.values());
 }
 
-/** Champs/ressources/identités demandés au run, dérivés des étapes. */
+/**
+ * Tous les besoins dérivés des étapes (asked + pinned + shared) — source de
+ * vérité pour le Pilier B (résolveur). Les helpers `askedInputs` /
+ * `resourceInputs` filtrent ce qui est demandé à l'abonné au run.
+ */
 export function deriveInterface(steps: AgentStep[]): NeededInput[] {
   const outputKeys = collectOutputKeys(steps);
   const asked: NeededInput[] = [];
   const pinned: NeededInput[] = [];
   walkSteps(steps, outputKeys, asked, pinned);
-  // L'interface = uniquement ce qui doit être saisi/choisi (asked).
-  // Les `pinned`/`shared` ne sont pas renvoyés (ils sont déjà dans le manifeste).
-  return dedupeByKey(asked);
+  return [...dedupeByKey(asked), ...pinned];
 }
 
 /** Snapshot complet du Contrat (étapes + interface dérivée). */

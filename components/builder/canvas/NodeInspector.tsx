@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
 import { getBuilderModels } from "@/lib/catalogs";
@@ -23,11 +23,17 @@ import { ConnectionStatusRow } from "@/components/builder/canvas/ConnectionStatu
 import {
   addNode,
   createDefaultNode,
+  graphToSteps,
   removeNode,
   type PlanGraph,
   type PlanNode,
   type PlanNodeKind,
 } from "@/lib/builder/plan-graph";
+import { buildContract } from "@/lib/agent/contract";
+import {
+  resolveAgentInterface,
+  resolvedValueForStepParam,
+} from "@/lib/agent/resolve-interface";
 
 const TOOLS = [
   { id: "web_search" as const, label: "Recherche web" },
@@ -72,6 +78,23 @@ export function NodeInspector({
   envFields = [],
 }: Props) {
   const [addKind, setAddKind] = useState<PlanNodeKind>("llm");
+
+  // Pilier B (P2.4) : Inspecteur = consommateur du Résolveur, phase build.
+  // Hooks AVANT toute early return (rules-of-hooks). Tolérant à node/graph null.
+  const buildResolved = useMemo(() => {
+    if (!graph) return [];
+    try {
+      const steps = graphToSteps(graph, defaultModel);
+      const contract = buildContract(steps);
+      return resolveAgentInterface(contract, { phase: "build" });
+    } catch {
+      return [];
+    }
+  }, [graph, defaultModel]);
+  const currentStepIndex = useMemo(() => {
+    if (!graph || !node) return -1;
+    return graph.nodes.findIndex((n) => n.id === node.id);
+  }, [graph, node]);
 
   if (!node || !graph) {
     return (
@@ -248,6 +271,27 @@ export function NodeInspector({
                       input.kind === "identity" ||
                       !!input.resourceType;
 
+                    // P2.4 : badge calculé par le résolveur (source unique).
+                    const resolverInfo =
+                      currentStepIndex >= 0
+                        ? resolvedValueForStepParam(buildResolved, currentStepIndex, input.key)
+                        : undefined;
+                    const sourceBadge = (() => {
+                      if (!resolverInfo) return null;
+                      switch (resolverInfo.source) {
+                        case "pinned":
+                          return { label: "Épinglé (vous)", className: "bg-amber-100 text-amber-800" };
+                        case "shared":
+                          return { label: "Env partagée", className: "bg-violet-100 text-violet-800" };
+                        case "subscriber":
+                          return { label: "Demandé à l'abonné", className: "bg-sky-100 text-sky-800" };
+                        case "step":
+                          return { label: "Sortie d'étape", className: "bg-emerald-100 text-emerald-800" };
+                        default:
+                          return null;
+                      }
+                    })();
+
                     if (isResource && input.resourceType) {
                       const depValue = input.dependsOn
                         ? currentNode.params?.[input.dependsOn]
@@ -312,6 +356,11 @@ export function NodeInspector({
 
                       return (
                         <div key={input.key}>
+                          {sourceBadge && (
+                            <span className={`mb-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-medium ${sourceBadge.className}`}>
+                              {sourceBadge.label}
+                            </span>
+                          )}
                           <ManualResourceInput
                             resourceType={input.resourceType}
                             label={input.label}
@@ -338,6 +387,11 @@ export function NodeInspector({
                       const rawValue = currentNode.params?.[input.key] ?? input.defaultValue;
                       return (
                         <div key={input.key}>
+                          {sourceBadge && (
+                            <span className={`mb-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-medium ${sourceBadge.className}`}>
+                              {sourceBadge.label}
+                            </span>
+                          )}
                           <OptionalActionParamInput
                             label={input.label}
                             value={rawValue}
@@ -417,6 +471,11 @@ export function NodeInspector({
 
                       return (
                         <div key={input.key}>
+                          {sourceBadge && (
+                            <span className={`mb-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-medium ${sourceBadge.className}`}>
+                              {sourceBadge.label}
+                            </span>
+                          )}
                           <ManualActionParamInput
                             label={input.label}
                             value={rawValue}

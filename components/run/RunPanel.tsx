@@ -341,6 +341,13 @@ export function RunPanel({
           setRunning(false);
           return;
         }
+        // Pilier B (P2.3) : missingInputs piloté par le Résolveur unique.
+        if (!runDryRun && Array.isArray(pf.missingInputs) && pf.missingInputs.length > 0) {
+          const first = pf.missingInputs[0] as { message?: string; label?: string };
+          setError(first.message ?? `Renseignez « ${first.label ?? ""} ».`);
+          setRunning(false);
+          return;
+        }
       }
     } catch {
       // Preflight failed — let the run endpoint handle it

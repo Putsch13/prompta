@@ -8,7 +8,12 @@ export interface ActionInput {
   label: string;
   type?: "text" | "textarea" | "email";
   required?: boolean;
-  kind?: ParamKind;
+  /**
+   * `kind` est désormais **requis** (P4.1) — il pilote le widget UI et la
+   * logique du Résolveur. Pour les paramètres optionnels purement informatifs,
+   * utilisez `kind: "input"` avec `required: false`.
+   */
+  kind: ParamKind;
   resourceType?: string;
   defaultScope?: ParamScope;
   dependsOn?: string;

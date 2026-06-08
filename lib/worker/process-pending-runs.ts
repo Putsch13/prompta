@@ -83,12 +83,18 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
 
       const { data: version } = await admin
         .from("listing_versions")
-        .select("env, prompt_body")
+        .select("env, prompt_body, contract")
         .eq("id", claimed.version_id ?? "")
         .single();
 
       const parsed = parseListingEnv(version?.env, version?.prompt_body);
       if (!parsed) throw new Error("Manifeste agent manquant");
+
+      // P1.6 + P3.3 : si la version a un contrat figé, on le réutilise tel quel
+      // pour garantir qu'une reprise (worker) lit la même interface que le run initial.
+      const frozenContract = (version?.contract ?? null) as
+        | import("@/lib/agent/contract").AgentContract
+        | null;
 
       if (parsed.manifest.connectors.length > 0 && !claimed.dry_run) {
         const healthIssues = await checkConnectorHealth(
@@ -140,6 +146,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
           dryRun: claimed.dry_run ?? false,
           resumeFromStep,
           resumeOutputs,
+          ...(frozenContract ? { contract: frozenContract } : {}),
           onProgress: async (stepsCompleted, partialOutput) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await (admin as any)

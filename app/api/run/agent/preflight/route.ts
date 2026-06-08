@@ -12,6 +12,8 @@ import { hasPlatformPro } from "@/lib/platform-access";
 import { isConnectorConnected } from "@/lib/connections";
 import { isSubscriptionAccessActive } from "@/lib/subscriptions/active";
 import { dedupeConnectors } from "@/lib/connectors/resolve-id";
+import { buildContract } from "@/lib/agent/contract";
+import { preflightMissing } from "@/lib/agent/resolve-interface";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,19 @@ export interface PreflightResult {
   mode: RunMode;
   missingKeys: string[];
   missingConnectors: string[];
+  /**
+   * Inputs/ressources que l'abonné doit fournir avant le run (Pilier B).
+   * Source unique : `resolveAgentInterface(contract, { phase: "preflight" })`.
+   */
+  missingInputs?: Array<{
+    key: string;
+    label: string;
+    kind: string;
+    widget: string;
+    message: string;
+    resourceType?: string;
+    connector?: string;
+  }>;
   connectorAccounts?: Array<{
     connectorId: string;
     label: string;
@@ -135,11 +150,40 @@ export async function POST(request: NextRequest) {
   });
 
   // Déterminer connecteurs manquants
+  const connectionsStatus: Record<string, { connected: boolean }> = {};
   const missingConnectors: string[] = [];
   if (parsedEnv?.manifest?.connectors) {
     for (const c of dedupeConnectors(parsedEnv.manifest.connectors)) {
       const connected = await isConnectorConnected(user.id, c);
+      connectionsStatus[c] = { connected };
       if (!connected) missingConnectors.push(c);
+    }
+  }
+
+  // Pilier B : missingInputs via le Résolveur unique (champs + ressources)
+  const missingInputs: NonNullable<PreflightResult["missingInputs"]> = [];
+  if (parsedEnv?.manifest) {
+    try {
+      const contract = buildContract(parsedEnv.manifest.steps);
+      const missing = preflightMissing(contract, {
+        phase: "preflight",
+        runnerId: user.id,
+        creatorId: listing.creator_id ?? undefined,
+        connections: connectionsStatus,
+      });
+      for (const m of missing) {
+        missingInputs.push({
+          key: m.key,
+          label: m.label,
+          kind: m.kind,
+          widget: m.widget ?? "text",
+          message: m.message ?? `Renseignez « ${m.label} ».`,
+          resourceType: m.resourceType,
+          connector: m.connectorParam?.connector,
+        });
+      }
+    } catch {
+      // résolveur best-effort, ne bloque pas le preflight si manifest atypique
     }
   }
 
@@ -149,6 +193,7 @@ export async function POST(request: NextRequest) {
       mode: "blocked" as RunMode,
       missingKeys,
       missingConnectors,
+      missingInputs,
       estimatedCostCents,
       estimatedCredits,
       creditBalance,
@@ -173,6 +218,7 @@ export async function POST(request: NextRequest) {
         mode: "blocked" as RunMode,
         missingKeys,
         missingConnectors: [],
+        missingInputs,
         connectorAccounts,
         connectorHealthIssues: healthIssues,
         estimatedCostCents,
@@ -192,6 +238,7 @@ export async function POST(request: NextRequest) {
       mode: "byok" as RunMode,
       missingKeys: [],
       missingConnectors: [],
+      missingInputs,
       estimatedCostCents,
       estimatedCredits,
       creditBalance,
@@ -208,6 +255,7 @@ export async function POST(request: NextRequest) {
         mode: "credits" as RunMode,
         missingKeys: [],
         missingConnectors: [],
+        missingInputs,
         estimatedCostCents,
         estimatedCredits,
         creditBalance,
@@ -221,6 +269,7 @@ export async function POST(request: NextRequest) {
         mode: "free_quota" as RunMode,
         missingKeys: [],
         missingConnectors: [],
+        missingInputs,
         estimatedCostCents,
         estimatedCredits,
         creditBalance,
@@ -234,6 +283,7 @@ export async function POST(request: NextRequest) {
         mode: "credits" as RunMode,
         missingKeys: [],
         missingConnectors: [],
+        missingInputs,
         estimatedCostCents,
         estimatedCredits,
         creditBalance,
@@ -255,6 +305,7 @@ export async function POST(request: NextRequest) {
     mode: "blocked" as RunMode,
     missingKeys,
     missingConnectors: [],
+    missingInputs,
     estimatedCostCents,
     estimatedCredits,
     creditBalance,

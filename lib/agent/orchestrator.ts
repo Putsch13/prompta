@@ -4,8 +4,15 @@ import { executeConnectorAction } from "@/lib/connectors/execute";
 import { getUserConnection } from "@/lib/connections";
 import { isResourcePlaceholder } from "@/lib/connectors/param-bindings";
 import { getConnectorAction } from "@/lib/connectors/registry";
-import { formatActionError, isUnresolvedParamValue } from "@/lib/connectors/format-action-error";
+import { isUnresolvedParamValue } from "@/lib/connectors/format-action-error";
+import { mapAgentError } from "@/lib/agent/error-map";
 import { applyActionParamDefaults } from "@/lib/connectors/param-defaults";
+import { buildContract, type AgentContract } from "@/lib/agent/contract";
+import {
+  resolveAgentInterface,
+  resolvedValueForStepParam,
+  type ResolvedInput,
+} from "@/lib/agent/resolve-interface";
 import { AgentManifestSchema, type AgentManifest, type AgentStep, type BaseAgentStep, type ParallelStep } from "./schema";
 import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
 import { logRunActivity } from "./activity-log";
@@ -65,6 +72,13 @@ export interface OrchestratorContext {
   resumeFromStep?: number;
   resumeOutputs?: Record<string, string>;
   onProgress?: (stepsCompleted: number, outputs?: Record<string, string>) => void | Promise<void>;
+  /**
+   * Pré-calculé par `runAgent` via `resolveAgentInterface(contract, { phase: "run" })` :
+   * pour chaque paramètre d'étape on connaît la valeur effective (résolue/ask/missing).
+   * L'orchestrateur ne fait plus de logique de résolution ad hoc (Pilier B).
+   */
+  resolvedInterface?: ResolvedInput[];
+  contract?: AgentContract;
 }
 
 export interface OrchestratorResult {
@@ -337,11 +351,17 @@ async function executeStep(
       const params: Record<string, string> = {};
       for (const [k, v] of Object.entries(step.params)) {
         let raw = v;
-        if (isResourcePlaceholder(v)) {
+        // Pilier B : on consomme la décision du Résolveur (P2.1) au lieu de
+        // re-faire la logique de résolution localement.
+        const resolved = ctx.resolvedInterface
+          ? resolvedValueForStepParam(ctx.resolvedInterface, stepIndex, k)
+          : undefined;
+        if (resolved?.resolvedValue && resolved.status === "resolved") {
+          raw = resolved.resolvedValue;
+        } else if (isResourcePlaceholder(v)) {
+          // Fallback historique pour les appels qui n'auraient pas pré-résolu (tests/legacy)
           const resourceKey = `${stepIndex}:${k}`;
-          const override =
-            ctx.resources?.[resourceKey] ??
-            ctx.inputs?.[resourceKey];
+          const override = ctx.resources?.[resourceKey] ?? ctx.inputs?.[resourceKey];
           if (override) {
             raw = override;
           } else {
@@ -362,9 +382,14 @@ async function executeStep(
         if (!input.required) continue;
         const val = params[input.key];
         if (isUnresolvedParamValue(val)) {
-          throw new Error(
-            `Paramètre « ${input.label} » non renseigné — choisissez la ressource ou renseignez la valeur.`,
-          );
+          // Message piloté par le résolveur si dispo (libellés cohérents partout)
+          const resolved = ctx.resolvedInterface
+            ? resolvedValueForStepParam(ctx.resolvedInterface, stepIndex, input.key)
+            : undefined;
+          const message =
+            resolved?.message ??
+            `Paramètre « ${input.label} » non renseigné — choisissez la ressource ou renseignez la valeur.`;
+          throw new Error(message);
         }
       }
 
@@ -439,12 +464,13 @@ async function executeStep(
           usage: { inputTokens: 0, outputTokens: 0, connectorAction: step.action },
         };
       } catch (err) {
+        // P3.2 : mapping unifié vers AgentRuntimeError (codes + hints lisibles)
+        const mapped = mapAgentError(err, { connector: step.connector, action: step.action });
+        const message = mapped.hint ? `${mapped.message} — ${mapped.hint}` : mapped.message;
         if (executionId && runId && !simulated) {
-          const message = formatActionError(step.connector, step.action, err);
           await failExecution(executionId, message).catch(() => undefined);
-          throw new Error(message);
         }
-        throw new Error(formatActionError(step.connector, step.action, err));
+        throw new Error(message);
       }
     }
 
@@ -667,7 +693,24 @@ export async function runAgent(
     runInputs._provision_logs = provisioned.logs.join("\n");
   }
 
-  const effectiveContext = { ...context, inputs: runInputs, resources };
+  // Pilier B : on calcule une fois le Résolveur (P2.1) — l'orchestrateur consomme
+  // la décision plutôt que de re-faire la logique de résolution dans le pas action.
+  const contract = context.contract ?? buildContract(manifest.steps);
+  const resolvedInterface = resolveAgentInterface(contract, {
+    phase: "run",
+    runnerId: context.userId,
+    creatorId: context.creatorId,
+    provided: runInputs,
+    resources,
+  });
+
+  const effectiveContext = {
+    ...context,
+    inputs: runInputs,
+    resources,
+    contract,
+    resolvedInterface,
+  };
   let latestStepsCompleted = 0;
   const memoryEnabled = manifest.memory?.enabled ?? false;
   const startFromStep = context.resumeFromStep ?? 0;

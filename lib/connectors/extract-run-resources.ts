@@ -1,7 +1,8 @@
-import type { AgentManifest, AgentStep } from "@/lib/agent/schema";
+import type { AgentManifest } from "@/lib/agent/schema";
 import { getConnectorAction } from "./registry";
 import { isResourcePlaceholder } from "./param-bindings";
 import { getResourceType } from "./resource-types";
+import { stepKey, walkWithIndex } from "@/lib/agent/step-key";
 
 export interface RunResourceField {
   id: string;
@@ -13,49 +14,35 @@ export interface RunResourceField {
   dependsOnKey?: string;
 }
 
-function walkSteps(steps: AgentStep[], fields: RunResourceField[], offset = 0): void {
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    const idx = offset + i;
-
-    if (step.type === "parallel") {
-      for (let branchIdx = 0; branchIdx < step.branches.length; branchIdx++) {
-        const branch = step.branches[branchIdx];
-        for (let s = 0; s < branch.steps.length; s++) {
-          const subStep = branch.steps[s] as AgentStep;
-          const subIdx = idx * 100 + branchIdx * 10 + s;
-          walkSteps([subStep], fields, subIdx);
-        }
-      }
-      continue;
-    }
-
-    if (step.type !== "action" || !step.params) continue;
-
-    for (const [key, value] of Object.entries(step.params)) {
+/**
+ * Champs ressource à résoudre côté abonné avant le run.
+ *
+ * Utilise `walkWithIndex` (lib/agent/step-key.ts) pour partager exactement le
+ * même index global que l'orchestrateur, le contrat et le résolveur.
+ */
+export function extractRunResourceFields(manifest: AgentManifest): RunResourceField[] {
+  const fields: RunResourceField[] = [];
+  for (const w of walkWithIndex(manifest.steps)) {
+    if (w.step.type !== "action" || !w.step.params) continue;
+    const action = w.step;
+    for (const [key, value] of Object.entries(action.params)) {
       if (!isResourcePlaceholder(value)) continue;
       const resourceType = value.trim().slice("{{resource:".length, -2);
       const def = getResourceType(resourceType);
-      const input = getConnectorAction(step.connector, step.action)?.inputs.find(
+      const input = getConnectorAction(action.connector, action.action)?.inputs.find(
         (inp) => inp.key === key,
       );
       fields.push({
-        id: `${idx}:${key}`,
-        stepIndex: idx,
+        id: stepKey(w.stepIndex, key),
+        stepIndex: w.stepIndex,
         paramKey: key,
         resourceType,
-        connectorId: def?.connectorId ?? step.connector,
+        connectorId: def?.connectorId ?? action.connector,
         label: input?.label ?? key,
         dependsOnKey: input?.dependsOn,
       });
     }
   }
-}
-
-/** Champs ressource à résoudre côté abonné avant le run. */
-export function extractRunResourceFields(manifest: AgentManifest): RunResourceField[] {
-  const fields: RunResourceField[] = [];
-  walkSteps(manifest.steps, fields);
   return fields;
 }
 
