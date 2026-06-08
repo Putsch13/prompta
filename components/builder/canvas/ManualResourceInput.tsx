@@ -1,11 +1,100 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { Check, AlertTriangle, Loader2, X } from "lucide-react";
 import type { ParamScope } from "@/lib/connectors/types";
 import {
   isResourcePlaceholder,
   resourcePlaceholder,
 } from "@/lib/connectors/param-bindings";
 import { ResourceSelect } from "@/components/connectors/ResourceSelect";
+
+type VerifyStatus = "idle" | "checking" | "ok" | "not_found" | "forbidden" | "no_connection" | "inconclusive";
+
+/** Indicateur d'accès : teste immédiatement si la ressource précise est joignable. */
+function ResourceAccessCheck({
+  connectorId,
+  resourceType,
+  value,
+}: {
+  connectorId: string;
+  resourceType: string;
+  value: string;
+}) {
+  const [status, setStatus] = useState<VerifyStatus>("idle");
+  const [label, setLabel] = useState<string | undefined>();
+
+  useEffect(() => {
+    const v = value.trim();
+    if (!v || isResourcePlaceholder(v)) {
+      setStatus("idle");
+      return;
+    }
+    let cancelled = false;
+    setStatus("checking");
+    setLabel(undefined);
+    const t = setTimeout(() => {
+      fetch("/api/connectors/verify-resource", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connector: connectorId, resourceType, value: v }),
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          setStatus((d.status as VerifyStatus) ?? "inconclusive");
+          setLabel(d.label);
+        })
+        .catch(() => {
+          if (!cancelled) setStatus("inconclusive");
+        });
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [connectorId, resourceType, value]);
+
+  if (status === "idle") return null;
+  if (status === "checking") {
+    return (
+      <p className="flex items-center gap-1 text-[10px] text-ink-faint">
+        <Loader2 className="h-3 w-3 animate-spin" /> Vérification de l&apos;accès…
+      </p>
+    );
+  }
+  if (status === "ok") {
+    return (
+      <p className="flex items-center gap-1 text-[10px] text-emerald-700">
+        <Check className="h-3 w-3" /> Accès confirmé{label ? ` — ${label}` : ""}
+      </p>
+    );
+  }
+  if (status === "not_found") {
+    return (
+      <p className="flex items-center gap-1 text-[10px] text-amber-700">
+        <AlertTriangle className="h-3 w-3" /> Introuvable — vérifiez l&apos;ID ou partagez la ressource avec le compte connecté.
+      </p>
+    );
+  }
+  if (status === "forbidden") {
+    return (
+      <p className="flex items-center gap-1 text-[10px] text-amber-700">
+        <X className="h-3 w-3" /> Accès refusé — la ressource n&apos;est pas partagée avec le compte connecté.
+      </p>
+    );
+  }
+  if (status === "no_connection") {
+    return (
+      <p className="flex items-center gap-1 text-[10px] text-destructive">
+        <X className="h-3 w-3" /> Connexion à rétablir pour ce service.
+      </p>
+    );
+  }
+  return (
+    <p className="text-[10px] text-ink-faint">Vérification d&apos;accès indisponible pour cette ressource.</p>
+  );
+}
 
 export type ResourceVisibility = "client" | "builder_private" | "builder_shared";
 
@@ -91,6 +180,13 @@ export function ManualResourceInput({
               onChange={(e) => onChange(e.target.value.trim(), true, visibility)}
               placeholder={resourceType}
               className="h-8 w-full rounded border border-line px-2 font-mono text-xs"
+            />
+          )}
+          {connectorId && !disabled && !isResourcePlaceholder(value) && value.trim() && (
+            <ResourceAccessCheck
+              connectorId={connectorId}
+              resourceType={resourceType}
+              value={value}
             />
           )}
           <div className="space-y-1">
