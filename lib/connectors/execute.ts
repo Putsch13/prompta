@@ -3,7 +3,15 @@ import { executeNativeConnectorAction } from "./execute-native";
 import { isComposioEnabled } from "@/lib/composio/client";
 import { ComposioExecutionError, executeComposioTool } from "@/lib/composio/execute";
 import { composioMappingFor } from "./native-to-composio";
-import { toComposioToolkitSlug } from "./resolve-id";
+import { toComposioToolkitSlug, isSameConnector } from "./resolve-id";
+import { CONNECTORS } from "./registry";
+import { resolveComposioToolSlug } from "@/lib/composio/resolve-native-action";
+
+/** Le connecteur existe-t-il dans le registre natif maison ? */
+function hasNativeConnector(connectorId?: string): boolean {
+  if (!connectorId) return false;
+  return CONNECTORS.some((c) => isSameConnector(c.id, connectorId));
+}
 
 /** Actions legacy maison (gmail.send, slack.send…) */
 function isNativeAction(actionId: string): boolean {
@@ -96,6 +104,17 @@ export async function executeConnectorAction(
       const rawToolkit = ctx.connector?.trim() || actionId.split("_")[0]?.toLowerCase() || "";
       const toolkitSlug = rawToolkit ? toComposioToolkitSlug(rawToolkit) : undefined;
       return runComposio(actionId, ctx.userId, params, toolkitSlug);
+    }
+
+    // 0bis) Action au format natif (connector.verb) MAIS connecteur Composio-only
+    //       (aucun registre natif) → le plan a inventé une action inexistante.
+    //       On la résout vers le vrai slug Composio via le catalogue.
+    if (composioOn && isNativeAction(actionId) && !hasNativeConnector(ctx.connector)) {
+      const connectorId = ctx.connector?.trim() || actionId.split(".")[0] || "";
+      const resolvedSlug = await resolveComposioToolSlug(connectorId, actionId);
+      if (resolvedSlug) {
+        return runComposio(resolvedSlug, ctx.userId, params, toComposioToolkitSlug(connectorId));
+      }
     }
 
     // 2) Action native MAIS la connexion de l'utilisateur passe par Composio :

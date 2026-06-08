@@ -213,6 +213,13 @@ test("connectionMatchesConnector — google_drive ↔ googledrive", async () => 
   assert.ok(connectionMatchesConnector("google_drive", "googledrive"));
 });
 
+test("actionVerb — extrait le verbe d'une action native", async () => {
+  const { actionVerb } = await import("../../lib/composio/resolve-native-action");
+  assert.equal(actionVerb("google_drive.list_files"), "list_files");
+  assert.equal(actionVerb("gmail.send"), "send");
+  assert.equal(actionVerb("list_files"), "list_files");
+});
+
 test("connectionMatchesConnector — robuste séparateurs/casse pour app arbitraire", async () => {
   const { connectionMatchesConnector } = await import("../../lib/connectors/resolve-id");
   // App non mappée explicitement : le filet générique doit matcher.
