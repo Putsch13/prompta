@@ -41,6 +41,8 @@ export interface PlanNode {
   requiresApproval: boolean;
   params?: Record<string, string>;
   paramMeta?: Record<string, ParamMeta>;
+  /** Paramètres remplis par une IA (clé param → modèle + consigne). */
+  aiFills?: Record<string, { model: string; prompt: string }>;
   /** true = env partagée (builder) pour tous les abonnés */
   sharedEnv?: boolean;
   /** Ressources épinglées par le builder (clé param → bool) */
@@ -278,6 +280,9 @@ function nodeToAgentStep(node: PlanNode, defaultModel: string): AgentStep {
         outputKey: node.outputKey,
         ...(node.actionInputs && node.actionInputs.length > 0
           ? { inputsSchema: node.actionInputs }
+          : {}),
+        ...(node.aiFills && Object.keys(node.aiFills).length > 0
+          ? { aiFills: node.aiFills }
           : {}),
       };
     case "tool":

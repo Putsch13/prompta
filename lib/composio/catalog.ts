@@ -1,5 +1,9 @@
 import { getComposioClient, isComposioEnabled } from "./client";
-import { inferComposioResourceType } from "@/lib/connectors/resource-types";
+import {
+  composioResourceType,
+  inferComposioResourceType,
+  looksLikeResourceKey,
+} from "@/lib/connectors/resource-types";
 
 export interface ComposioToolkitEntry {
   id: string;
@@ -98,7 +102,8 @@ function widgetType(key: string, jsonType?: string): "text" | "textarea" | "emai
 }
 
 function parseToolInputs(
-  parameters: Record<string, unknown> | undefined
+  parameters: Record<string, unknown> | undefined,
+  toolkit: string,
 ): ComposioToolEntry["inputs"] {
   const props = (parameters?.properties ?? {}) as Record<
     string,
@@ -106,7 +111,11 @@ function parseToolInputs(
   >;
   const required = new Set((parameters?.required as string[] | undefined) ?? []);
   return Object.entries(props).map(([key, meta]) => {
-    const resourceType = inferComposioResourceType(key);
+    // Curaté (mapping connu) prioritaire, sinon tout `*_id` devient une ressource
+    // listable dynamiquement (picker universel sur les 300+ toolkits).
+    const resourceType =
+      inferComposioResourceType(key) ??
+      (looksLikeResourceKey(key) ? composioResourceType(toolkit, key) : undefined);
     const label = meta.title?.trim() || humanizeKey(key);
     if (resourceType) {
       return {
@@ -182,7 +191,7 @@ export async function listComposioTools(toolkitSlug: string): Promise<ComposioTo
     name: t.name ?? t.slug ?? "",
     toolkit: toolkitSlug,
     description: t.description,
-    inputs: parseToolInputs(t.inputParameters as Record<string, unknown> | undefined),
+    inputs: parseToolInputs(t.inputParameters as Record<string, unknown> | undefined, toolkitSlug),
   }));
 
   toolCache.set(toolkitSlug, { at: now, items });

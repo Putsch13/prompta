@@ -2,7 +2,7 @@ import { getUserConnection, listUserConnections } from "@/lib/connections";
 import { isComposioEnabled, toComposioToolkitSlug } from "@/lib/composio/client";
 import { connectionMatchesConnector } from "./resolve-id";
 import { missingRequiredScopes } from "./required-scopes";
-import { getResourceType } from "./resource-types";
+import { COMPOSIO_RESOURCE_PREFIX, getResourceType } from "./resource-types";
 import type { ExecuteContext } from "./types";
 
 export interface ResourceListItem {
@@ -123,6 +123,12 @@ async function listComposioResources(
     return listComposioGoogleSheetsResources(resourceType, userId, connectorId, parent, q);
   }
 
+  // Type synthétique `composio:<toolkit>:<param_key>` → découverte dynamique de
+  // l'action de listing (picker universel pour les 300+ toolkits).
+  if (resourceType.startsWith(COMPOSIO_RESOURCE_PREFIX)) {
+    return listDynamicComposioResource(resourceType, userId, connectorId, parent, q);
+  }
+
   const def = getResourceType(resourceType);
   if (!def?.listAction) return { items: [] };
 
@@ -154,6 +160,42 @@ function composioParamForResource(resourceTypeId: string): string | undefined {
   if (!leaf) return undefined;
   // ex. airtable.base → base_id ; notion.database → database_id
   return `${leaf}_id`;
+}
+
+/**
+ * Listing dynamique pour `composio:<toolkit>:<param_key>` : on découvre une
+ * action lister/rechercher dans le toolkit, on l'exécute, puis on parse la
+ * sortie avec le parseur générique. Échec/aucune action → liste vide (l'UI
+ * propose la saisie manuelle d'ID).
+ */
+async function listDynamicComposioResource(
+  resourceType: string,
+  userId: string,
+  connectorId: string,
+  parent?: string,
+  q?: string,
+): Promise<ListResourcesResult> {
+  const rest = resourceType.slice(COMPOSIO_RESOURCE_PREFIX.length);
+  const firstColon = rest.indexOf(":");
+  if (firstColon <= 0) return { items: [] };
+  const paramKey = rest.slice(firstColon + 1);
+
+  const toolkit = toComposioToolkitSlug(connectorId);
+  const { discoverListAction } = await import("@/lib/composio/discover-list-action");
+  const slug = await discoverListAction(toolkit, paramKey);
+  if (!slug) return { items: [] };
+
+  const { executeComposioTool } = await import("@/lib/composio/execute");
+  const args: Record<string, string> = {};
+  if (q) args.query = q;
+  if (parent) args.parent_id = parent;
+
+  try {
+    const result = await executeComposioTool(slug, userId, args, { toolkitSlug: toolkit });
+    return { items: parseComposioResourceList(result.output, parent) };
+  } catch {
+    return { items: [] };
+  }
 }
 
 function firstString(o: Record<string, unknown>, keys: string[]): string | undefined {

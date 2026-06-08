@@ -93,8 +93,52 @@ export const RESOURCE_TYPES: Record<string, ResourceTypeDef> = {
   },
 };
 
+/**
+ * Préfixe des types de ressources « synthétiques » : tout paramètre `*_id` d'un
+ * toolkit Composio arbitraire devient `composio:<toolkit>:<param_key>`. Le
+ * listing est résolu dynamiquement (découverte d'une action lister/rechercher),
+ * sans entrée codée en dur. Cf. lib/composio/discover-list-action.ts.
+ */
+export const COMPOSIO_RESOURCE_PREFIX = "composio:";
+
+function humanizeNoun(key: string): string {
+  return key
+    .replace(/_(id|ids)$/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
 export function getResourceType(id: string): ResourceTypeDef | undefined {
+  if (id.startsWith(COMPOSIO_RESOURCE_PREFIX)) {
+    const rest = id.slice(COMPOSIO_RESOURCE_PREFIX.length);
+    const firstColon = rest.indexOf(":");
+    if (firstColon <= 0) return undefined;
+    const toolkit = rest.slice(0, firstColon);
+    const paramKey = rest.slice(firstColon + 1);
+    if (!toolkit || !paramKey) return undefined;
+    return {
+      id,
+      connectorId: toolkit,
+      label: humanizeNoun(paramKey),
+      listVia: "composio",
+    };
+  }
   return RESOURCE_TYPES[id];
+}
+
+/**
+ * Une clé de paramètre désigne-t-elle une ressource listable ? On se limite aux
+ * suffixes `_id`/`_ids` (clairs et sans faux positifs type « android »/« valid »).
+ * Le `id` nu est trop générique → exclu.
+ */
+export function looksLikeResourceKey(key: string): boolean {
+  return /_(id|ids)$/i.test(key);
+}
+
+/** Construit le type synthétique pour un param ressource d'un toolkit Composio. */
+export function composioResourceType(toolkit: string, paramKey: string): string {
+  return `${COMPOSIO_RESOURCE_PREFIX}${toolkit}:${paramKey}`;
 }
 
 /** Mapping heuristique Composio input key → resourceType */

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Loader2, Plus, Trash2, X } from "lucide-react";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
+import { AiFillField } from "@/components/builder/canvas/AiFillField";
 import { getBuilderModels } from "@/lib/catalogs";
 import { CONNECTORS } from "@/lib/connectors/registry";
 import { actionInputsForStep } from "@/lib/connectors/action-inputs";
@@ -150,10 +151,18 @@ export function NodeInspector({
   const priorOutputs = currentGraph.nodes
     .filter((n) => n.id !== currentNode.id)
     .map((n) => n.outputKey)
-    .filter(Boolean);
+    .filter((k): k is string => !!k);
+  const builderModels = getBuilderModels() as { id: string; label: string; provider?: string }[];
 
   function patch(p: Partial<PlanNode>) {
     onChange({ ...currentNode, ...p, id: currentNode.id, kind: currentNode.kind });
+  }
+
+  function setAiFill(key: string, fill: { model: string; prompt: string } | null) {
+    const next = { ...(currentNode.aiFills ?? {}) };
+    if (fill) next[key] = fill;
+    else delete next[key];
+    patch({ aiFills: next });
   }
 
   function updateEdgeLabel(targetId: string, label: string) {
@@ -515,45 +524,40 @@ export function NodeInspector({
                       );
                     }
 
+                    // ── Champs non-ressource : saisie standard OU remplissage IA ──
+                    const aiFill = currentNode.aiFills?.[input.key];
+                    let widget: ReactNode = null;
+
                     if (!isResource && input.defaultValue !== undefined) {
                       const paramBinding = defaultParamBindingKey(
                         currentNode.connectorId!,
                         input.key,
                       );
                       const rawValue = currentNode.params?.[input.key] ?? input.defaultValue;
-                      return (
-                        <div key={input.key}>
-                          {sourceBadge && (
-                            <span className={`mb-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-medium ${sourceBadge.className}`}>
-                              {sourceBadge.label}
-                            </span>
-                          )}
-                          <OptionalActionParamInput
-                            label={input.label}
-                            value={rawValue}
-                            defaultValue={input.defaultValue}
-                            defaultHint={
-                              input.key === "range"
-                                ? "tout le classeur (tous les onglets)"
-                                : "valeur standard de l'outil"
-                            }
-                            bindingKey={paramBinding}
-                            placeholder={input.placeholder ?? input.help ?? input.label}
-                            onChange={(val, _mode, meta) => {
-                              patch({
-                                params: { ...(currentNode.params ?? {}), [input.key]: val },
-                                paramMeta: {
-                                  ...(currentNode.paramMeta ?? {}),
-                                  [input.key]: meta,
-                                },
-                              });
-                            }}
-                          />
-                        </div>
+                      widget = (
+                        <OptionalActionParamInput
+                          label={input.label}
+                          value={rawValue}
+                          defaultValue={input.defaultValue}
+                          defaultHint={
+                            input.key === "range"
+                              ? "tout le classeur (tous les onglets)"
+                              : "valeur standard de l'outil"
+                          }
+                          bindingKey={paramBinding}
+                          placeholder={input.placeholder ?? input.help ?? input.label}
+                          onChange={(val, _mode, meta) => {
+                            patch({
+                              params: { ...(currentNode.params ?? {}), [input.key]: val },
+                              paramMeta: {
+                                ...(currentNode.paramMeta ?? {}),
+                                [input.key]: meta,
+                              },
+                            });
+                          }}
+                        />
                       );
-                    }
-
-                    if (input.required && !isResource) {
+                    } else if (input.required && !isResource) {
                       const paramBinding = defaultParamBindingKey(
                         currentNode.connectorId!,
                         input.key,
@@ -605,97 +609,125 @@ export function NodeInspector({
                         });
                       };
 
-                      return (
-                        <div key={input.key}>
-                          {sourceBadge && (
-                            <span className={`mb-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-medium ${sourceBadge.className}`}>
-                              {sourceBadge.label}
-                            </span>
+                      widget = (
+                        <ManualActionParamInput
+                          label={input.label}
+                          value={rawValue}
+                          bindingKey={paramBinding}
+                          placeholder={input.placeholder ?? input.help ?? input.label}
+                          pinned={pinned}
+                          visibility={visibility}
+                          onChange={applyParam}
+                        />
+                      );
+                    } else {
+                      widget = (
+                        <>
+                          <label className="text-[10px] text-ink-faint">
+                            {input.label}
+                            {input.required ? " *" : ""}
+                            {input.kind === "input" ? " (variable)" : ""}
+                          </label>
+                          {input.kind !== "static" && (
+                            <div className="mt-0.5 flex flex-wrap gap-1">
+                              {envFields.map((f) => (
+                                <button
+                                  key={f.key}
+                                  type="button"
+                                  onClick={() =>
+                                    patch({
+                                      params: {
+                                        ...(currentNode.params ?? {}),
+                                        [input.key]: `{{${f.key}}}`,
+                                      },
+                                      paramMeta: {
+                                        ...(currentNode.paramMeta ?? {}),
+                                        [input.key]: { scope: "dynamic" },
+                                      },
+                                    })
+                                  }
+                                  className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
+                                >
+                                  {f.key}
+                                </button>
+                              ))}
+                              {priorOutputs.map((k) => (
+                                <button
+                                  key={k}
+                                  type="button"
+                                  onClick={() =>
+                                    patch({
+                                      params: {
+                                        ...(currentNode.params ?? {}),
+                                        [input.key]: `{{${k}}}`,
+                                      },
+                                      paramMeta: {
+                                        ...(currentNode.paramMeta ?? {}),
+                                        [input.key]: { scope: "dynamic" },
+                                      },
+                                    })
+                                  }
+                                  className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
+                                >
+                                  {k}
+                                </button>
+                              ))}
+                            </div>
                           )}
-                          <ManualActionParamInput
-                            label={input.label}
-                            value={rawValue}
-                            bindingKey={paramBinding}
-                            placeholder={input.placeholder ?? input.help ?? input.label}
-                            pinned={pinned}
-                            visibility={visibility}
-                            onChange={applyParam}
+                          <input
+                            value={currentNode.params?.[input.key] ?? ""}
+                            onChange={(e) =>
+                              patch({
+                                params: { ...(currentNode.params ?? {}), [input.key]: e.target.value },
+                                paramMeta: {
+                                  ...(currentNode.paramMeta ?? {}),
+                                  [input.key]: {
+                                    scope: input.kind === "static" ? "end_user" : "dynamic",
+                                  },
+                                },
+                              })
+                            }
+                            placeholder={
+                              input.kind === "static" ? input.label : `{{${input.key}}}`
+                            }
+                            className="mt-1 h-8 w-full rounded border border-line px-2 font-mono text-xs"
                           />
-                        </div>
+                        </>
                       );
                     }
 
                     return (
                       <div key={input.key}>
-                        <label className="text-[10px] text-ink-faint">
-                          {input.label}
-                          {input.required ? " *" : ""}
-                          {input.kind === "input" ? " (variable)" : ""}
-                        </label>
-                        {input.kind !== "static" && (
-                          <div className="mt-0.5 flex flex-wrap gap-1">
-                            {envFields.map((f) => (
-                              <button
-                                key={f.key}
-                                type="button"
-                                onClick={() =>
-                                  patch({
-                                    params: {
-                                      ...(currentNode.params ?? {}),
-                                      [input.key]: `{{${f.key}}}`,
-                                    },
-                                    paramMeta: {
-                                      ...(currentNode.paramMeta ?? {}),
-                                      [input.key]: { scope: "dynamic" },
-                                    },
-                                  })
-                                }
-                                className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
-                              >
-                                {f.key}
-                              </button>
-                            ))}
-                            {priorOutputs.map((k) => (
-                              <button
-                                key={k}
-                                type="button"
-                                onClick={() =>
-                                  patch({
-                                    params: {
-                                      ...(currentNode.params ?? {}),
-                                      [input.key]: `{{${k}}}`,
-                                    },
-                                    paramMeta: {
-                                      ...(currentNode.paramMeta ?? {}),
-                                      [input.key]: { scope: "dynamic" },
-                                    },
-                                  })
-                                }
-                                className="rounded bg-card2 px-1.5 py-0.5 text-[10px] text-ink-soft hover:bg-accent/10"
-                              >
-                                {k}
-                              </button>
-                            ))}
-                          </div>
+                        {sourceBadge && !aiFill && (
+                          <span className={`mb-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-medium ${sourceBadge.className}`}>
+                            {sourceBadge.label}
+                          </span>
                         )}
-                        <input
-                          value={currentNode.params?.[input.key] ?? ""}
-                          onChange={(e) =>
-                            patch({
-                              params: { ...(currentNode.params ?? {}), [input.key]: e.target.value },
-                              paramMeta: {
-                                ...(currentNode.paramMeta ?? {}),
-                                [input.key]: {
-                                  scope: input.kind === "static" ? "end_user" : "dynamic",
-                                },
-                              },
-                            })
-                          }
-                          placeholder={
-                            input.kind === "static" ? input.label : `{{${input.key}}}`
-                          }
-                          className="mt-1 h-8 w-full rounded border border-line px-2 font-mono text-xs"
-                        />
+                        {!isResource && input.kind !== "static" ? (
+                          <AiFillField
+                            label={input.label}
+                            required={input.required}
+                            active={!!aiFill}
+                            model={aiFill?.model ?? defaultModel}
+                            prompt={aiFill?.prompt ?? ""}
+                            models={builderModels}
+                            envFields={envFields}
+                            priorOutputs={priorOutputs}
+                            onToggle={(on) =>
+                              setAiFill(
+                                input.key,
+                                on
+                                  ? { model: aiFill?.model ?? defaultModel, prompt: aiFill?.prompt ?? "" }
+                                  : null,
+                              )
+                            }
+                            onChange={(model, prompt) => setAiFill(input.key, { model, prompt })}
+                          >
+                            {widget}
+                          </AiFillField>
+                        ) : (
+                          widget
+                        )}
                       </div>
                     );
                   },

@@ -184,6 +184,8 @@ function walkSteps(
     const stepShared = step.sharedEnv === true;
 
     for (const [paramKey, rawValue] of Object.entries(step.params ?? {})) {
+      // Rempli par IA au run → pas demandé à l'abonné, pas « manquant ».
+      if (step.aiFills?.[paramKey]) continue;
       const meta = step.paramMeta?.[paramKey] as ParamMeta | undefined;
       const inputDef = actionInputs.find((i) => i.key === paramKey);
       const label = inputDef?.label ?? keyToLabel(paramKey);

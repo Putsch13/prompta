@@ -64,6 +64,21 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
         }),
       )
       .optional(),
+    /**
+     * Remplissage par IA des paramètres en champ libre : pour chaque clé, un
+     * modèle au choix génère la valeur à partir d'une consigne (le prompt peut
+     * référencer {{variables}} et sorties d'étapes). Ces paramètres ne sont PAS
+     * demandés à l'abonné (cf. contract.ts).
+     */
+    aiFills: z
+      .record(
+        z.string(),
+        z.object({
+          model: z.string(),
+          prompt: z.string(),
+        }),
+      )
+      .optional(),
     /** Env partagée : accès/ressources du builder pour tous les abonnés */
     sharedEnv: z.boolean().optional(),
     outputKey: z.string().optional(),

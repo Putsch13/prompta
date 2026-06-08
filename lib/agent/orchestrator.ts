@@ -372,6 +372,45 @@ async function executeStep(
         params[k] = interpolate(raw, vars);
       }
 
+      // Remplissage par IA des paramètres en champ libre (avant défauts/validation).
+      if (step.aiFills && Object.keys(step.aiFills).length > 0) {
+        for (const [key, fill] of Object.entries(step.aiFills)) {
+          const fillModel = resolveModelOrDefault(fill.model);
+          const fillPrompt = interpolate(fill.prompt, vars);
+          if (simulated || ctx.demoMode) {
+            params[key] = `[${ctx.demoMode ? "DÉMO" : "APERÇU"} IA ${fillModel.apiModel}] ${fillPrompt.slice(0, 200)}`;
+            continue;
+          }
+          const fillApiKey = ctx.apiKeys[fillModel.provider];
+          if (!fillApiKey) {
+            throw new Error(
+              `Clé ${fillModel.provider} manquante pour le remplissage IA du paramètre « ${key} »`,
+            );
+          }
+          const filled = await callModel({
+            provider: fillModel.provider,
+            model: fillModel.apiModel,
+            messages: [{ role: "user", content: fillPrompt }],
+            apiKey: fillApiKey,
+            maxTokens: 1024,
+            tokenParam: fillModel.tokenParam,
+          });
+          if (scanOutput(filled.content)) {
+            throw new Error("Sortie IA interdite détectée — agent suspendu");
+          }
+          params[key] = filled.content.trim();
+          await logRunActivity({
+            userId: ctx.userId,
+            runId: ctx.runId,
+            listingId: ctx.listingId,
+            actionType: "llm",
+            actionLabel: `IA remplissage « ${key} » — ${fillModel.catalogId}`,
+            simulated: false,
+            detail: { model: fillModel.apiModel, stepIndex, paramKey: key },
+          }).catch(() => undefined);
+        }
+      }
+
       Object.assign(
         params,
         applyActionParamDefaults(step.connector, step.action, params),
