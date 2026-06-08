@@ -44,6 +44,10 @@ export interface ExecuteContext {
   accessToken?: string;
   apiKey?: string;
   dryRun?: boolean;
+  /** Connecteur courant (ex. "google_sheets") — pour les messages d'erreur. */
+  connector?: string;
+  /** Origine de la connexion — pilote le chemin d'exécution (natif vs Composio). */
+  provider?: "native" | "composio";
 }
 
 export interface ExecuteResult {

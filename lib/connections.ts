@@ -19,10 +19,17 @@ function db(): any {
   return createAdminClient();
 }
 
+export interface ResolvedConnection {
+  accessToken: string;
+  refreshToken?: string;
+  /** Origine de la connexion — détermine le chemin d'exécution (natif vs Composio). */
+  provider?: "native" | "composio";
+}
+
 export async function getUserConnection(
   userId: string,
   connectorId: string
-): Promise<{ accessToken: string; refreshToken?: string } | null> {
+): Promise<ResolvedConnection | null> {
   for (const id of connectorLookupIds(connectorId)) {
     const conn = await getUserConnectionDirect(userId, id);
     if (conn) return conn;
@@ -37,7 +44,7 @@ export async function isConnectorConnected(userId: string, connectorId: string):
 async function getUserConnectionDirect(
   userId: string,
   connectorId: string
-): Promise<{ accessToken: string; refreshToken?: string } | null> {
+): Promise<ResolvedConnection | null> {
   const { data } = await db()
     .from("user_connections")
     .select("access_token_enc, refresh_token_enc, status, expires_at, provider, composio_account_id")
@@ -47,7 +54,9 @@ async function getUserConnectionDirect(
     .maybeSingle();
 
   if (data?.provider === "composio") {
-    return data.composio_account_id ? { accessToken: data.composio_account_id } : null;
+    return data.composio_account_id
+      ? { accessToken: data.composio_account_id, provider: "composio" }
+      : null;
   }
 
   if (!data?.access_token_enc) return null;
@@ -73,6 +82,7 @@ async function getUserConnectionDirect(
   return {
     accessToken: decryptSecret(data.access_token_enc),
     refreshToken: data.refresh_token_enc ? decryptSecret(data.refresh_token_enc) : undefined,
+    provider: "native",
   };
 }
 
@@ -87,7 +97,7 @@ async function tryRefreshToken(
   userId: string,
   connectorId: string,
   refreshToken: string
-): Promise<{ accessToken: string; refreshToken?: string } | null> {
+): Promise<ResolvedConnection | null> {
   const config = REFRESH_CONFIGS[connectorId];
   if (!config) return null;
 
@@ -124,7 +134,7 @@ async function tryRefreshToken(
       expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : undefined,
     });
 
-    return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+    return { accessToken: newAccessToken, refreshToken: newRefreshToken, provider: "native" };
   } catch {
     return null;
   }

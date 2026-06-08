@@ -5,10 +5,7 @@ import {
   isResourcePlaceholder,
   resourcePlaceholder,
 } from "@/lib/connectors/param-bindings";
-import {
-  resourceInputHint,
-  resourceInputPlaceholder,
-} from "@/lib/connectors/resource-input-hints";
+import { ResourceSelect } from "@/components/connectors/ResourceSelect";
 
 export type ResourceVisibility = "client" | "builder_private" | "builder_shared";
 
@@ -20,6 +17,10 @@ interface Props {
   visibility: ResourceVisibility;
   disabled?: boolean;
   onChange: (value: string, pinned: boolean, visibility: ResourceVisibility) => void;
+  /** Connecteur — permet d'auto-lister les ressources du compte du builder. */
+  connectorId?: string;
+  /** Valeur de la ressource parente (ex. spreadsheetId pour lister les onglets). */
+  dependsOnValue?: string;
 }
 
 function visibilityFromMeta(
@@ -50,6 +51,8 @@ export function ManualResourceInput({
   visibility,
   disabled = false,
   onChange,
+  connectorId,
+  dependsOnValue,
 }: Props) {
   return (
     <div className="space-y-2 rounded-lg border border-line bg-card2 p-2">
@@ -72,14 +75,24 @@ export function ManualResourceInput({
 
       {pinned && (
         <>
-          <p className="text-[10px] text-ink-faint">{resourceInputHint(resourceType)}</p>
-          <input
-            value={isResourcePlaceholder(value) ? "" : value}
-            disabled={disabled}
-            onChange={(e) => onChange(e.target.value.trim(), true, visibility)}
-            placeholder={resourceInputPlaceholder(resourceType)}
-            className="h-8 w-full rounded border border-line px-2 font-mono text-xs"
-          />
+          {connectorId && !disabled ? (
+            <ResourceSelect
+              connectorId={connectorId}
+              resourceType={resourceType}
+              value={isResourcePlaceholder(value) ? "" : value}
+              parentValue={dependsOnValue}
+              label={label}
+              onChange={(id) => onChange(id.trim(), true, visibility)}
+            />
+          ) : (
+            <input
+              value={isResourcePlaceholder(value) ? "" : value}
+              disabled={disabled}
+              onChange={(e) => onChange(e.target.value.trim(), true, visibility)}
+              placeholder={resourceType}
+              className="h-8 w-full rounded border border-line px-2 font-mono text-xs"
+            />
+          )}
           <div className="space-y-1">
             <p className="text-[10px] font-medium text-ink-soft">Visibilité de cette ressource</p>
             <div className="flex flex-col gap-1">

@@ -435,6 +435,8 @@ async function executeStep(
           accessToken: conn?.accessToken,
           apiKey: step.connector === "telegram" ? conn?.accessToken : undefined,
           dryRun: simulated,
+          connector: step.connector,
+          provider: conn?.provider,
         });
 
         if (runId && !simulated && executionId) {

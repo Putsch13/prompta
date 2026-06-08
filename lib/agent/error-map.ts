@@ -14,6 +14,7 @@ import { formatActionError } from "@/lib/connectors/format-action-error";
 
 export type AgentErrorCode =
   | "missing_connection"
+  | "invalid_credentials"
   | "unresolved_placeholder"
   | "sheets_not_found"
   | "sheets_forbidden"
@@ -97,6 +98,20 @@ export function mapAgentError(
       raw,
       connector,
       action,
+    };
+  }
+
+  // ─── Credentials invalides (401) ────────────────────────────────────────
+  if (/\b401\b|invalid authentication credentials|Expected OAuth 2 access token|Invalid Credentials/i.test(raw)) {
+    return {
+      code: "invalid_credentials",
+      message: connector
+        ? `Authentification ${connector} invalide ou expirée.`
+        : "Authentification invalide ou expirée.",
+      hint: connector
+        ? `Reconnectez ${connector} dans Connexions (le jeton d'accès n'est plus valide).`
+        : "Reconnectez le service concerné — le jeton d'accès n'est plus valide.",
+      raw, connector, action,
     };
   }
 

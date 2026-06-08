@@ -369,6 +369,12 @@ export function NodeInspector({
                             visibility={visibility}
                             disabled={!!input.dependsOn && !parentPinned}
                             onChange={applyResource}
+                            connectorId={currentNode.connectorId}
+                            dependsOnValue={
+                              input.dependsOn
+                                ? currentNode.params?.[input.dependsOn]
+                                : undefined
+                            }
                           />
                           {input.dependsOn && !parentPinned && (
                             <p className="mt-1 text-[10px] text-amber-700">
