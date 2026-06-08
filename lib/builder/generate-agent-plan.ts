@@ -170,6 +170,8 @@ export const GeneratedAgentPlanSchema = z.object({
     type: z.enum(["llm", "action", "tool", "code", "condition", "approval"]),
     name: z.string(),
     description: z.string(),
+    /** Modèle IA choisi pour une étape llm (id catalogue). */
+    model: z.string().optional(),
     inputMapping: z.record(z.string(), z.any()).optional(),
     outputKey: z.string(),
     outputSchema: z.any().optional(),

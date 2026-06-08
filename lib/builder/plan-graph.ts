@@ -103,7 +103,7 @@ function planStepToNode(
       return {
         ...base,
         kind: "llm",
-        model: defaultModel,
+        model: step.model ?? defaultModel,
         prompt: step.description,
       };
     case "action": {
@@ -159,6 +159,7 @@ function nodeToPlanStep(node: PlanNode): GeneratedAgentPlan["steps"][number] {
                   : "llm",
     name: node.name,
     description: node.description ?? node.prompt ?? "",
+    model: node.model,
     outputKey: node.outputKey,
     connectorId: node.connectorId,
     actionSlug: node.actionSlug ?? node.toolId,
