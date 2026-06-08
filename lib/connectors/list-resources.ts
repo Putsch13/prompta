@@ -260,15 +260,20 @@ export class InsufficientScopesError extends Error {
 }
 
 /**
- * P4.3 : Composio par défaut, natif en secours.
+ * Liste les ressources d'un connecteur pour le picker.
  *
- * Stratégie :
- *  1. Si Composio est activé ET l'utilisateur a une connexion Composio pour ce
- *     connecteur → on tente d'abord Composio (résultats riches, scoping uniforme).
- *  2. Si Composio échoue OU n'est pas applicable → on retombe sur le natif si
- *     `listVia === "native"`, sinon on propage l'erreur Composio.
- *  3. Les erreurs « besoin de connexion / scopes insuffisants » remontent telles
- *     quelles pour que l'UI puisse afficher un bouton « Reconnecter ».
+ * Principe clé : on branche selon le **provider de la connexion**, pas en mode
+ * « essaie Composio puis retombe sur le natif ». Une connexion Composio n'a pas
+ * de token Google natif exploitable, et une connexion native n'a pas de compte
+ * Composio. Mélanger les deux provoquait une boucle « reconnectez » (le
+ * scope-check natif échouait systématiquement sur une connexion Composio dont
+ * les scopes ne sont pas exposés).
+ *
+ *  - Connexion Composio → listing Composio uniquement. Si Composio ne renvoie
+ *    rien, on renvoie une liste vide (l'UI propose alors « coller un ID »).
+ *    On ne déclenche JAMAIS le scope-check natif.
+ *  - Connexion native → listing natif (avec contrôle de scopes Google).
+ *  - Seul `NeedsConnectionError` remonte pour afficher « Reconnecter ».
  */
 export async function listConnectorResources(opts: {
   userId: string;
@@ -294,13 +299,12 @@ export async function listConnectorResources(opts: {
   );
 
   const composioEnabled = isComposioEnabled();
-  const userHasComposio = status?.provider === "composio";
-  const composioCanList = composioEnabled && userHasComposio && !!def.listAction;
+  const isComposioConnection = status?.provider === "composio";
 
-  const ctx: ExecuteContext = { userId, accessToken: conn.accessToken };
   let result: ListResourcesResult | null = null;
 
-  if (composioCanList) {
+  // --- Connexion Composio : Composio uniquement, jamais de scope-check natif ---
+  if (composioEnabled && isComposioConnection) {
     try {
       if (resourceType.startsWith("google_sheets.")) {
         result = await listComposioGoogleSheetsResources(resourceType, userId, connectorId, parent, q);
@@ -308,15 +312,20 @@ export async function listConnectorResources(opts: {
         result = await listComposioResources(resourceType, userId, connectorId, parent, q);
       }
     } catch (err) {
-      if (err instanceof NeedsConnectionError || err instanceof InsufficientScopesError) {
-        throw err;
-      }
-      // Erreurs Composio non bloquantes → on retombera sur le natif si possible
+      // Seule l'absence de connexion bloque ; tout le reste → liste vide
+      // (l'UI bascule sur la saisie manuelle d'ID, pas de boucle reconnexion).
+      if (err instanceof NeedsConnectionError) throw err;
       result = null;
     }
+    result = result ?? { items: [] };
+    cache.set(ck, { at: Date.now(), data: result });
+    return result;
   }
 
-  if ((!result || result.items.length === 0) && def.listVia === "native") {
+  // --- Connexion native ---
+  const ctx: ExecuteContext = { userId, accessToken: conn.accessToken };
+
+  if (def.listVia === "native") {
     if (resourceType.startsWith("google_sheets.")) {
       assertGoogleSheetsScopes(connectorId, status?.scopes);
     }
@@ -333,15 +342,12 @@ export async function listConnectorResources(opts: {
       }
       if (!result) throw err;
     }
-  }
-
-  // Dernier secours : Composio générique si rien d'autre n'a marché
-  if ((!result || result.items.length === 0) && composioEnabled && def.listVia === "composio") {
+  } else if (composioEnabled && def.listVia === "composio") {
     try {
       result = await listComposioResources(resourceType, userId, connectorId, parent, q);
     } catch (err) {
-      if (err instanceof NeedsConnectionError || err instanceof InsufficientScopesError) throw err;
-      if (!result) throw err;
+      if (err instanceof NeedsConnectionError) throw err;
+      result = null;
     }
   }
 

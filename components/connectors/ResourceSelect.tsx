@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plug, List, Pencil } from "lucide-react";
+import { Loader2, Plug, List, Pencil, RefreshCw } from "lucide-react";
 import {
   resourceInputHint,
   resourceInputPlaceholder,
@@ -93,18 +93,33 @@ export function ResourceSelect({
   const connectHref = `/api/connectors/${connectorId}/connect?force=true&returnUrl=${encodeURIComponent(
     typeof window !== "undefined" ? window.location.pathname + window.location.search : "/",
   )}`;
+  const connectorName = connectorId
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
   if (needsConnection || needsReconnect) {
     return (
       <div className="space-y-1">
         {reconnectMessage && <p className="text-[10px] text-amber-700">{reconnectMessage}</p>}
-        <a
-          href={connectHref}
-          className="flex items-center gap-1 text-xs font-medium text-accent hover:underline"
-        >
-          <Plug className="h-3 w-3" />
-          {needsReconnect ? `Reconnecter ${connectorId}` : `Connecter ${connectorId}`}
-        </a>
+        <div className="flex items-center gap-3">
+          {/* Nouvel onglet : on ne perd pas la progression du builder / du run. */}
+          <a
+            href={connectHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+          >
+            <Plug className="h-3 w-3" />
+            {needsReconnect ? `Reconnecter ${connectorName}` : `Connecter ${connectorName}`}
+          </a>
+          <button
+            type="button"
+            onClick={load}
+            className="flex items-center gap-1 text-[10px] text-ink-faint hover:text-ink"
+          >
+            <RefreshCw className="h-3 w-3" /> J&apos;ai reconnecté
+          </button>
+        </div>
       </div>
     );
   }

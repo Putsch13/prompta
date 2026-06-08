@@ -11,7 +11,7 @@ import {
   Repeat,
   History,
   Coins,
-  Sparkles,
+  Bot,
   FileText,
   ClipboardCheck,
   type LucideIcon,
@@ -19,7 +19,7 @@ import {
 
 const ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
-  contenus: Sparkles,
+  contenus: Bot,
   documents: FileText,
   connexions: Key,
   runs: History,
@@ -37,16 +37,21 @@ type NavItem = {
   exact?: boolean;
 };
 
-const NAV_ITEMS: NavItem[] = [
+// Navigation centrée agent (build → run → debug), à la Render.
+const PRIMARY_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Aperçu", iconKey: "dashboard", exact: true },
-  { href: "/dashboard/contenus", label: "Mes agents/prompts", iconKey: "contenus" },
-  { href: "/dashboard/documents", label: "Documents", iconKey: "documents" },
+  { href: "/dashboard/contenus", label: "Mes agents", iconKey: "contenus" },
+  { href: "/dashboard/runs", label: "Runs & logs", iconKey: "runs" },
   { href: "/dashboard/connexions", label: "Connexions", iconKey: "connexions" },
-  { href: "/dashboard/runs", label: "Historique runs", iconKey: "runs" },
   { href: "/dashboard/validations", label: "Validations", iconKey: "validations" },
-  { href: "/dashboard/credits", label: "Crédits", iconKey: "credits" },
+];
+
+// Compte & facturation (secondaire).
+const SECONDARY_ITEMS: NavItem[] = [
   { href: "/dashboard/abonnements", label: "Abonnements", iconKey: "abonnements" },
+  { href: "/dashboard/credits", label: "Crédits", iconKey: "credits" },
   { href: "/dashboard/payouts", label: "Revenus", iconKey: "payouts" },
+  { href: "/dashboard/documents", label: "Documents", iconKey: "documents" },
   { href: "/dashboard/edit-profile", label: "Profil", iconKey: "profile" },
 ];
 
@@ -61,37 +66,43 @@ export function DashboardNav() {
       .catch(() => undefined);
   }, [pathname]);
 
+  const renderItem = (item: NavItem) => {
+    const active = item.exact
+      ? pathname === item.href
+      : pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+    const Icon = ICONS[item.iconKey];
+    const badge = item.iconKey === "validations" && pendingApprovals > 0 ? pendingApprovals : 0;
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        prefetch
+        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+          active
+            ? "bg-accent/10 text-accent"
+            : "text-ink-soft hover:bg-card hover:text-ink"
+        }`}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className="flex-1">{item.label}</span>
+        {badge > 0 && (
+          <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+            {badge}
+          </span>
+        )}
+      </Link>
+    );
+  };
+
   return (
     <nav className="sticky top-24 space-y-1">
-      {NAV_ITEMS.map((item) => {
-        const active = item.exact
-          ? pathname === item.href
-          : pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-        const Icon = ICONS[item.iconKey];
-        const badge = item.iconKey === "validations" && pendingApprovals > 0 ? pendingApprovals : 0;
-
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            prefetch
-            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-              active
-                ? "bg-accent/10 text-accent"
-                : "text-ink-soft hover:bg-card hover:text-ink"
-            }`}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            <span className="flex-1">{item.label}</span>
-            {badge > 0 && (
-              <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                {badge}
-              </span>
-            )}
-          </Link>
-        );
-      })}
+      {PRIMARY_ITEMS.map(renderItem)}
+      <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+        Compte &amp; facturation
+      </p>
+      {SECONDARY_ITEMS.map(renderItem)}
     </nav>
   );
 }

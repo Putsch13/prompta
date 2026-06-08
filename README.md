@@ -1,6 +1,8 @@
 # Prompta
 
-Marketplace de prompts, agents et workflows IA — avec exécution sur plateforme (BYOK), modération, paiements Stripe Connect, espace admin et 7 agents IA opérationnels.
+**La plateforme pour créer, lancer et débugger tes agents IA — comme Render, mais pour les agents.**
+
+On construit un agent visuellement, on le connecte à ses outils (Gmail, Google Sheets, Slack, Telegram, Canva…), on le lance pour de vrai et on suit chaque étape dans les logs. Monétisation par **abonnement par agent en production** (les comptes test/QA sont exemptés via `UNRESTRICTED_EMAILS`).
 
 ---
 
@@ -10,11 +12,20 @@ Marketplace de prompts, agents et workflows IA — avec exécution sur plateform
 |--------|-------------|
 | Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS |
 | Backend | Routes API Next.js + Supabase (Postgres, Auth, Storage, RLS) |
-| Paiements | Stripe Connect, Checkout, Subscriptions, Tax |
-| Emails | Resend |
-| Analytics | PostHog |
-| Monitoring | Sentry |
-| Agents admin | Claude Sonnet (Anthropic API) + mode sandbox |
+| Connecteurs | Composio (défaut) + connecteurs natifs OAuth en secours |
+| LLM | Passerelle multi-fournisseurs (OpenAI, Anthropic, Google, Mistral) — BYOK ou crédits plateforme |
+| Paiements | Stripe (Checkout, Subscriptions, Connect, Tax) |
+| Emails | Resend · Analytics PostHog · Monitoring Sentry |
+
+---
+
+## Concepts clés
+
+- **Agent** : un manifeste déclaratif d'étapes (`llm`, `tool`, `connector`, `parallel`, validations humaines). Source de vérité dans `lib/agent/`.
+- **Contrat d'agent** (`lib/agent/contract.ts`) : l'interface de l'agent (entrées, ressources, secrets) **dérivée uniquement de ses étapes**. Plus de listes parallèles à maintenir.
+- **Résolveur** (`lib/agent/resolve-interface.ts`) : décide « qui fournit quoi / quand / avec quel widget » selon la phase (`build`, `sell`, `run`, `preflight`). Consommé par l'orchestrateur, le RunPanel, le NodeInspector et la publication.
+- **Provider-aware** : une connexion peut être **native** (OAuth direct) ou **Composio**. L'exécution et le listing de ressources sont routés en conséquence (`lib/connectors/execute.ts`, `lib/connectors/list-resources.ts`) pour éviter les erreurs 401 et les boucles de reconnexion.
+- **Picker de ressources** (`components/connectors/ResourceSelect.tsx`) : liste automatiquement les ressources d'un compte connecté (feuilles, salons…) avec repli « coller un ID ». Disponible dans le builder et dans le masque de run.
 
 ---
 
@@ -23,7 +34,7 @@ Marketplace de prompts, agents et workflows IA — avec exécution sur plateform
 ```bash
 npm install
 cp .env.example .env.local   # puis remplir les variables (voir ci-dessous)
-npm run dev                    # http://localhost:3000
+npm run dev                  # http://localhost:3000
 ```
 
 Vérifications :
@@ -31,6 +42,7 @@ Vérifications :
 ```bash
 npx tsc --noEmit
 npm run lint
+npm run test:unit
 npm run build
 ```
 
@@ -38,303 +50,115 @@ npm run build
 
 ## Variables d'environnement
 
-Copier `.env.example` → `.env.local` (dev) et renseigner **aussi** sur Render (prod).
+Copier `.env.example` → `.env.local` (dev) et renseigner **aussi** en prod (Render).
 
-### Obligatoires (app principale)
-
-| Variable | Où la trouver | Usage |
-|----------|---------------|-------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Settings → API | Client + serveur |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Settings → API | Client |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API | Routes API admin/cron (jamais côté client) |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe Dashboard → Developers | Checkout client |
-| `STRIPE_SECRET_KEY` | Stripe Dashboard → Developers | Paiements serveur |
-| `STRIPE_WEBHOOK_SECRET` | Stripe → Webhooks (endpoint prod) | Vérification webhooks |
-| `STRIPE_CONNECT_CLIENT_ID` | Stripe Connect → Settings | Onboarding créateurs |
-| `RESEND_API_KEY` | Resend Dashboard | Reçus email |
-| `SENTRY_DSN` | Sentry → Project Settings | Erreurs prod |
-| `NEXT_PUBLIC_POSTHOG_KEY` | PostHog → Project Settings | Analytics |
-| `NEXT_PUBLIC_APP_URL` | Ton domaine | URLs canoniques, emails, OG |
-
-### Runtime utilisateur (BYOK)
+### Obligatoires
 
 | Variable | Usage |
 |----------|-------|
-| `ENCRYPTION_KEY` | Chiffrement des clés API utilisateur (`lib/crypto.ts`). Chaîne longue aléatoire. Fallback : `SUPABASE_SERVICE_ROLE_KEY` si absent. |
-| `PLATFORM_OPENAI_KEY` | *(Optionnel)* Quota gratuit 20 runs/jour sans clé utilisateur |
-| `PLATFORM_ANTHROPIC_KEY` | *(Optionnel)* Idem |
-| `PLATFORM_GOOGLE_KEY` | *(Optionnel)* Idem |
-| `PLATFORM_MISTRAL_KEY` | *(Optionnel)* Idem |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client + serveur Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Routes API admin/cron (jamais côté client) |
+| `ENCRYPTION_KEY` | Chiffrement des secrets/clés utilisateur (`openssl rand -hex 32`) |
+| `NEXT_PUBLIC_APP_URL` | URLs canoniques, OAuth callbacks, emails |
 
-### Agents admin (7 agents IA)
+### Connecteurs & runtime
 
 | Variable | Usage |
 |----------|-------|
-| `ANTHROPIC_API_KEY` | Appels Claude en mode **live** (`lib/agents/anthropic.ts`) |
-| `CRON_SECRET` | Protège `/api/cron/tick`, `/api/cron/badges`, `/api/cron/scheduled-runs` |
+| `COMPOSIO_API_KEY` | Active Composio comme provider de connecteurs par défaut (recommandé) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth natif Gmail / Google Sheets (secours si pas de Composio) |
+| `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` | OAuth natif Slack |
+| `PLATFORM_OPENAI_KEY` / `PLATFORM_ANTHROPIC_KEY` / `PLATFORM_GOOGLE_KEY` / `PLATFORM_MISTRAL_KEY` | *(optionnel)* clés plateforme (crédits / quota gratuit) |
+| `PLATFORM_SERPER_KEY` | *(optionnel)* recherche web pour les agents |
+| `UNRESTRICTED_EMAILS` | Comptes test/QA exemptés de crédits & quota (CSV d'emails) |
 
-Générer un secret : `openssl rand -hex 32`
+### Paiements & cron
 
-> **Sécurité :** jamais de préfixe `NEXT_PUBLIC_` sur les secrets serveur.
+| Variable | Usage |
+|----------|-------|
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Abonnements & paiements |
+| `STRIPE_CONNECT_CLIENT_ID` | Onboarding des créateurs (revenus) |
+| `RESEND_API_KEY` · `SENTRY_DSN` · `NEXT_PUBLIC_POSTHOG_KEY` | Emails · erreurs · analytics |
+| `CRON_SECRET` | Protège les endpoints `/api/cron/*` |
+
+> **Sécurité :** jamais de préfixe `NEXT_PUBLIC_` sur un secret serveur.
 
 ---
 
 ## Migrations Supabase
 
-Exécuter **dans l'ordre** via Supabase → SQL Editor (ou `supabase db push`).
+Exécuter **dans l'ordre** via Supabase → SQL Editor (ou `supabase db push`). Le dossier `supabase/migrations/` fait foi (de `0001_init.sql` jusqu'aux migrations connecteurs/contrat, ex. `0040_agent_contract.sql`).
 
-| # | Fichier | Contenu |
-|---|---------|---------|
-| 0001 | `0001_init.sql` | Schéma de base |
-| 0002 | `0002_profile_trigger.sql` | Trigger profil à l'inscription |
-| 0003 | `0003_search_vector_trigger.sql` | Recherche full-text |
-| 0004 | `0004_admin_role.sql` | `is_admin`, modération RLS |
-| 0005 | `0005_purchase_tax.sql` | `tax_cents` sur achats |
-| 0006 | `0006_listing_stats.sql` | Vue stats listings |
-| 0007 | `0007_seed_badges.sql` | Badges de base |
-| 0008 | `0008_moderation_actions.sql` | Audit modération |
-| 0009 | `0009_api_keys.sql` | Clés API chiffrées (BYOK) |
-| 0010 | `0010_runs.sql` | Runs utilisateur + quota gratuit |
-| 0011 | `0011_subscriptions.sql` | Abonnements agents |
-| 0012 | `0012_organizations.sql` | B2B organisations |
-| 0013 | `0013_scheduled_runs.sql` | Planification + Prompta Pro (table) |
-| 0014 | `0014_rename_listing_agent_runs.sql` | Renommage conflit `agent_runs` |
-| 0015 | `0015_admin_agents.sql` | 7 agents, budget, personas, KPI |
-| 0016 | `0016_admin_agents_sandbox.sql` | Mode sandbox + `purge_sandbox()` |
-| 0017 | `0017_platform_credits_org_audit.sql` | Crédits, audit org, queue worker |
-| 0018 | `0018_platform_pro_revshare.sql` | Usage & revshare Prompta Pro |
-| 0019+ | `0019` → `0025` | Connexions, crédits, Composio, journal activité… |
-
-Après migration, te passer admin :
+Te passer admin / compte test après migration :
 
 ```sql
-update profiles set is_admin = true where username = 'TON_USERNAME';
+update profiles set is_admin = true, unrestricted_usage = true where username = 'TON_USERNAME';
 ```
 
 ---
 
-## Fonctionnalités implémentées (code)
+## Exécution des agents (runtime)
 
-### Marketplace & UX
-- Accueil, explore, fiches listing (ISR + JSON-LD + OG dynamiques)
-- Pages catégories `/c/[slug]`
-- Profil builder `/u/[username]` + fiche synthèse `/u/[username]/synthese`
-- Design system (`components/ui.tsx`, `PromptCard.tsx`)
-- Double mode **Copier / Lancer** (`RunPanel`) sur les fiches prompt
-- Wizard création builder (`CreateWizard` — 7 étapes)
-- Assistant clés API (`UserSetupWizard`) + `/dashboard/connexions`
+1. **Build** — `/dashboard/new` puis l'éditeur (`components/builder/`). Les entrées requises sont dérivées des étapes (contrat).
+2. **Connexions** — `/dashboard/connexions` : brancher Gmail, Sheets, Slack… Le picker liste ensuite les ressources sans copier d'ID.
+3. **Run** — bouton **Lancer** = exécution réelle (`dryRun: false`, `async: true`). **Aperçu** = exécution à blanc explicite.
+4. **Debug** — `/dashboard/runs` : logs par étape, erreurs traduites en actions concrètes (`lib/agent/error-map.ts`).
 
-### Modération & sécurité
-- Back-office `/admin/moderation` (approve / reject / signalements)
-- Filtres contenu + scan secrets/bundles
-- Rate limiting middleware
-- Pages légales `/legal/terms`, `/legal/privacy` (gabarits)
+### Worker
 
-### Paiements
-- Stripe Connect (KYC créateur)
-- Checkout one-shot + Stripe Tax (TVA)
-- Abonnements agents (`/api/stripe/subscribe`)
-- Customer Portal (`/dashboard/abonnements`)
-- Reçus email (Resend)
-
-### Runtime
-- Passerelle LLM multi-fournisseurs (`lib/llm/`)
-- Exécution prompt SSE (`/api/run/prompt`)
-- Orchestrateur agent déclaratif (`lib/agent/`)
-
-### Admin & agents IA
-- Dashboard KPI `/admin`
-- Centre de contrôle `/admin/agents` (sandbox/live, budget, validation)
-- 7 agents : `prompt_factory`, `linkedin_publisher`, `seo_content`, `moderation`, `email_crm`, `analytics_pricing`, `affiliate`
-- Cron `/api/cron/tick` (planification horaire)
-
-### B2B (fondations)
-- Tables `organizations`, `org_members`, `org_listings`
-- Page espace org `/org/[slug]` (squelette)
-
----
-
-## Audit TODO (état au 25/05/2026)
-
-Légende : ✅ code livré · ⚠️ partiel · ❌ manuel / non fait
-
-### TODO-CURSOR-v2 (revue CTO)
-
-| Phase | Statut | Détail |
-|-------|--------|--------|
-| **0 — Sécuriser** | ⚠️ | Modération, reskin, rate limit ✅. Validation juridique CGU ❌ (juriste) |
-| **1 — Runtime** | ⚠️ | Gateway, BYOK, RunPanel, CreateWizard ✅. Worker séparé Render ❌. Checklist onboarding dashboard ❌. Historique runs UI ❌. Éditeur visuel agent (drag-drop) ❌ |
-| **2 — Monétisation** | ⚠️ | Checkout, tax, abonnements, webhooks ✅. MRR dans payouts ❌. Crédits plateforme ❌. Dunning = statut `past_due` seulement |
-| **3 — Croissance & B2B** | ⚠️ | OG, synthèse, badges cron, SEO ✅. Import marketplace→org ❌. SSO B2B ❌. Abo sièges Stripe ❌ |
-| **4 — Industrialisation** | ❌ | Tables `scheduled_runs` / `platform_subscriptions` ✅. UI Prompta Pro ❌. E2B/Modal ❌. Déploiement prod ❌. Tests e2e ❌ |
-
-### ADMIN_AGENTS_PLAN (7 agents)
-
-| Sprint | Statut | Détail |
-|--------|--------|--------|
-| 1 — BDD | ⚠️ | Migrations 0014–0016 ✅ en repo. **Exécution Supabase ❌** |
-| 2 — Env | ⚠️ | Code ✅. `ANTHROPIC_API_KEY` + `CRON_SECRET` ❌ à renseigner |
-| 3 — Agents | ✅ | 7 agents + registre |
-| 4 — API | ✅ | run / approve / sandbox / cron tick |
-| 5 — UI admin | ✅ | KPI + centre de contrôle + lien Header |
-| 6 — Personas | ⚠️ | Script ✅. **`npx tsx scripts/seed-personas.ts` ❌** |
-| 7 — Test sandbox | ❌ | Tests manuels à faire |
-| 8 — Cron Render | ❌ | Cron job Render à configurer |
-
----
-
-## Configuration manuelle — checklist
-
-### 1. Supabase (priorité 1)
-
-1. **Appliquer les migrations** 0001 → 0016 dans SQL Editor (dans l'ordre).
-2. **Te passer admin** :
-   ```sql
-   update profiles set is_admin = true where username = 'TON_USERNAME';
-   ```
-3. **Vérifier agents admin** :
-   ```sql
-   select slug, is_enabled from agent_definitions;  -- 7 lignes, tous false
-   select mode from agent_budget where id = 1;      -- 'sandbox'
-   ```
-4. **Activer Point-in-Time Recovery** (Settings → Backups) en prod.
-5. **Seed personas** (une fois migrations OK) :
-   ```bash
-   npx tsx scripts/seed-personas.ts
-   ```
-
-### 2. `.env.local` + Render (priorité 1)
-
-Renseigner toutes les variables du tableau ci-dessus.
-
-Minimum pour tester les agents admin :
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
-CRON_SECRET=<openssl rand -hex 32>
-ENCRYPTION_KEY=<openssl rand -hex 32>
-```
-
-### 3. Stripe (priorité 2)
-
-1. **Mode test** : clés test + webhook `checkout.session.completed`, `account.updated`, `charge.refunded`, `customer.subscription.*`, `invoice.*`
-2. Webhook URL : `https://TON-DOMAINE/api/webhooks/stripe`
-3. **Stripe Tax** : activer dans Dashboard
-4. **Customer Portal** : activer dans Stripe → Settings → Billing
-5. **Mode live** (avant lancement) : remplacer toutes les clés + recréer webhooks prod
-
-### 4. Resend (priorité 2)
-
-1. Créer compte + domaine vérifié
-2. `RESEND_API_KEY` + configurer l'expéditeur dans `lib/email.ts`
-
-### 5. Render — Web Service (priorité 2)
-
-1. Connecter le repo GitHub
-2. Build : `npm run build` · Start : `npm run start`
-3. Copier **toutes** les variables d'env
-4. Domaine custom + HTTPS
-
-### 6. Render — Cron Jobs (priorité 3)
-
-| Job | Schedule | Commande |
-|-----|----------|----------|
-| Agents admin | `0 * * * *` | `curl -sS -H "Authorization: Bearer $CRON_SECRET" https://TON-DOMAINE/api/cron/tick` |
-| Badges | `0 3 * * *` | `curl -sS -H "x-cron-secret: $CRON_SECRET" -X POST https://TON-DOMAINE/api/cron/badges` |
-| Scheduled runs | `*/15 * * * *` | `curl -sS -H "x-cron-secret: $CRON_SECRET" -X POST https://TON-DOMAINE/api/cron/scheduled-runs` |
-| Revshare Pro | `0 4 1 * *` | `curl -sS -H "x-cron-secret: $CRON_SECRET" -X POST https://TON-DOMAINE/api/cron/revshare` |
-
-Guide détaillé : [docs/RENDER-SETUP.md](./docs/RENDER-SETUP.md)
-
-### 7. Sentry + PostHog (priorité 3)
-
-- Créer projets, renseigner `SENTRY_DSN` et `NEXT_PUBLIC_POSTHOG_KEY`
-- Configurer alertes erreurs (Sentry) et funnels (PostHog dashboard)
-
-### 8. Worker marketplace (agents utilisateur)
-
-Les runs `listing_agent_runs` en statut `pending` sont traités par :
+Les runs en attente sont traités par :
 
 ```bash
 npm run worker
 ```
 
-**Render** : créer un **Background Worker** avec la même commande `npm run worker` et les mêmes variables d'environnement que le Web Service.
+En prod : un **Background Worker** Render avec `npm run worker`. Filet de sécurité : `/api/cron/tick` traite aussi quelques runs pending à chaque invocation.
 
-**Filet de sécurité** : le cron `/api/cron/tick` traite aussi jusqu'à 5 runs pending à chaque invocation (configurer un Cron Job Render toutes les minutes avec `Authorization: Bearer $CRON_SECRET`).
+---
 
-### 9. Agents admin — mise en route (priorité 3)
+## Ajouter un connecteur
 
-1. Aller sur `/admin/agents` → vérifier bandeau **🧪 MODE SANDBOX**
-2. Activer `prompt_factory` :
-   ```sql
-   update agent_definitions set is_enabled = true where slug = 'prompt_factory';
-   ```
-3. Cliquer **▶ Lancer** → valider/rejeter outputs sandbox
-4. Quand prêt : **→ Passer en LIVE** (bouton admin)
-5. Activer les autres agents **un par un**
-6. Configurer plannings :
-   ```sql
-   update agent_schedules set is_enabled = true, hours = '{19,20,21}'
-   where agent_slug = 'prompt_factory';
-   ```
+Tout est déclaratif. Voir **[docs/ADD-CONNECTOR.md](./docs/ADD-CONNECTOR.md)**. En résumé :
 
-### 10. Juridique (priorité 4)
-
-- Faire valider `/legal/terms` et `/legal/privacy` par un juriste
-- Compléter les placeholders (adresse, DPO, etc.)
-
-### 11. Lancement (priorité 4)
-
-- Amorcer 100–200 listings de qualité
-- Tests manuels : inscription → dépôt → modération → achat → téléchargement → run prompt
-- Passer Stripe en live
+1. Déclarer le connecteur et ses actions dans `lib/connectors/registry.ts` (chaque entrée requise a un `kind`, un `help` et un `placeholder` ; pas de valeur magique type `"*"`).
+2. Déclarer les types de ressources listables dans `lib/connectors/resource-types.ts`.
+3. Le validateur `lib/connectors/registry-conformance.ts` (testé en CI) refuse toute définition non conforme.
 
 ---
 
 ## Structure du repo
 
 ```
-app/                    # Pages Next.js (App Router)
-  admin/                # KPI, agents, modération
-  api/                  # Routes API (stripe, run, agents, cron…)
-  dashboard/            # Espace builder
-  listing/              # Fiches marketplace
-  wallet/               # Foyer utilisateur (crédits, connexions, runs)
-components/             # UI réutilisable
+app/
+  (marketing)/          # Landing agent-centric
+  dashboard/            # Espace agent : agents, runs & logs, connexions, validations, facturation
+  admin/                # KPI + modération + agents ops internes
+  api/                  # Routes API (run, connectors, stripe, cron…)
+components/
+  builder/              # Éditeur d'agent (canvas, wizard, inspector)
+  run/                  # Masque de run, console, champs ressources
+  connectors/           # ResourceSelect (picker auto-liste)
 lib/
-  agent/                # Runtime marketplace (manifeste, orchestrateur, worker)
-  agents/               # Infra admin (budget, runner, anthropic)
-  admin-agents/         # 7 agents ops internes (SEO, LinkedIn, etc.)
-  catalogs.ts           # Catalogues modèles & intégrations (source de vérité)
-  llm/                  # Passerelle multi-modèles + pricing.ts
-  composio/             # Backend connecteurs Composio
-  connectors/           # Exécution outils (Composio ou natif)
-worker/                 # run-worker.ts — npm run worker
-scripts/                # seed, QA, clean-fake-vars…
-supabase/migrations/    # Migrations SQL (0001 → 0024+)
-docs/                   # Guides setup (Composio, Render, QA…)
+  agent/                # Manifeste, contrat, résolveur, orchestrateur, error-map, step-key
+  connectors/           # Exécution & listing (Composio + natif), conformance
+  composio/             # Backend Composio
+  billing/              # Crédits, quota gratuit, plafonds
+  llm/                  # Passerelle multi-modèles
+worker/                 # run-worker.ts (npm run worker)
+supabase/migrations/    # Migrations SQL
+docs/                   # Guides (ADD-CONNECTOR, Render, Composio…)
+tests/unit/             # Tests (contrat, résolveur, runtime, conformance…)
 ```
 
 ---
 
-## Plans de travail
-
-| Fichier | Description |
-|---------|-------------|
-| [TODO-CURSOR-v2.md](./TODO-CURSOR-v2.md) | Plan produit CTO (Phases 0–4) — **référence principale** |
-| [ADMIN_AGENTS_PLAN.md](./ADMIN_AGENTS_PLAN.md) | Plan admin & 7 agents (Sprints 1–8) |
-| [audit.md](./audit.md) | Document directeur stratégique |
-| [prompta-revue-cto.md](./prompta-revue-cto.md) | Revue CTO détaillée |
-
----
-
-## Routes admin utiles
+## Routes admin
 
 | URL | Description |
 |-----|-------------|
 | `/admin` | Dashboard KPI |
-| `/admin/agents` | Centre de contrôle agents (sandbox, budget, validation) |
-| `/admin/moderation` | Modération listings |
+| `/admin/agents` | Centre de contrôle agents ops (sandbox, budget, validation) |
+| `/admin/moderation` | Modération |
 
 Accessible uniquement si `profiles.is_admin = true`.
 
