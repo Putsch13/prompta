@@ -44,6 +44,27 @@ function statusIcon(status: RunStepLog["status"]) {
   }
 }
 
+/** Classes de la pastille du rail (anneau + fond) selon le statut. */
+function statusDotClass(status: RunStepLog["status"]): string {
+  switch (status) {
+    case "success":
+      return "border-green-500 bg-green-50";
+    case "failed":
+      return "border-red-500 bg-red-50";
+    case "running":
+      return "border-blue-500 bg-blue-50";
+    case "skipped":
+      return "border-line bg-card2";
+    default:
+      return "border-line bg-card";
+  }
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)} s`;
+}
+
 function previewText(value: unknown, max = 200): string | null {
   if (value == null) return null;
   if (typeof value === "string") return value.slice(0, max);
@@ -93,71 +114,102 @@ export function RunStepTimeline({ runId, pollWhileRunning = false, isRunning = f
 
   if (steps.length === 0) return null;
 
+  const doneCount = steps.filter((s) => s.status === "success").length;
+
   return (
     <div className="mt-3 border-t border-line pt-3">
-      <p className="mb-2 text-xs font-medium text-ink-soft">Timeline des étapes</p>
-      <ol className="space-y-2">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-semibold text-ink-soft">Logs d&apos;exécution</p>
+        <span className="text-[10px] text-ink-faint">
+          {doneCount}/{steps.length} étape(s) terminée(s)
+        </span>
+      </div>
+      <ol className="relative space-y-1.5 pl-1">
+        {/* rail vertical */}
+        <span className="absolute bottom-3 left-[14px] top-3 w-px bg-line" aria-hidden />
         {steps.map((step) => {
-          const output = previewText(step.outputPreview);
-          const input = previewText(step.inputPreview);
+          const output = previewText(step.outputPreview, 600);
+          const input = previewText(step.inputPreview, 600);
           const isOpen = expanded === step.id;
+          const hasDetails = Boolean(input || output || step.errorMessage);
 
           return (
-            <li key={step.id} className="rounded-lg border border-line bg-card p-2.5">
-              <button
-                type="button"
-                onClick={() => setExpanded(isOpen ? null : step.id)}
-                className="flex w-full items-start gap-2 text-left"
+            <li key={step.id} className="relative flex gap-3">
+              <span
+                className={`relative z-10 mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${statusDotClass(
+                  step.status,
+                )}`}
               >
-                <span className="mt-0.5 shrink-0">{statusIcon(step.status)}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-xs font-medium text-ink">
-                      {step.label ?? `Étape ${step.stepIndex + 1}`}
-                    </span>
-                    <span className="rounded bg-line/80 px-1 py-0.5 text-[10px] text-ink-faint">
-                      {step.stepType}
-                    </span>
-                    {step.model && (
-                      <span className="rounded bg-accent/10 px-1 py-0.5 text-[10px] text-accent">
-                        {step.model}
+                {statusIcon(step.status)}
+              </span>
+              <div
+                className={`min-w-0 flex-1 rounded-xl border bg-card p-2.5 transition-colors ${
+                  step.status === "failed" ? "border-red-200" : "border-line"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => hasDetails && setExpanded(isOpen ? null : step.id)}
+                  className="flex w-full items-start gap-2 text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-semibold text-ink">
+                        {step.label ?? `Étape ${step.stepIndex + 1}`}
                       </span>
-                    )}
-                    {step.actionSlug && (
-                      <span className="rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-600">
-                        {step.actionSlug}
+                      <span className="rounded bg-line/80 px-1.5 py-0.5 text-[10px] font-medium text-ink-faint">
+                        {step.stepType}
                       </span>
-                    )}
-                    {step.durationMs != null && (
-                      <span className="text-[10px] text-ink-faint">{step.durationMs} ms</span>
+                      {step.model && (
+                        <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                          {step.model}
+                        </span>
+                      )}
+                      {step.actionSlug && (
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+                          {step.actionSlug}
+                        </span>
+                      )}
+                      {step.durationMs != null && (
+                        <span className="ml-auto text-[10px] text-ink-faint">
+                          {formatDuration(step.durationMs)}
+                        </span>
+                      )}
+                    </div>
+                    {step.errorMessage && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2 py-1">
+                        {step.errorCode && (
+                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-700">
+                            {step.errorCode}
+                          </span>
+                        )}
+                        <span className="text-xs text-destructive">{step.errorMessage}</span>
+                      </div>
                     )}
                   </div>
-                  {step.errorMessage && (
-                    <p className="mt-1 text-xs text-destructive">{step.errorMessage}</p>
-                  )}
-                </div>
-              </button>
+                </button>
 
-              {isOpen && (input || output) && (
-                <div className="mt-2 space-y-2 border-t border-line pt-2 pl-6">
-                  {input && (
-                    <div>
-                      <p className="text-[10px] font-medium uppercase text-ink-faint">Entrée</p>
-                      <pre className="mt-1 max-h-24 overflow-auto rounded bg-card2 p-2 text-[10px] whitespace-pre-wrap">
-                        {input}
-                      </pre>
-                    </div>
-                  )}
-                  {output && (
-                    <div>
-                      <p className="text-[10px] font-medium uppercase text-ink-faint">Sortie</p>
-                      <pre className="mt-1 max-h-24 overflow-auto rounded bg-card2 p-2 text-[10px] whitespace-pre-wrap">
-                        {output}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              )}
+                {isOpen && (input || output) && (
+                  <div className="mt-2 space-y-2 border-t border-line pt-2">
+                    {input && (
+                      <div>
+                        <p className="text-[10px] font-medium uppercase text-ink-faint">Entrée</p>
+                        <pre className="mt-1 max-h-32 overflow-auto rounded bg-card2 p-2 text-[10px] whitespace-pre-wrap">
+                          {input}
+                        </pre>
+                      </div>
+                    )}
+                    {output && (
+                      <div>
+                        <p className="text-[10px] font-medium uppercase text-ink-faint">Sortie</p>
+                        <pre className="mt-1 max-h-32 overflow-auto rounded bg-card2 p-2 text-[10px] whitespace-pre-wrap">
+                          {output}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </li>
           );
         })}

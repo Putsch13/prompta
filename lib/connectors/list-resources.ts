@@ -145,30 +145,49 @@ async function listComposioResources(
   }
 }
 
+/** Un objet ressemble-t-il à un spreadsheet (a un id + un nom) ? */
+function toSpreadsheetItem(o: Record<string, unknown>): ResourceListItem | null {
+  const id = (o.id ?? o.spreadsheetId ?? o.spreadsheet_id ?? o.fileId ?? o.file_id) as
+    | string
+    | undefined;
+  if (!id || typeof id !== "string") return null;
+  const label = (o.name ?? o.title ?? o.label ?? id) as string;
+  return { id, label: String(label) };
+}
+
+/**
+ * Composio renvoie des formes variables (`{spreadsheets}`, `{files}`, `{data:{…}}`,
+ * `{response_data:{…}}`…). On cherche récursivement le **premier tableau d'objets
+ * spreadsheet-like** plutôt que d'énumérer chaque clé connue.
+ */
 function parseComposioSpreadsheetOutput(output: string): ResourceListItem[] {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(output) as Record<string, unknown>;
-    const nested = parsed.data as Record<string, unknown> | undefined;
-    const candidates = [
-      parsed.files,
-      parsed.spreadsheets,
-      parsed.items,
-      nested?.files,
-      nested?.spreadsheets,
-      nested?.items,
-    ];
-    for (const raw of candidates) {
-      if (!Array.isArray(raw)) continue;
-      const items = raw
-        .map((f: Record<string, string>) => ({
-          id: f.id ?? f.spreadsheetId ?? f.spreadsheet_id ?? "",
-          label: f.name ?? f.title ?? f.label ?? f.id ?? "",
-        }))
-        .filter((i) => i.id);
-      if (items.length > 0) return items;
-    }
+    parsed = JSON.parse(output);
   } catch {
-    /* output non-JSON */
+    return [];
+  }
+
+  const seen = new Set<unknown>();
+  const stack: unknown[] = [parsed];
+  while (stack.length) {
+    const node = stack.shift();
+    if (!node || typeof node !== "object" || seen.has(node)) continue;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      const items = node
+        .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+        .map(toSpreadsheetItem)
+        .filter((x): x is ResourceListItem => x !== null);
+      if (items.length > 0) return items;
+      for (const child of node) stack.push(child);
+      continue;
+    }
+
+    for (const value of Object.values(node as Record<string, unknown>)) {
+      if (value && typeof value === "object") stack.push(value);
+    }
   }
   return [];
 }

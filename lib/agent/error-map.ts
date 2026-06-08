@@ -70,10 +70,13 @@ export function mapAgentError(
   }
 
   // ─── Approbations ───────────────────────────────────────────────────────
-  if (/approval.*rejected|rejet/i.test(raw)) {
+  // ⚠️ Regex volontairement étroites : « approbation/validation humaine » et non
+  // un simple « rejet »/« expir » (sinon un token OAuth « expired » serait pris
+  // pour une validation humaine et masquerait la vraie cause).
+  if (/approval[\s_-]*rejected|validation humaine.*rejet|approbation.*rejet|action rejet/i.test(raw)) {
     return { code: "approval_rejected", message: "Action rejetée par l'humain.", raw };
   }
-  if (/approval.*expired|expir/i.test(raw)) {
+  if (/approval[\s_-]*expired|validation humaine.*expir|approbation.*expir/i.test(raw)) {
     return { code: "approval_expired", message: "Validation humaine expirée.", hint: "Relancez l'agent.", raw };
   }
 
@@ -101,8 +104,12 @@ export function mapAgentError(
     };
   }
 
-  // ─── Credentials invalides (401) ────────────────────────────────────────
-  if (/\b401\b|invalid authentication credentials|Expected OAuth 2 access token|Invalid Credentials/i.test(raw)) {
+  // ─── Credentials invalides (401) / token expiré ─────────────────────────
+  if (
+    /\b401\b|invalid authentication credentials|Expected OAuth 2 access token|Invalid Credentials|token has been expired|expired or revoked|token.*expired|unauthorized/i.test(
+      raw,
+    )
+  ) {
     return {
       code: "invalid_credentials",
       message: connector

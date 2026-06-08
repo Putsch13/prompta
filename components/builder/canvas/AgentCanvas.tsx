@@ -9,6 +9,9 @@ import {
   MessageSquare,
   Search,
   Shield,
+  Workflow,
+  ZoomIn,
+  ZoomOut,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -124,7 +127,7 @@ function NodeCard({
         onSelect();
       }}
       onPointerDown={readOnly ? undefined : onMoveStart}
-      className={`absolute w-44 cursor-pointer rounded-xl border bg-card p-2.5 shadow-sm transition-shadow ${
+      className={`absolute w-44 cursor-pointer overflow-hidden rounded-2xl border bg-card p-2.5 pl-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${
         selected ? "border-accent ring-2 ring-accent/40" : "border-line hover:border-accent/40"
       } ${highlighted ? "animate-pulse" : ""} ${hasError ? "ring-2 ring-destructive/60" : ""}`}
       style={{
@@ -133,6 +136,11 @@ function NodeCard({
         animationDelay: staggerIndex !== undefined ? `${staggerIndex * 80}ms` : undefined,
       }}
     >
+      <span
+        className="absolute inset-y-0 left-0 w-1"
+        style={{ backgroundColor: visual.color }}
+        aria-hidden
+      />
       <div className="flex items-start gap-2">
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm text-white"
@@ -275,14 +283,25 @@ export function AgentCanvas({
 
   if (!graph || graph.nodes.length === 0) {
     return (
-      <div className="flex h-[320px] items-center justify-center rounded-xl border border-dashed border-line bg-card2 p-6 text-center text-sm text-ink-soft">
+      <div className="flex h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-card2 p-8 text-center">
         {loading ? (
           <div className="space-y-3">
             <div className="mx-auto h-24 w-48 animate-pulse rounded-lg bg-line/60" />
-            <p>Génération du plan en cours…</p>
+            <p className="text-sm text-ink-soft">Génération du plan en cours…</p>
           </div>
         ) : (
-          <p>Décrivez votre objectif pour générer le plan, puis visualisez-le ici.</p>
+          <>
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent/10 text-accent">
+              <Workflow className="h-6 w-6" />
+            </div>
+            <p className="mt-4 text-sm font-semibold text-ink">
+              Le flux de ton agent apparaîtra ici
+            </p>
+            <p className="mt-1 max-w-xs text-xs text-ink-soft">
+              Décris ton objectif pour générer les étapes, puis ajuste, connecte
+              et réorganise chaque nœud directement sur le canvas.
+            </p>
+          </>
         )}
       </div>
     );
@@ -302,18 +321,36 @@ export function AgentCanvas({
           {graph.nodes.length} nœud(s) · {graph.edges.length} lien(s)
           {!readOnly && " · Glisser le fond pour déplacer, molette pour zoomer"}
         </p>
-        <button
-          type="button"
-          onClick={fitToView}
-          className="flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-xs text-ink-soft hover:bg-card2"
-        >
-          <Maximize2 className="h-3 w-3" />
-          Ajuster
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setScale((s) => Math.max(0.4, +(s - 0.1).toFixed(2)))}
+            aria-label="Dézoomer"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-ink-soft hover:bg-card2"
+          >
+            <ZoomOut className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setScale((s) => Math.min(1.6, +(s + 0.1).toFixed(2)))}
+            aria-label="Zoomer"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-ink-soft hover:bg-card2"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={fitToView}
+            className="flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-xs text-ink-soft hover:bg-card2"
+          >
+            <Maximize2 className="h-3 w-3" />
+            Ajuster
+          </button>
+        </div>
       </div>
       <div
         ref={containerRef}
-        className="relative h-[380px] overflow-hidden rounded-xl border border-line bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px] bg-card2"
+        className="relative h-[440px] overflow-hidden rounded-2xl border border-line bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] bg-[length:20px_20px] bg-card2"
         onPointerDown={(e) => {
           if (e.target === e.currentTarget || (e.target as HTMLElement).dataset?.canvasBg) {
             onSelect(null);

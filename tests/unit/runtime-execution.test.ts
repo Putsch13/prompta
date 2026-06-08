@@ -190,3 +190,22 @@ test("mapAgentError : placeholder non résolu → code unresolved_placeholder", 
   const mapped = mapAgentError(err, { connector: "google_sheets", action: "sheets.read" });
   assert.equal(mapped.code, "unresolved_placeholder");
 });
+
+// Non-régression : un token OAuth « expired » NE doit PAS être pris pour une
+// validation humaine expirée (ce qui masquait la vraie cause sur sheets.read).
+test("mapAgentError : token Google expiré → invalid_credentials (pas approval_expired)", () => {
+  const err = new Error("Token has been expired or revoked.");
+  const mapped = mapAgentError(err, { connector: "google_sheets", action: "sheets.read" });
+  assert.equal(mapped.code, "invalid_credentials");
+});
+
+test("mapAgentError : 401 → invalid_credentials", () => {
+  const err = new Error("Google Sheets : 401 — invalid authentication credentials");
+  const mapped = mapAgentError(err, { connector: "google_sheets", action: "sheets.read" });
+  assert.equal(mapped.code, "invalid_credentials");
+});
+
+test("mapAgentError : vraie validation humaine expirée → approval_expired", () => {
+  const mapped = mapAgentError(new Error("Validation humaine expirée"));
+  assert.equal(mapped.code, "approval_expired");
+});
