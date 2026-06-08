@@ -9,6 +9,7 @@ import {
   assertManifestValidForPublish,
   stripManifestForPublish,
 } from "@/lib/builder/validate-manifest-for-publish";
+import { buildContract } from "@/lib/agent/contract";
 import { canSellPaid } from "@/lib/platform-access";
 
 export const dynamic = "force-dynamic";
@@ -168,6 +169,9 @@ export async function POST(request: NextRequest) {
     },
   };
 
+  // Snapshot du Contrat d'agent figé à la publication (Pilier A).
+  const publishContract = buildContract(publishManifest.steps);
+
   const { data: version, error: versionError } = await adminClient
     .from("listing_versions")
     .insert({
@@ -175,6 +179,7 @@ export async function POST(request: NextRequest) {
       semver: "v1.0",
       prompt_body: promptBody || null,
       env: envData,
+      contract: JSON.parse(JSON.stringify(publishContract)),
       bundle_path: null,
     })
     .select("id")

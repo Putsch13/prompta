@@ -6,6 +6,7 @@ import { isParamBinding, isResourcePlaceholder } from "@/lib/connectors/param-bi
 import { getConnectorAction } from "@/lib/connectors/registry";
 import { inputHasRuntimeDefault } from "@/lib/connectors/param-defaults";
 import type { ActionInput } from "@/lib/connectors/types";
+import { askedInputs, buildContract } from "@/lib/agent/contract";
 
 const BINDING_KEY_RE = /^\s*\{\{([\w.]+)\}\}\s*$/;
 
@@ -210,5 +211,14 @@ export function deriveManifestInputsFromSteps(
 /** Champs run dérivés du graphe builder (source unique pour envFields). */
 export function graphRunInputs(graph: PlanGraph, defaultModel = "gpt-5.4"): EnvFieldInput[] {
   const steps = graphToSteps(graph, defaultModel);
-  return deriveRunInputsFromSteps(steps, graph);
+  const asked = askedInputs(buildContract(steps));
+  return asked.map((needed) => ({
+    key: needed.key,
+    label: needed.label,
+    required: needed.required,
+    type: needed.kind === "textarea" ? "textarea" : needed.kind === "number" ? "number" : "text",
+    help: needed.help,
+    connectorId: needed.connectorParam?.connector,
+    paramKey: needed.connectorParam?.key,
+  }));
 }

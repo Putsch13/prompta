@@ -12,24 +12,83 @@ export function isFakeVariable(key: string): boolean {
 }
 
 /** Extrait les variables d'entrée depuis un texte (hors références d'étapes). Supporte {{customer.email}}. */
-export function extractInputVariables(text: string): string[] {
+export function extractInputVariables(text: string, knownOutputKeys?: Set<string>): string[] {
   const re = /\{\{([\w.]+)\}\}/g;
   const keys: string[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     keys.push(m[1]);
   }
-  return Array.from(new Set(keys.filter((k) => !isFakeVariable(k) && !isStepOutputRef(k))));
+  return Array.from(
+    new Set(
+      keys.filter((k) => {
+        if (isFakeVariable(k) || isStepOutputRef(k)) return false;
+        if (knownOutputKeys) {
+          if (knownOutputKeys.has(k)) return false;
+          const root = k.split(".")[0];
+          if (root && knownOutputKeys.has(root)) return false;
+        }
+        return true;
+      }),
+    ),
+  );
 }
 
-/** Extrait les variables d'entrée depuis un tableau d'étapes (parcours récursif des branches parallèles). */
-export function extractInputVariablesFromSteps(steps: { type: string; prompt?: string; source?: string; query?: string; expression?: string; params?: Record<string, string>; branches?: { steps: unknown[]; outputKey?: string }[] }[]): string[] {
+type AnyStepLike = {
+  type: string;
+  prompt?: string;
+  source?: string;
+  query?: string;
+  expression?: string;
+  outputKey?: string;
+  params?: Record<string, string>;
+  branches?: { steps: unknown[]; outputKey?: string }[];
+};
+
+/**
+ * Outils pour exclure les outputKeys des bindings vus comme « entrées ».
+ * Utiliser depuis le contrat d'agent (P1.4) ou tout appelant qui sait déjà
+ * quelles clés sont produites par les étapes.
+ */
+export function collectStepOutputKeysFromSteps(steps: AnyStepLike[]): Set<string> {
+  const keys = new Set<string>();
+  function walk(list: AnyStepLike[]) {
+    for (const step of list) {
+      if (step.type === "parallel" && step.branches) {
+        for (const b of step.branches) {
+          if (b.outputKey) keys.add(b.outputKey);
+          walk(b.steps as AnyStepLike[]);
+        }
+        continue;
+      }
+      if (step.outputKey) keys.add(step.outputKey);
+    }
+  }
+  walk(steps);
+  return keys;
+}
+
+/**
+ * Extrait les variables d'entrée depuis un tableau d'étapes (parcours récursif
+ * des branches parallèles).
+ *
+ * Par défaut, **garde** les outputKeys (compat historique : utilisé pour seeder
+ * `inputKeys` du validateur qui voit alors « tout »). Passer `knownOutputKeys`
+ * pour les exclure (cas P1.4 : on veut « ce que l'abonné doit fournir »).
+ */
+export function extractInputVariablesFromSteps(
+  steps: AnyStepLike[],
+  knownOutputKeys?: Set<string>,
+): string[] {
   const allVars = new Set<string>();
   for (const step of steps) {
     const texts: string[] = [];
     if (step.type === "parallel" && step.branches) {
       for (const branch of step.branches) {
-        const branchVars = extractInputVariablesFromSteps(branch.steps as typeof steps);
+        const branchVars = extractInputVariablesFromSteps(
+          branch.steps as AnyStepLike[],
+          knownOutputKeys,
+        );
         branchVars.forEach((v) => allVars.add(v));
       }
       continue;
@@ -40,7 +99,7 @@ export function extractInputVariablesFromSteps(steps: { type: string; prompt?: s
     if (step.expression) texts.push(step.expression);
     if (step.params) texts.push(...Object.values(step.params));
     for (const text of texts) {
-      for (const v of extractInputVariables(text)) {
+      for (const v of extractInputVariables(text, knownOutputKeys)) {
         allVars.add(v);
       }
     }

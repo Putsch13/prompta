@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { scanContent } from "@/lib/content-filter";
 import { allFindings } from "@/lib/secrets-scanner";
 import { AgentManifestSchema } from "@/lib/agent/schema";
+import { buildContract } from "@/lib/agent/contract";
 import {
   assertManifestValidForPublish,
   stripManifestForPublish,
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
 
   if (listing.current_version_id && (body.promptBody !== undefined || body.manifest)) {
     let envPayload: { manifest: unknown; meta: Record<string, unknown> } | null = null;
+    let contractPayload: unknown = undefined;
 
     if (body.manifest) {
       const manifestParsed = AgentManifestSchema.safeParse(body.manifest);
@@ -129,6 +131,8 @@ export async function POST(request: NextRequest) {
           setup_time: body.setupTime ?? null,
         },
       };
+      // Snapshot du Contrat figé pour cette version (Pilier A).
+      contractPayload = buildContract(publishManifest.steps);
     }
 
     const hasVersionUpdate = body.promptBody !== undefined || envPayload;
@@ -155,6 +159,9 @@ export async function POST(request: NextRequest) {
             changelog: `Mise à jour ${newSemver}`,
             prompt_body: body.promptBody !== undefined ? body.promptBody : (currentVersion?.prompt_body ?? null),
             env: envPayload ? JSON.parse(JSON.stringify(envPayload)) : (currentVersion?.env ?? null),
+            ...(contractPayload !== undefined
+              ? { contract: JSON.parse(JSON.stringify(contractPayload)) }
+              : {}),
           })
           .select("id")
           .single();
@@ -171,6 +178,9 @@ export async function POST(request: NextRequest) {
           .update({
             ...(body.promptBody !== undefined ? { prompt_body: body.promptBody } : {}),
             ...(envPayload ? { env: JSON.parse(JSON.stringify(envPayload)) } : {}),
+            ...(contractPayload !== undefined
+              ? { contract: JSON.parse(JSON.stringify(contractPayload)) }
+              : {}),
           })
           .eq("id", listing.current_version_id);
       }

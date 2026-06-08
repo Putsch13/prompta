@@ -72,7 +72,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Manifeste preview invalide" }, { status: 400 });
     }
     const { apiKeys } = await resolveAgentRunKeys(user.id, parsed.data, true, true);
-    const previewDryRun = !fullDemo;
+    // dry-run = aperçu opt-in : on respecte le body (défaut false).
+    // fullDemo conserve sa sémantique « persister le run en base ».
+    const previewDryRun = dryRun === true;
     if (!previewDryRun) {
       const resourceIssues = validateRunResourcesForExecution(parsed.data, inputs);
       if (resourceIssues.length > 0) {
@@ -89,7 +91,9 @@ export async function POST(request: NextRequest) {
     const { inputs: previewInputs, resources: previewResources } = prepareRunContext(parsed.data, inputs);
 
     let previewRunId: string | undefined;
-    if (fullDemo) {
+    // Persiste le run dès qu'on exécute vraiment (fullDemo ou simplement dryRun=false depuis le builder)
+    const shouldPersistPreview = fullDemo || !previewDryRun;
+    if (shouldPersistPreview) {
       const { data: previewRun } = await admin
         .from("listing_agent_runs")
         .insert({
@@ -97,7 +101,7 @@ export async function POST(request: NextRequest) {
           listing_id: listingId ?? null,
           inputs: { ...previewInputs, ...previewResources },
           status: "running",
-          dry_run: false,
+          dry_run: previewDryRun,
           started_at: new Date().toISOString(),
           heartbeat_at: new Date().toISOString(),
           claimed_by: "preview",

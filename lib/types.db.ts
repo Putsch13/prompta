@@ -173,6 +173,7 @@ export interface Database {
           changelog: string | null;
           prompt_body: string | null;
           env: Json | null;
+          contract: Json | null;
           bundle_path: string | null;
           created_at: string;
         };
@@ -183,6 +184,7 @@ export interface Database {
           changelog?: string | null;
           prompt_body?: string | null;
           env?: Json | null;
+          contract?: Json | null;
           bundle_path?: string | null;
           created_at?: string;
         };
@@ -193,6 +195,7 @@ export interface Database {
           changelog?: string | null;
           prompt_body?: string | null;
           env?: Json | null;
+          contract?: Json | null;
           bundle_path?: string | null;
           created_at?: string;
         };

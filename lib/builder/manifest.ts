@@ -3,7 +3,7 @@ import type { KeyProvider } from "@/lib/keys";
 import { connectorsForSteps } from "@/lib/connectors/registry";
 import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 import { enrichEnvField } from "@/lib/builder/env-field-hints";
-import { deriveRunInputsFromSteps } from "@/lib/builder/run-inputs";
+import { askedInputs, buildContract, type NeededInput } from "@/lib/agent/contract";
 import { managedDeliverables } from "@/lib/builder/provisioning";
 
 export interface EnvFieldInput {
@@ -54,23 +54,13 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
 
   const provisioningMode = params.provisioningMode ?? "manual";
 
-  const derivedWithMeta = deriveRunInputsFromSteps(steps);
+  const contract = buildContract(steps);
+  const asked = askedInputs(contract);
 
   return {
     kind: inferredKind,
     executionMode: inferredMode,
-    inputs: derivedWithMeta.map((field) => {
-      const enriched = enrichEnvField(field);
-      return {
-        key: field.key,
-        label: enriched.label || field.label,
-        type: enriched.type ?? field.type ?? ("text" as const),
-        required: field.required,
-        help: enriched.help?.trim() ? enriched.help : field.help,
-        connectorId: field.connectorId,
-        paramKey: field.paramKey,
-      };
-    }),
+    inputs: asked.map((needed) => toManifestInput(needed)),
     secrets: [...params.requiredSecrets],
     connectors: dedupeConnectors([
       ...connectorsForSteps(steps),
@@ -97,6 +87,34 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
                 ? managedDeliverables({ steps, inputs: [], secrets: [], connectors: [], tools: [], limits: {} as AgentManifest["limits"], outputs: [] })
                 : [],
           },
+  };
+}
+
+function kindToEnvType(kind: NeededInput["kind"]): NonNullable<EnvFieldInput["type"]> {
+  if (kind === "textarea") return "textarea";
+  if (kind === "number") return "number";
+  return "text";
+}
+
+function toManifestInput(needed: NeededInput) {
+  const baseField: EnvFieldInput = {
+    key: needed.key,
+    label: needed.label,
+    required: needed.required,
+    type: kindToEnvType(needed.kind),
+    help: needed.help,
+    connectorId: needed.connectorParam?.connector,
+    paramKey: needed.connectorParam?.key,
+  };
+  const enriched = enrichEnvField(baseField);
+  return {
+    key: baseField.key,
+    label: enriched.label || baseField.label,
+    type: enriched.type ?? baseField.type ?? ("text" as const),
+    required: baseField.required,
+    help: enriched.help?.trim() ? enriched.help : baseField.help,
+    connectorId: baseField.connectorId,
+    paramKey: baseField.paramKey,
   };
 }
 

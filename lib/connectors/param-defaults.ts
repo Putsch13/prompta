@@ -1,15 +1,6 @@
 import { getConnectorAction } from "./registry";
 import { isUnresolvedParamValue } from "./format-action-error";
 
-/** Lit tout le classeur (tous les onglets, cellules remplies). */
-export const PARAM_DEFAULT_ALL = "*";
-
-export function isAllRangeValue(value?: string): boolean {
-  if (!value?.trim()) return true;
-  const t = value.trim().toLowerCase();
-  return t === "*" || t === "all" || t === "tout" || t === "__all__";
-}
-
 /** Applique les defaultValue du registre sur params vides ou non résolus. */
 export function applyActionParamDefaults(
   connectorId: string,

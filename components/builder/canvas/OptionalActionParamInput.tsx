@@ -2,7 +2,6 @@
 
 import type { ParamScope } from "@/lib/connectors/types";
 import { isParamBinding } from "@/lib/connectors/param-bindings";
-import { isAllRangeValue } from "@/lib/connectors/param-defaults";
 
 export type OptionalParamMode = "default" | "precise" | "client";
 
@@ -22,7 +21,7 @@ interface Props {
 
 function detectMode(value: string, defaultValue: string): OptionalParamMode {
   if (isParamBinding(value)) return "client";
-  if (!value?.trim() || isAllRangeValue(value) || value === defaultValue) return "default";
+  if (!value?.trim() || value === defaultValue) return "default";
   return "precise";
 }
 
@@ -91,7 +90,7 @@ export function OptionalActionParamInput({
 
       {mode === "precise" && (
         <input
-          value={isParamBinding(value) || isAllRangeValue(value) ? "" : value}
+          value={isParamBinding(value) || value === defaultValue ? "" : value}
           onChange={(e) =>
             onChange(e.target.value, "precise", { scope: "builder_test", shared: false })
           }

@@ -75,7 +75,8 @@ export function CreateWizard({ categories }: Props) {
     payoutsEnabled: boolean;
   } | null>(null);
   const [testRunning, setTestRunning] = useState(false);
-  const [testFullDemo, setTestFullDemo] = useState(false);
+  // Aperçu opt-in : false = exécution réelle (défaut), true = simulation sans appel
+  const [testDryRun, setTestDryRun] = useState(false);
   const [includeHumanApprovals, setIncludeHumanApprovals] = useState(false);
   const [flowPreviewConfirmed, setFlowPreviewConfirmed] = useState(false);
   const [showTestImmersive, setShowTestImmersive] = useState(false);
@@ -492,11 +493,12 @@ export function CreateWizard({ categories }: Props) {
     }));
   }
 
-  async function runPreview() {
+  async function runPreview(dryRunOverride?: boolean) {
     if (!flowPreviewConfirmed && form.agentSteps.length > 0) {
       alert("Validez d'abord l'arborescence de l'agent.");
       return;
     }
+    const isDryRun = dryRunOverride ?? testDryRun;
     setTestRunning(true);
     setTestResult(null);
     setTestApprovalDetails(null);
@@ -511,7 +513,9 @@ export function CreateWizard({ categories }: Props) {
           manifest,
           inputs: testInputs,
           async: false,
-          fullDemo: testFullDemo,
+          dryRun: isDryRun,
+          // fullDemo: persiste le run en base quand on exécute pour de vrai depuis le builder
+          fullDemo: !isDryRun,
         }),
       });
       const data = await res.json();
@@ -941,14 +945,14 @@ export function CreateWizard({ categories }: Props) {
             <label className="flex cursor-pointer items-start gap-3">
               <input
                 type="checkbox"
-                checked={testFullDemo}
-                onChange={(e) => setTestFullDemo(e.target.checked)}
+                checked={testDryRun}
+                onChange={(e) => setTestDryRun(e.target.checked)}
                 className="mt-1 rounded border-line"
               />
               <span>
-                <span className="text-sm font-medium text-ink">Démo complète (exécution réelle)</span>
+                <span className="text-sm font-medium text-ink">Aperçu — rien n&apos;est envoyé</span>
                 <span className="mt-0.5 block text-xs text-ink-soft">
-                  Appels réels aux connecteurs — les validations humaines affichent un popup (non auto-approuvées).
+                  Coché : les actions connecteur sont simulées (utile pour relire le plan). Décoché (défaut) : exécution réelle sur vos comptes connectés.
                 </span>
               </span>
             </label>
@@ -985,18 +989,24 @@ export function CreateWizard({ categories }: Props) {
             />
           )}
 
-          <button
-            onClick={runPreview}
-            disabled={testRunning || (form.agentSteps.length > 0 && !flowPreviewConfirmed)}
-            className="mt-4 flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {testRunning && <Loader2 className="h-4 w-4 animate-spin" />}
-            {testRunning
-              ? "Exécution…"
-              : testFullDemo
-                ? "Lancer la démo complète"
-                : "Lancer le test (simulation)"}
-          </button>
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              onClick={() => void runPreview(false)}
+              disabled={testRunning || (form.agentSteps.length > 0 && !flowPreviewConfirmed)}
+              className="flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {testRunning && !testDryRun && <Loader2 className="h-4 w-4 animate-spin" />}
+              {testRunning && !testDryRun ? "Exécution…" : "Exécuter pour de vrai"}
+            </button>
+            <button
+              onClick={() => void runPreview(true)}
+              disabled={testRunning || (form.agentSteps.length > 0 && !flowPreviewConfirmed)}
+              className="flex items-center justify-center gap-2 rounded-lg border border-line bg-card px-4 py-2 text-sm font-medium text-ink disabled:opacity-50"
+            >
+              {testRunning && testDryRun && <Loader2 className="h-4 w-4 animate-spin" />}
+              {testRunning && testDryRun ? "Aperçu…" : "Aperçu (rien n'est envoyé)"}
+            </button>
+          </div>
 
           {form.agentSteps.length > 0 && !flowPreviewConfirmed && (
             <p className="mt-2 text-xs text-amber-700">
