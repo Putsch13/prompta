@@ -7,6 +7,7 @@ import {
   isResourcePlaceholder,
   resourcePlaceholder,
 } from "@/lib/connectors/param-bindings";
+import { extractResourceId } from "@/lib/connectors/extract-resource-id";
 import { ResourceSelect } from "@/components/connectors/ResourceSelect";
 
 type VerifyStatus = "idle" | "checking" | "ok" | "not_found" | "forbidden" | "no_connection" | "inconclusive";
@@ -177,8 +178,10 @@ export function ManualResourceInput({
             <input
               value={isResourcePlaceholder(value) ? "" : value}
               disabled={disabled}
-              onChange={(e) => onChange(e.target.value.trim(), true, visibility)}
-              placeholder={resourceType}
+              onChange={(e) =>
+                onChange(extractResourceId(e.target.value.trim()), true, visibility)
+              }
+              placeholder="ID ou collez l'URL (Doc/Sheet/dossier Drive…)"
               className="h-8 w-full rounded border border-line px-2 font-mono text-xs"
             />
           )}

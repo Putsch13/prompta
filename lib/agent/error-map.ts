@@ -104,7 +104,14 @@ export function mapAgentError(
   }
 
   // ─── Connexion absente ──────────────────────────────────────────────────
-  if (/Connexion .* requise|connect(ez|er) /i.test(raw) || /not connected|no connection/i.test(raw)) {
+  // ⚠️ Regex resserrée : on ne déclenche « Connectez X » que sur des signaux
+  // EXPLICITES d'absence de connexion. Auparavant un simple « connecter » dans
+  // un message d'erreur Composio (scope, compte multiple…) déclenchait à tort
+  // « Connectez X » alors que l'utilisateur ÉTAIT connecté.
+  if (
+    /Connexion .* requise|connectez .* (avant d'ex|d'abord)/i.test(raw) ||
+    /not connected|no connection|no connected account|connection not found/i.test(raw)
+  ) {
     return {
       code: "missing_connection",
       message: connector ? `Connectez ${connector} pour utiliser cet agent.` : raw,

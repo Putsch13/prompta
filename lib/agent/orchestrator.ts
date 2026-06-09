@@ -33,6 +33,7 @@ import {
 } from "./step-logger";
 import { checkIdempotency, beginExecution, completeExecution, failExecution } from "./idempotency";
 import { checkWriteFileParams } from "@/lib/connectors/write-file-guard";
+import { extractResourceId } from "@/lib/connectors/extract-resource-id";
 import { isCancelRequested, markRunCancelled } from "./cancellation";
 import { saveDeliverable, sanitizeDeliverableFilename } from "./deliverables";
 
@@ -126,6 +127,17 @@ function interpolate(template: string, vars: Record<string, string>): string {
     if (baseVal === undefined) return match;
     return resolveJsonPath(baseVal, path);
   });
+}
+
+/**
+ * Champs de contenu où une URL doit rester intacte (on n'extrait pas l'ID).
+ * Pour tout le reste (folder_url, spreadsheet_id, file_id…), on extrait l'ID
+ * depuis une URL collée.
+ */
+function isContentParamKey(key: string): boolean {
+  return /body|content|text|message|html|markdown|description|caption|note|prompt|query|subject|title|name/i.test(
+    key,
+  );
 }
 
 function extractErrorCode(err: unknown): string {
@@ -371,7 +383,10 @@ async function executeStep(
             raw = ctx.inputs[`resource:${rt}`] ?? v;
           }
         }
-        params[k] = interpolate(raw, vars);
+        const interpolated = interpolate(raw, vars);
+        // Extraction d'ID depuis une URL collée (Doc/Sheet/dossier Drive…),
+        // sauf pour les champs de contenu (où une URL est légitime).
+        params[k] = isContentParamKey(k) ? interpolated : extractResourceId(interpolated);
       }
 
       // Remplissage par IA des paramètres en champ libre (avant défauts/validation).

@@ -79,10 +79,24 @@ export async function executeComposioTool(
   }
 
   try {
-    const conn = options?.connectedAccountId
-      ? null
-      : await getUserConnection(userId, toolkitSlug);
-    const connectedAccountId = options?.connectedAccountId ?? conn?.accessToken;
+    let connectedAccountId = options?.connectedAccountId;
+    if (!connectedAccountId) {
+      let conn = await getUserConnection(userId, toolkitSlug);
+      // Auto-réparation : la ligne DB peut exister (UI « connecté ») mais
+      // pointer un compte Composio périmé/absent (allowMultiple crée plusieurs
+      // comptes). On resynchronise depuis Composio avant d'abandonner — évite
+      // le faux « Connectez X » alors que l'utilisateur est bien connecté.
+      if (!conn?.accessToken) {
+        try {
+          const { checkComposioConnection } = await import("./connect");
+          const healed = await checkComposioConnection(userId, toolkitSlug);
+          if (healed) conn = await getUserConnection(userId, toolkitSlug);
+        } catch {
+          // best-effort — on laisse Composio résoudre par userId si possible
+        }
+      }
+      connectedAccountId = conn?.accessToken;
+    }
 
     // Composio exige une version de toolkit en exécution manuelle. On épingle
     // une version si fournie (option ou env COMPOSIO_TOOLKIT_VERSION), sinon on
@@ -133,7 +147,19 @@ export async function testComposioConnection(
     return { connected: false, provider: "native", error: "COMPOSIO_API_KEY non configurée" };
   }
 
-  const conn = await getUserConnection(userId, toolkitSlug);
+  let conn = await getUserConnection(userId, toolkitSlug);
+  if (!conn) {
+    // Auto-réparation : la ligne DB peut être périmée/incomplète. On vérifie
+    // l'état réel côté Composio et on resynchronise avant de dire « non connecté ».
+    try {
+      const { checkComposioConnection } = await import("./connect");
+      if (await checkComposioConnection(userId, toolkitSlug)) {
+        conn = await getUserConnection(userId, toolkitSlug);
+      }
+    } catch {
+      // best-effort
+    }
+  }
   if (conn) {
     return { connected: true, provider: "composio", accountId: conn.accessToken.slice(0, 12) };
   }

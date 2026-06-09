@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { connectorLookupIds } from "@/lib/connectors/resolve-id";
+import { connectionMatchesConnector } from "@/lib/connectors/resolve-id";
 import {
   CONNECTORS_REQUIRING_EMAIL,
   missingRequiredScopes,
@@ -68,8 +68,9 @@ export async function checkConnectorHealth(
 
   for (const connectorId of requiredConnectors) {
     const label = connectorLabel(connectorId);
-    const lookupIds = connectorLookupIds(connectorId);
-    const matching = connections.filter((c) => lookupIds.includes(c.connector_id));
+    const matching = connections.filter((c) =>
+      connectionMatchesConnector(c.connector_id, connectorId),
+    );
 
     if (matching.length === 0) {
       issues.push({
@@ -178,8 +179,9 @@ export async function summarizeConnectorAccounts(
   const summaries: ConnectorAccountSummary[] = [];
 
   for (const connectorId of requiredConnectors) {
-    const lookupIds = connectorLookupIds(connectorId);
-    const connected = connections.find((c) => lookupIds.includes(c.connector_id));
+    const connected = connections.find((c) =>
+      connectionMatchesConnector(c.connector_id, connectorId),
+    );
     if (!connected) continue;
 
     summaries.push({

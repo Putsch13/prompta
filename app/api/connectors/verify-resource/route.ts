@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { verifyResourceAccess } from "@/lib/connectors/verify-resource";
+import { extractResourceId } from "@/lib/connectors/extract-resource-id";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       connectorId: connector,
       resourceType,
-      value,
+      value: extractResourceId(value),
     });
     return NextResponse.json(result);
   } catch {
