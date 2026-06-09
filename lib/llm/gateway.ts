@@ -23,6 +23,10 @@ export interface CallModelResult {
   outputTokens: number;
   model: string;
   provider: LLMProvider;
+  /** Raison d'arrêt (ex. "max_tokens"/"length" = réponse tronquée). */
+  stopReason?: string;
+  /** Vrai si la réponse a été coupée par la limite de tokens. */
+  truncated?: boolean;
 }
 
 /**
@@ -108,12 +112,15 @@ async function callOpenAI(
     }
 
     const data = await res.json();
+    const finish = data.choices[0]?.finish_reason;
     return {
       content: data.choices[0]?.message?.content ?? "",
       inputTokens: data.usage?.prompt_tokens ?? 0,
       outputTokens: data.usage?.completion_tokens ?? 0,
       model,
       provider: "openai",
+      stopReason: finish ?? undefined,
+      truncated: finish === "length",
     };
   }
 
@@ -152,12 +159,25 @@ async function callAnthropic(
   }
 
   const data = await res.json();
+  // Claude renvoie un tableau de blocs ; on concatène TOUS les blocs `text`
+  // (le 1er peut être un bloc thinking/autre, ou la réponse être multi-blocs).
+  const text = Array.isArray(data.content)
+    ? data.content
+        .filter(
+          (b: { type?: string; text?: string }) =>
+            b?.type === "text" && typeof b.text === "string",
+        )
+        .map((b: { text: string }) => b.text)
+        .join("")
+    : (data.content?.[0]?.text ?? "");
   return {
-    content: data.content[0]?.text ?? "",
+    content: text,
     inputTokens: data.usage?.input_tokens ?? 0,
     outputTokens: data.usage?.output_tokens ?? 0,
     model,
     provider: "anthropic",
+    stopReason: data.stop_reason ?? undefined,
+    truncated: data.stop_reason === "max_tokens",
   };
 }
 
@@ -197,8 +217,14 @@ async function callGoogle(
   }
 
   const data = await res.json();
-  const text =
-    data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const parts = data.candidates?.[0]?.content?.parts;
+  const text = Array.isArray(parts)
+    ? parts
+        .filter((p: { text?: string }) => typeof p?.text === "string")
+        .map((p: { text: string }) => p.text)
+        .join("")
+    : (parts?.[0]?.text ?? "");
+  const finish = data.candidates?.[0]?.finishReason;
 
   return {
     content: text,
@@ -206,6 +232,8 @@ async function callGoogle(
     outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
     model,
     provider: "google",
+    stopReason: finish ?? undefined,
+    truncated: finish === "MAX_TOKENS",
   };
 }
 
@@ -230,12 +258,15 @@ async function callMistral(
   }
 
   const data = await res.json();
+  const finish = data.choices[0]?.finish_reason;
   return {
     content: data.choices[0]?.message?.content ?? "",
     inputTokens: data.usage?.prompt_tokens ?? 0,
     outputTokens: data.usage?.completion_tokens ?? 0,
     model,
     provider: "mistral",
+    stopReason: finish ?? undefined,
+    truncated: finish === "length",
   };
 }
 

@@ -4,6 +4,7 @@ import { getBuilderApiKey } from "@/lib/builder/api-key";
 import { generateAgentPlan } from "@/lib/builder/generate-agent-plan";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   const supabase = createClient();

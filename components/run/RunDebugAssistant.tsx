@@ -14,6 +14,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { extractResourceId } from "@/lib/connectors/extract-resource-id";
 
 type RunFixKind =
   | "connect"
@@ -38,9 +39,19 @@ interface RunFix {
   retryable: boolean;
 }
 
+interface NeededInput {
+  key: string;
+  label: string;
+  kind: string;
+  widget: string;
+  resourceType?: string;
+  connector?: string;
+}
+
 interface DebugResponse {
   summary: string;
   fixes: RunFix[];
+  neededInputs?: NeededInput[];
   canRelaunch: boolean;
   relaunch: { listingId: string | null; versionId: string | null; inputs: Record<string, string> };
   status: string;
@@ -59,6 +70,7 @@ export function RunDebugAssistant({ runId, status }: Props) {
   const [data, setData] = useState<DebugResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [diag, setDiag] = useState<Record<string, DiagState>>({});
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [relaunching, setRelaunching] = useState<"test" | "agent" | null>(null);
 
   const load = useCallback(async () => {
@@ -98,13 +110,15 @@ export function RunDebugAssistant({ runId, status }: Props) {
     if (!data?.relaunch.listingId || !data.relaunch.versionId) return;
     setRelaunching(mode);
     try {
+      // Fusionne les valeurs saisies dans l'assistant avec les inputs d'origine.
+      const mergedInputs = { ...(data.relaunch.inputs ?? {}), ...fieldValues };
       const res = await fetch("/api/run/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           listingId: data.relaunch.listingId,
           versionId: data.relaunch.versionId,
-          inputs: data.relaunch.inputs ?? {},
+          inputs: mergedInputs,
           dryRun: mode === "test",
           async: mode === "agent",
         }),
@@ -231,6 +245,46 @@ export function RunDebugAssistant({ runId, status }: Props) {
                 </div>
               </div>
             ))}
+
+            {data.neededInputs && data.neededInputs.length > 0 && (
+              <div className="rounded-xl border border-line bg-card2/40 p-3">
+                <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
+                  <Wrench className="h-4 w-4 text-accent" /> Renseigner les valeurs requises
+                </p>
+                <p className="mb-3 text-xs text-ink-faint">
+                  Collez l&apos;ID ou l&apos;URL (Drive, Sheet, Doc…) — il sera utilisé au relancement.
+                </p>
+                <div className="space-y-2">
+                  {data.neededInputs.map((inp) => {
+                    const isResource = inp.kind === "resource" || inp.widget === "resource";
+                    return (
+                      <label key={inp.key} className="block">
+                        <span className="mb-1 block text-xs font-medium text-ink-soft">
+                          {inp.label}
+                          {inp.connector ? ` · ${inp.connector}` : ""}
+                        </span>
+                        <input
+                          type="text"
+                          value={fieldValues[inp.key] ?? ""}
+                          placeholder={isResource ? "ID ou URL complète" : `Valeur pour « ${inp.label} »`}
+                          onChange={(e) =>
+                            setFieldValues((prev) => ({ ...prev, [inp.key]: e.target.value }))
+                          }
+                          onBlur={(e) => {
+                            if (!isResource) return;
+                            const extracted = extractResourceId(e.target.value);
+                            if (extracted && extracted !== e.target.value) {
+                              setFieldValues((prev) => ({ ...prev, [inp.key]: extracted }));
+                            }
+                          }}
+                          className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm outline-none focus:border-accent"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {data.canRelaunch ? (
               <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">

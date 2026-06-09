@@ -67,12 +67,17 @@ Renvoie le plan JSON complet modifié.`;
       { role: "user", content: userPrompt },
     ],
     apiKey,
-    maxTokens: 4000,
+    maxTokens: 8000,
     tokenParam: resolved.tokenParam,
   });
 
   const raw = parseLlmJson(result.content);
   if (!raw) {
+    if (result.truncated) {
+      throw new Error(
+        "La réponse a été tronquée (plan trop long). Ciblez la modification puis réessayez.",
+      );
+    }
     throw new Error("Le modèle n'a pas retourné de JSON valide.");
   }
   const newPlan = parseGeneratedAgentPlan(raw);

@@ -2,8 +2,68 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { diagnoseFailedSteps, type FailedStepInfo } from "@/lib/agent/diagnose-run";
+import { parseListingEnv } from "@/lib/agent/env";
+import { buildContract } from "@/lib/agent/contract";
+import { preflightMissing } from "@/lib/agent/resolve-interface";
+import { isConnectorConnected } from "@/lib/connections";
+import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 
 export const dynamic = "force-dynamic";
+
+interface NeededInput {
+  key: string;
+  label: string;
+  kind: string;
+  widget: string;
+  resourceType?: string;
+  connector?: string;
+}
+
+async function computeNeededInputs(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  versionId: string | null,
+  creatorId: string | null,
+): Promise<NeededInput[]> {
+  if (!versionId) return [];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: version } = await (admin as any)
+      .from("listing_versions")
+      .select("env, prompt_body")
+      .eq("id", versionId)
+      .single();
+    const parsed = parseListingEnv(version?.env, version?.prompt_body);
+    if (!parsed?.manifest) return [];
+
+    const connectionsStatus: Record<string, { connected: boolean }> = {};
+    for (const c of dedupeConnectors(parsed.manifest.connectors ?? [])) {
+      connectionsStatus[c] = { connected: await isConnectorConnected(userId, c) };
+    }
+
+    const contract = buildContract(parsed.manifest.steps);
+    const missing = preflightMissing(contract, {
+      phase: "preflight",
+      runnerId: userId,
+      creatorId: creatorId ?? undefined,
+      connections: connectionsStatus,
+    });
+    // On expose ici uniquement les valeurs à saisir (pas les connexions, gérées
+    // par les correctifs connect/reconnect).
+    return missing
+      .filter((m) => m.widget !== "connect")
+      .map((m) => ({
+        key: m.key,
+        label: m.label,
+        kind: m.kind,
+        widget: m.widget ?? "text",
+        resourceType: m.resourceType,
+        connector: m.connectorParam?.connector,
+      }));
+  } catch {
+    return [];
+  }
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -76,9 +136,17 @@ export async function GET(
     return f;
   });
 
+  const neededInputs = await computeNeededInputs(
+    admin,
+    user.id,
+    run.version_id ?? null,
+    null,
+  );
+
   return NextResponse.json({
     summary,
     fixes: enrichedFixes,
+    neededInputs,
     canRelaunch: Boolean(run.listing_id && run.version_id),
     relaunch: {
       listingId: run.listing_id ?? null,

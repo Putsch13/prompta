@@ -338,19 +338,62 @@ Génère un plan JSON complet avec cette structure :
 
 Pour un cas parallèle (publication multi-réseaux), le step amont liste plusieurs ids dans "next" et chaque cible a un "branchLabel".`;
 
+  // maxTokens généreux : un plan riche dépasse souvent 3000 tokens et se faisait
+  // tronquer (JSON incomplet → « JSON invalide » intermittent), surtout sur les
+  // modèles lents/raisonneurs.
+  const baseMessages = [
+    { role: "system" as const, content: SYSTEM_PROMPT },
+    { role: "user" as const, content: userPrompt },
+  ];
+
   const result = await callModel({
     provider: resolved.provider,
     model: resolved.apiModel,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userPrompt },
-    ],
+    messages: baseMessages,
     apiKey,
-    maxTokens: 3000,
+    maxTokens: 8000,
     tokenParam: resolved.tokenParam,
   });
 
-  const raw = parseLlmJson(result.content);
+  let raw = parseLlmJson(result.content);
+
+  // Réponse tronquée par la limite de tokens → message clair (le retry ne
+  // résoudrait rien sans plus de tokens, déjà au plafond raisonnable).
+  if (!raw && result.truncated) {
+    throw new Error(
+      "Le plan généré est trop long et a été tronqué. Reformulez la demande de façon plus ciblée, puis réessayez.",
+    );
+  }
+
+  // Retry unique : on redemande un JSON strict (cas markdown/texte parasite).
+  if (!raw) {
+    const retry = await callModel({
+      provider: resolved.provider,
+      model: resolved.apiModel,
+      messages: [
+        ...baseMessages,
+        {
+          role: "assistant" as const,
+          content: result.content.slice(0, 2000),
+        },
+        {
+          role: "user" as const,
+          content:
+            "Ta réponse n'était pas un JSON valide. Renvoie UNIQUEMENT l'objet JSON complet du plan, sans aucun texte ni bloc markdown, en respectant le schéma demandé.",
+        },
+      ],
+      apiKey,
+      maxTokens: 8000,
+      tokenParam: resolved.tokenParam,
+    });
+    raw = parseLlmJson(retry.content);
+    if (!raw && retry.truncated) {
+      throw new Error(
+        "Le plan généré est trop long et a été tronqué. Reformulez la demande de façon plus ciblée, puis réessayez.",
+      );
+    }
+  }
+
   if (!raw) {
     throw new Error("Le modèle n'a pas retourné de JSON valide.");
   }
