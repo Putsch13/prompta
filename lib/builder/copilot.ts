@@ -21,7 +21,7 @@ export interface CopilotMessage {
 export interface CopilotContext {
   /** Modèles IA réellement disponibles (id catalogue + libellé). */
   models: { id: string; label: string; provider?: string }[];
-  /** Connecteurs connectés (avec compte si connu) — pas besoin de reconnexion. */
+  /** TOUS les connecteurs déjà connectés du compte (pas seulement ceux du plan). */
   connectedConnectors: { id: string; account?: string }[];
   /** Connecteurs utilisés par le plan mais NON connectés (à connecter d'abord). */
   disconnectedConnectors: string[];
@@ -90,8 +90,11 @@ Comment intégrer les réponses au plan — RÈGLE CLÉ :
   • s'il ne connaît pas l'ID → demande-lui de la CHOISIR dans le sélecteur de ressources sous le chat,
     et NE passe pas à l'étape suivante / NE mets pas "done" tant que ce n'est pas fait.
 - Contenu rédactionnel (objet, corps, slides) → crée si besoin une étape LLM amont qui le produit.
-- Connecteur listé comme "à connecter" dans le contexte → demande d'abord de le connecter
-  (bouton sous le chat) avant de configurer. S'il est déjà connecté, n'en parle pas.
+- CONNEXIONS : la liste "Connecteurs connectés" recense TOUS les comptes déjà reliés
+  (même s'ils ne sont pas encore dans le plan). Un connecteur qui y figure est DÉJÀ
+  connecté : ne demande JAMAIS de le (re)connecter, même pour un nouveau nœud — ajoute
+  directement le nœud. Ne demande de connecter QUE les connecteurs listés "à connecter".
+  Compare en ignorant casse/séparateurs (gmail = Gmail = google_mail).
 - Action qui écrit/envoie → riskLevel "high" et requiresApproval true. Préserve les ids non concernés.
 - Ne mets JAMAIS de fausses valeurs (email, nom, clé) inventées en dur — uniquement ce que l'utilisateur a fourni.
 

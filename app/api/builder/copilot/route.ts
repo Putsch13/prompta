@@ -7,7 +7,7 @@ import { planToGraph } from "@/lib/builder/plan-graph";
 import { computeReadiness } from "@/lib/builder/agent-readiness";
 import { MODEL_CATALOG } from "@/lib/llm/providers";
 import { listUserConnections } from "@/lib/connections";
-import { connectionMatchesConnector } from "@/lib/connectors/resolve-id";
+import { connectionMatchesConnector, canonicalConnectorKey } from "@/lib/connectors/resolve-id";
 
 export const dynamic = "force-dynamic";
 
@@ -32,12 +32,21 @@ async function buildContext(userId: string, plan: ReturnType<typeof parseGenerat
   const matchConn = (id: string) =>
     connectedConns.find((c) => connectionMatchesConnector(c.connectorId, id));
 
-  const connectedConnectors = Array.from(usedConnectors)
-    .filter((id) => matchConn(id))
-    .map((id) => {
-      const c = matchConn(id)!;
-      return { id, account: c.accountEmail ?? c.accountName ?? c.workspaceName ?? undefined };
+  // Liste COMPLÈTE des connecteurs déjà connectés du compte (pas seulement ceux
+  // déjà présents dans le plan). Sans ça, quand on demande d'AJOUTER un nœud
+  // (ex. envoi Gmail), le connecteur n'est pas encore dans le plan → le copilote
+  // ne « voit » pas qu'il est connecté et demande à tort de le reconnecter.
+  const seenKeys = new Set<string>();
+  const connectedConnectors: { id: string; account?: string }[] = [];
+  for (const c of connectedConns) {
+    const key = canonicalConnectorKey(c.connectorId);
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    connectedConnectors.push({
+      id: c.connectorId,
+      account: c.accountEmail ?? c.accountName ?? c.workspaceName ?? undefined,
     });
+  }
   const disconnectedConnectors = Array.from(usedConnectors).filter((id) => !matchConn(id));
 
   return {
