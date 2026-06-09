@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { RunStepLog } from "@/components/run/RunStepTimeline";
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
+import { RunDebugAssistant } from "@/components/run/RunDebugAssistant";
 
 type RunStatus = "pending" | "running" | "queued" | "completed" | "failed" | "suspended" | "awaiting_approval";
 
@@ -33,6 +34,8 @@ interface Props {
   title?: string;
   errorMessage?: string | null;
   onRetry?: () => void;
+  /** Affiche l'assistant de debug IA quand le run a échoué (défaut: true). */
+  showDebugAssistant?: boolean;
 }
 
 type DisplayStep = {
@@ -168,6 +171,7 @@ export function AgentRunConsole({
   title = "Console d'exécution",
   errorMessage = null,
   onRetry,
+  showDebugAssistant = true,
 }: Props) {
   const [dbSteps, setDbSteps] = useState<RunStepLog[]>([]);
   const [liveCompleted, setLiveCompleted] = useState(stepsCompleted);
@@ -605,6 +609,12 @@ export function AgentRunConsole({
           </ol>
         )}
       </div>
+
+      {showDebugAssistant && runId && runStatus === "failed" && (
+        <div className="border-t border-line p-4 sm:p-5">
+          <RunDebugAssistant runId={runId} status="failed" />
+        </div>
+      )}
     </div>
   );
 }

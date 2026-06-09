@@ -147,7 +147,7 @@ export default function RunDetailPage() {
 
       {failedSteps.length > 0 && (
         <div className="mt-6 space-y-3">
-          <h2 className="text-sm font-semibold text-ink">Diagnostic des erreurs</h2>
+          <h2 className="text-sm font-semibold text-ink">Détails techniques des erreurs</h2>
           {failedSteps.map((s) => (
             <div key={s.id} className="rounded-xl border border-red-200 bg-red-50 p-4">
               <div className="flex flex-wrap items-center gap-2">
