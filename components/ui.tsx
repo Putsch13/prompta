@@ -172,3 +172,143 @@ export function BadgePill({ children, variant = "secondary" }: BadgePillProps) {
     </span>
   );
 }
+
+/**
+ * Pastille de statut unifiée pour les runs/agents (P2 — design system).
+ * Couleurs cohérentes : succès, échec, en cours, attente, neutre.
+ */
+export type StatusTone =
+  | "running"
+  | "success"
+  | "failed"
+  | "pending"
+  | "warning"
+  | "cancelled"
+  | "neutral";
+
+const STATUS_TONE_CLASSES: Record<StatusTone, string> = {
+  running: "bg-blue-50 text-blue-700",
+  success: "bg-emerald-50 text-emerald-700",
+  failed: "bg-red-50 text-red-700",
+  pending: "bg-amber-50 text-amber-700",
+  warning: "bg-amber-50 text-amber-800",
+  cancelled: "bg-line text-ink-faint",
+  neutral: "bg-card2 text-ink-soft",
+};
+
+/** Mappe un statut de run vers une tonalité de pastille. */
+export function statusTone(status: string): StatusTone {
+  switch (status) {
+    case "completed":
+    case "success":
+      return "success";
+    case "failed":
+      return "failed";
+    case "running":
+      return "running";
+    case "pending":
+    case "queued":
+      return "pending";
+    case "awaiting_approval":
+    case "suspended":
+      return "warning";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return "neutral";
+  }
+}
+
+export function StatusPill({
+  tone,
+  children,
+  dot = true,
+}: {
+  tone: StatusTone;
+  children: React.ReactNode;
+  dot?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_TONE_CLASSES[tone]}`}
+    >
+      {dot && (
+        <span className={`h-1.5 w-1.5 rounded-full ${tone === "running" ? "animate-pulse" : ""} bg-current`} />
+      )}
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Bouton primitif du design system (P2).
+ * Variantes : primary (accent), secondary (carte bordée), ghost, danger.
+ */
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonSize = "sm" | "md";
+
+const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
+  primary: "bg-accent text-white hover:bg-accent-hover",
+  secondary: "border border-line bg-card text-ink hover:border-accent",
+  ghost: "text-ink-soft hover:bg-card2 hover:text-ink",
+  danger: "bg-destructive text-white hover:bg-destructive/90",
+};
+
+const BUTTON_SIZES: Record<ButtonSize, string> = {
+  sm: "h-8 px-3 text-xs",
+  md: "h-10 px-4 text-sm",
+};
+
+export function Button({
+  variant = "primary",
+  size = "md",
+  className = "",
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+}) {
+  return (
+    <button
+      className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_VARIANTS[variant]} ${BUTTON_SIZES[size]} ${className}`}
+      {...props}
+    />
+  );
+}
+
+/** Surface carte standard du design system (P2). */
+export function Card({
+  className = "",
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`rounded-xl border border-line bg-card ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+/** État vide réutilisable (listes runs/agents/connexions). */
+export function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-dashed border-line bg-card p-10 text-center">
+      {icon && <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-card2 text-ink-soft">{icon}</div>}
+      <p className="font-medium text-ink">{title}</p>
+      {description && <p className="mt-1 text-sm text-ink-soft">{description}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}

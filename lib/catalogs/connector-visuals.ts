@@ -38,6 +38,7 @@ const KIND_FALLBACK: Record<string, { lucide: string; color: string; label: stri
   condition: { lucide: "GitBranch", color: "#F59E0B", label: "Condition" },
   approval: { lucide: "Shield", color: "#D97706", label: "Approbation" },
   action: { lucide: "Zap", color: "#10B981", label: "Action" },
+  retrieve: { lucide: "BookOpen", color: "#0D9488", label: "Savoir (RAG)" },
   trigger: { lucide: "Play", color: "#64748B", label: "Déclencheur" },
 };
 

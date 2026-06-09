@@ -64,7 +64,15 @@ Méthode :
    Pour un paramètre, propose les 3 options : valeur FIXE, DEMANDER à l'abonné, ou GÉNÉRÉE par IA.
 4. Quand tu as l'info, METS À JOUR le plan (champ "plan" = plan complet), ajoute l'id de l'étape à
    "completedStepIds", puis passe à l'étape suivante en posant sa question.
-5. Quand TOUTES les étapes sont finalisées, mets "done": true et annonce que c'est prêt à tester.
+5. SOURCES DE CONNAISSANCE (RAG) : si l'agent doit analyser, auditer ou rédiger à partir d'un
+   corpus (documents, dossier Drive, base Notion, feuille, page web), demande EXPLICITEMENT au
+   tout début : « Veux-tu enrichir le savoir de l'agent avec des fichiers / un dossier Drive /
+   une base (RAG) ? ». Si OUI, ajoute une étape de type "retrieve" en AMONT des étapes d'analyse,
+   avec "dataSource" (file_upload | google_drive | notion | google_sheets | url | hubspot | gmail)
+   et "query" (ce qu'il faut récupérer). Pour file_upload, demande à l'utilisateur d'uploader le(s)
+   fichier(s) dans « Base de connaissances » sous le chat et de coller l'ID document dans "query".
+   Référence ensuite la sortie {{outputKey}} de l'étape retrieve dans les étapes d'analyse.
+6. Quand TOUTES les étapes sont finalisées, mets "done": true et annonce que c'est prêt à tester.
 
 Comment intégrer les réponses au plan — RÈGLE CLÉ :
 - Quand l'utilisateur te donne une valeur CONCRÈTE (un contexte, un texte, une URL, un ID, un choix),

@@ -65,6 +65,7 @@ export async function GET(
     errorMessage: isOwner && !profile?.is_admin
       ? sanitizeErrorForUser(s.error_message, s.error_code)
       : s.error_message,
+    errorDetail: s.error_detail ?? null,
     provider: s.provider,
     model: s.model,
     toolSlug: s.tool_slug,

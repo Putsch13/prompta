@@ -119,7 +119,9 @@ export async function executeConnectorAction(
           `Le connecteur ${toolkit} fonctionne via Composio, mais COMPOSIO_API_KEY n'est pas configurée côté serveur.`,
         );
       }
-      const resolvedSlug = await resolveComposioToolSlug(connectorId, actionId);
+      const hasTextContent = ["text_content", "content", "body", "text", "markdown_text", "html_content"]
+        .some((k) => Object.keys(params).some((p) => p.toLowerCase().includes(k) && String(params[p] ?? "").trim() !== ""));
+      const resolvedSlug = await resolveComposioToolSlug(connectorId, actionId, { hasTextContent });
       if (resolvedSlug) {
         return runComposio(resolvedSlug, ctx.userId, params, toolkit);
       }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2, RotateCcw, Settings } from "lucide-react";
 import { AgentRunConsole } from "@/components/run/AgentRunConsole";
+import { StatusPill, statusTone, EmptyState } from "@/components/ui";
 
 interface RunRow {
   id: string;
@@ -17,6 +18,7 @@ interface RunRow {
   listing: { title: string; slug: string } | null;
   version_id: string | null;
   listing_id: string | null;
+  inputs?: Record<string, string> | null;
   kind?: "prompt" | "agent";
 }
 
@@ -28,6 +30,7 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Terminé",
   failed: "Échoué",
   suspended: "Suspendu",
+  cancelled: "Annulé",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -38,6 +41,7 @@ const STATUS_COLORS: Record<string, string> = {
   completed: "text-green-600",
   failed: "text-red-600",
   suspended: "text-orange-600",
+  cancelled: "text-ink-faint",
 };
 
 type RunFilter = "all" | "active" | "approval" | "done";
@@ -97,7 +101,9 @@ function RunsHistoryContent() {
         body: JSON.stringify({
           listingId: run.listing_id,
           versionId: run.version_id,
-          inputs: {},
+          // P3-1 : on réutilise les entrées du run d'origine (sinon un agent
+          // qui exige des inputs échouerait silencieusement avec inputs:{}).
+          inputs: run.inputs ?? {},
           async: false,
         }),
       });
@@ -277,11 +283,16 @@ function RunsHistoryContent() {
           </div>
 
           {filtered.length === 0 ? (
-        <div className="mt-8 rounded-xl border border-dashed border-line bg-card p-12 text-center">
-          <p className="text-ink-soft">Aucun run dans cette vue.</p>
-          <Link href="/dashboard/contenus" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
-            Voir mes agents →
-          </Link>
+        <div className="mt-8">
+          <EmptyState
+            title="Aucun run dans cette vue"
+            description="Lancez un agent pour voir ses exécutions, logs et erreurs apparaître ici."
+            action={
+              <Link href="/dashboard/contenus" className="text-sm font-medium text-accent hover:underline">
+                Voir mes agents →
+              </Link>
+            }
+          />
         </div>
       ) : (
         <div className="mt-6 space-y-3">
@@ -297,11 +308,11 @@ function RunsHistoryContent() {
                       </span>
                     )}
                   </p>
-                  <p className="mt-1 text-xs text-ink-soft">
-                    {run.model} · {new Date(run.created_at).toLocaleString("fr-FR")} ·{" "}
-                    <span className={STATUS_COLORS[run.status] ?? "text-ink-soft"}>
+                  <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
+                    <span>{run.model} · {new Date(run.created_at).toLocaleString("fr-FR")}</span>
+                    <StatusPill tone={statusTone(run.status)}>
                       {STATUS_LABELS[run.status] ?? run.status}
-                    </span>
+                    </StatusPill>
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -338,6 +349,14 @@ function RunsHistoryContent() {
                     >
                       {expanded === run.id ? "Masquer" : "Voir"}
                     </button>
+                  )}
+                  {run.kind === "agent" && (
+                    <Link
+                      href={`/dashboard/runs/${run.id}`}
+                      className="text-xs text-ink-soft hover:text-ink hover:underline"
+                    >
+                      Détail &amp; logs →
+                    </Link>
                   )}
                 </div>
               </div>

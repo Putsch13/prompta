@@ -111,6 +111,15 @@ function readinessForNode(node: PlanNode): NodeReadiness {
     };
   }
 
+  if (node.kind === "retrieve") {
+    const ok = !!(node.query ?? node.description)?.trim() && !!node.dataSource;
+    return {
+      ...base,
+      status: ok ? "ok" : "incomplete",
+      missing: ok ? [] : [{ key: "query", label: "Source et requête à préciser", kind: "input" }],
+    };
+  }
+
   // tool / approval / trigger : pas de config requise bloquante
   return { ...base, status: "ok", missing: [] };
 }

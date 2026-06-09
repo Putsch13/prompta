@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
+import { Check, AlertTriangle, ExternalLink, RefreshCw, Loader2, ShieldCheck, ShieldAlert } from "lucide-react";
 import { CONNECTORS } from "@/lib/connectors/registry";
 import { connectionMatchesConnector } from "@/lib/connectors/resolve-id";
 
@@ -65,6 +65,26 @@ export function ConnectionsMasque({
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [composioLabels, setComposioLabels] = useState<Record<string, string>>({});
   const [refreshing, setRefreshing] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<
+    Record<string, { loading: boolean; ok?: boolean; message?: string }>
+  >({});
+
+  const testAccess = useCallback(async (id: string) => {
+    setDiagnostics((d) => ({ ...d, [id]: { loading: true } }));
+    try {
+      const res = await fetch(`/api/connectors/${id}/diagnose`, { method: "POST" });
+      const data = await res.json();
+      setDiagnostics((d) => ({
+        ...d,
+        [id]: { loading: false, ok: data.ok, message: data.message },
+      }));
+    } catch {
+      setDiagnostics((d) => ({
+        ...d,
+        [id]: { loading: false, ok: false, message: "Diagnostic impossible" },
+      }));
+    }
+  }, []);
 
   const loadConnections = useCallback(async () => {
     setRefreshing(true);
@@ -171,27 +191,67 @@ export function ConnectionsMasque({
           const ok = Boolean(conn);
           const accountLabel = conn ? connectionAccountLabel(conn) : null;
           const label = connectorLabel(id, composioLabels);
+          const diag = diagnostics[id];
           return (
-            <div key={id} className="flex items-center justify-between rounded-lg bg-card px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">{label}</p>
-                <p className="text-xs text-ink-faint">
-                  {ok && accountLabel
-                    ? `Compte utilisé : ${accountLabel}`
-                    : meta?.why ?? "Connexion OAuth requise"}
-                </p>
+            <div key={id} className="rounded-lg bg-card px-3 py-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-xs text-ink-faint">
+                    {ok && accountLabel
+                      ? `Compte utilisé : ${accountLabel}`
+                      : meta?.why ?? "Connexion OAuth requise"}
+                  </p>
+                </div>
+                {ok ? (
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => testAccess(id)}
+                      disabled={diag?.loading}
+                      className="flex items-center gap-1 text-xs text-accent hover:underline disabled:opacity-50"
+                    >
+                      {diag?.loading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="h-3 w-3" />
+                      )}
+                      Tester l&apos;accès
+                    </button>
+                    <span className="flex items-center gap-1 text-xs text-green-600">
+                      <Check className="h-3 w-3" /> Connecté
+                    </span>
+                  </div>
+                ) : (
+                  <a
+                    href={`/api/connectors/${id}/connect?returnUrl=${returnUrl}`}
+                    className="flex items-center gap-1 text-xs text-accent hover:underline"
+                  >
+                    Se connecter <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </div>
-              {ok ? (
-                <span className="flex items-center gap-1 text-xs text-green-600">
-                  <Check className="h-3 w-3" /> Connecté
-                </span>
-              ) : (
-                <a
-                  href={`/api/connectors/${id}/connect?returnUrl=${returnUrl}`}
-                  className="flex items-center gap-1 text-xs text-accent hover:underline"
+              {diag && !diag.loading && diag.message && (
+                <div
+                  className={`mt-2 flex items-start gap-1.5 rounded-md px-2 py-1.5 text-xs ${
+                    diag.ok ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"
+                  }`}
                 >
-                  Se connecter <ExternalLink className="h-3 w-3" />
-                </a>
+                  {diag.ok ? (
+                    <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0" />
+                  ) : (
+                    <ShieldAlert className="mt-0.5 h-3 w-3 shrink-0" />
+                  )}
+                  <span className="flex-1">{diag.message}</span>
+                  {!diag.ok && (
+                    <a
+                      href={`/api/connectors/${id}/connect?returnUrl=${returnUrl}`}
+                      className="shrink-0 font-medium underline"
+                    >
+                      Reconnecter
+                    </a>
+                  )}
+                </div>
               )}
             </div>
           );

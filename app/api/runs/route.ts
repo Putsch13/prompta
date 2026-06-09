@@ -26,6 +26,7 @@ type AgentRun = {
   created_at: string;
   listing_id: string | null;
   version_id: string | null;
+  inputs: Record<string, string> | null;
   listing: { title: string; slug: string } | null;
 };
 
@@ -53,7 +54,7 @@ export async function GET() {
     admin
       .from("listing_agent_runs")
       .select(
-        "id, status, steps_completed, output, error_message, created_at, listing_id, version_id, listing:listings(title, slug)"
+        "id, status, steps_completed, output, error_message, created_at, listing_id, version_id, inputs, listing:listings(title, slug)"
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
@@ -75,6 +76,7 @@ export async function GET() {
       created_at: r.created_at,
       listing_id: r.listing_id,
       version_id: r.version_id,
+      inputs: r.inputs ?? null,
       listing: r.listing,
       kind: "agent" as const,
     })),

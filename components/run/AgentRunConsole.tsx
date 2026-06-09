@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   Clock,
+  ClipboardCopy,
   Code,
   Loader2,
   MessageSquare,
@@ -176,7 +177,40 @@ export function AgentRunConsole({
   const [heartbeatAt, setHeartbeatAt] = useState<string | null>(null);
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+
+  async function cancelRun() {
+    if (!runId) return;
+    setCancelling(true);
+    try {
+      await fetch(`/api/run/agent/${runId}/cancel`, { method: "POST" });
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  async function copyReport() {
+    const report = dbSteps.map((s) => ({
+      index: s.stepIndex,
+      label: s.label,
+      type: s.stepType,
+      status: s.status,
+      model: s.model,
+      actionSlug: s.actionSlug,
+      durationMs: s.durationMs,
+      errorCode: s.errorCode,
+      errorMessage: s.errorMessage,
+    }));
+    try {
+      await navigator.clipboard.writeText(JSON.stringify({ runId, report }, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard indisponible */
+    }
+  }
 
   const TERMINAL = new Set(["completed", "failed", "suspended", "cancelled", "timeout"]);
   const runStatus = normalizeStatus(liveStatus ?? status);
@@ -347,11 +381,13 @@ export function AgentRunConsole({
       ? "Terminé"
       : runStatus === "failed"
         ? "Échoué"
-        : runStatus === "running"
-          ? "Exécution en cours"
-          : runStatus === "queued" || runStatus === "pending"
-            ? "Démarrage…"
-            : runStatus;
+        : (runStatus as string) === "cancelled"
+          ? "Annulé"
+          : runStatus === "running"
+            ? "Exécution en cours"
+            : runStatus === "queued" || runStatus === "pending"
+              ? "Démarrage…"
+              : runStatus;
 
   const currentStep = displaySteps.find((s) => s.status === "running");
 
@@ -396,6 +432,28 @@ export function AgentRunConsole({
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-60" />
                 <span className="relative inline-flex h-3 w-3 rounded-full bg-sky-400" />
               </span>
+            )}
+            {isActive && runId && (
+              <button
+                type="button"
+                onClick={cancelRun}
+                disabled={cancelling}
+                className="flex items-center gap-1.5 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-200 hover:bg-red-500/30 disabled:opacity-60"
+              >
+                {cancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                {cancelling ? "Arrêt en cours…" : "Arrêter"}
+              </button>
+            )}
+            {runId && dbSteps.length > 0 && (
+              <button
+                type="button"
+                onClick={copyReport}
+                title="Copier le rapport (JSON des étapes)"
+                className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20"
+              >
+                {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
+                {copied ? "Copié" : "Rapport"}
+              </button>
             )}
             {!isActive && onRetry && (runStatus === "failed" || runStatus === "completed") && (
               <button

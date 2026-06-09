@@ -51,6 +51,7 @@ const NODE_KINDS: { id: PlanNodeKind; label: string }[] = [
   { id: "condition", label: "Condition" },
   { id: "approval", label: "Approbation" },
   { id: "code", label: "Code" },
+  { id: "retrieve", label: "Savoir (RAG)" },
 ];
 
 interface Props {
@@ -844,6 +845,37 @@ export function NodeInspector({
               rows={3}
               className="mt-1 w-full rounded-lg border border-line px-2 py-1 text-sm"
             />
+          </div>
+        )}
+
+        {node.kind === "retrieve" && (
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs text-ink-soft">Source de connaissance</label>
+              <select
+                value={node.dataSource ?? "file_upload"}
+                onChange={(e) => patch({ dataSource: e.target.value as PlanNode["dataSource"] })}
+                className="mt-1 w-full rounded-lg border border-line px-2 py-1 text-sm"
+              >
+                <option value="file_upload">Fichier uploadé (ID document)</option>
+                <option value="google_drive">Google Drive</option>
+                <option value="google_sheets">Google Sheets</option>
+                <option value="notion">Notion</option>
+                <option value="url">Page web (URL)</option>
+                <option value="gmail">Gmail</option>
+                <option value="hubspot">HubSpot</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-ink-soft">Requête / ID à récupérer</label>
+              <textarea
+                value={node.query ?? ""}
+                onChange={(e) => patch({ query: e.target.value })}
+                rows={2}
+                placeholder="ID document, terme de recherche ou URL"
+                className="mt-1 w-full rounded-lg border border-line px-2 py-1 text-sm"
+              />
+            </div>
           </div>
         )}
 

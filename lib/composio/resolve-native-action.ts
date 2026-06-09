@@ -47,6 +47,8 @@ const VERB_SYNONYMS: Record<string, string[]> = {
   search: ["search", "find", "list", "query", "lookup"],
   find: ["find", "search", "get", "list", "lookup"],
   create: ["create", "add", "insert", "upload", "new", "make", "post"],
+  write: ["write", "create", "save", "redact", "rediger", "upload", "add", "insert", "append"],
+  save: ["save", "write", "create", "upload", "store"],
   add: ["add", "create", "insert", "append", "upload"],
   upload: ["upload", "create", "add", "insert", "import"],
   send: ["send", "post", "share", "create", "deliver"],
@@ -56,10 +58,15 @@ const VERB_SYNONYMS: Record<string, string[]> = {
 
 const MUTATING = new Set([
   "create", "add", "insert", "upload", "import", "new", "make",
+  "write", "save", "redact", "rediger", "append",
   "update", "edit", "modify", "patch", "change", "rename", "move", "set",
   "delete", "remove", "trash", "destroy", "drop",
   "send", "post", "share", "deliver",
 ]);
+
+// Verbes d'écriture de DOCUMENT : on doit produire un fichier AVEC du contenu,
+// jamais une métadonnée vide.
+const WRITE_DOC_VERBS = new Set(["write", "create", "save", "redact", "rediger", "upload", "add"]);
 
 const READ_ONLY_VERBS = new Set([
   "read", "get", "download", "export", "fetch", "parse", "retrieve",
@@ -74,10 +81,16 @@ function verbMatchers(primary: string): Set<string> {
  * Choisit le meilleur slug d'outil pour `actionId` parmi `tools`.
  * Fonction PURE (testable sans réseau).
  */
+export interface PickToolOptions {
+  /** Vrai si l'étape transporte un contenu texte (favorise l'écriture de doc). */
+  hasTextContent?: boolean;
+}
+
 export function pickToolSlug(
   tools: ComposioToolEntry[],
   toolkit: string,
   actionId: string,
+  opts: PickToolOptions = {},
 ): string | null {
   const verb = actionVerb(actionId);
   const verbNorm = norm(verb);
@@ -87,10 +100,21 @@ export function pickToolSlug(
   const synonyms = verbMatchers(primary);
   const requestedReadOnly = READ_ONLY_VERBS.has(primary);
 
+  // P0-1 : écriture d'un document/fichier (verbe d'écriture + objet doc/fichier
+  // OU présence d'un contenu texte). On préfère alors une action qui écrit du
+  // contenu (…_FROM_TEXT, create_document, append_text) et on pénalise la
+  // création de métadonnée vide (…_CREATE_FILE seul).
+  const objectIsDoc = objectToks.some((t) =>
+    ["file", "document", "doc", "text", "article", "note", "page"].includes(t),
+  );
+  const wantsTextWrite =
+    WRITE_DOC_VERBS.has(primary) && (objectIsDoc || opts.hasTextContent === true);
+
   let best: { slug: string; score: number; len: number } | null = null;
 
   for (const tool of tools) {
     const tail = toolTail(tool.slug, toolkit);
+    const tailNorm = norm(tail);
     const tailToks = new Set([...tokens(tail), ...tokens(tool.name)]);
 
     const hasVerb = Array.from(synonyms).some((s) => tailToks.has(s));
@@ -104,7 +128,7 @@ export function pickToolSlug(
       objectToks.length === 0 || objectToks.every((t) => tailToks.has(t));
 
     let score = 0;
-    if (norm(tail) === verbNorm) score = 1000;
+    if (tailNorm === verbNorm) score = 1000;
     else if (hasVerb && objectMatch) score = 800;
     else if (objectMatch && objectToks.length > 0) score = 400;
     else if (hasVerb) score = 250;
@@ -112,6 +136,17 @@ export function pickToolSlug(
       let overlap = 0;
       for (const t of verbToks) if (tailToks.has(t)) overlap += 1;
       if (overlap > 0) score = overlap * 120;
+    }
+
+    if (score <= 0) continue;
+
+    if (wantsTextWrite) {
+      const writesText =
+        /from[_ ]?text|create[_ ]?document|append[_ ]?text|write[_ ]?file|create[_ ]?doc/.test(tail);
+      const metadataOnly = /\bcreate[_ ]?file\b/.test(tail) && !writesText;
+      if (writesText) score += 500;
+      // Création de fichier « métadonnée seule » → fortement dépriorisée.
+      if (metadataOnly) score -= 600;
     }
 
     if (score <= 0) continue;
@@ -133,9 +168,11 @@ const resolveCache = new Map<string, string | null>();
 export async function resolveComposioToolSlug(
   connectorId: string,
   actionId: string,
+  opts: PickToolOptions = {},
 ): Promise<string | null> {
   const toolkit = toComposioToolkitSlug(connectorId);
-  const cacheKey = `${toolkit}::${actionId}`;
+  // La préférence d'écriture texte influe sur le choix → clé de cache distincte.
+  const cacheKey = `${toolkit}::${actionId}::${opts.hasTextContent ? "txt" : "any"}`;
   const cached = resolveCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
@@ -146,7 +183,7 @@ export async function resolveComposioToolSlug(
     tools = [];
   }
 
-  const result = tools.length > 0 ? pickToolSlug(tools, toolkit, actionId) : null;
+  const result = tools.length > 0 ? pickToolSlug(tools, toolkit, actionId, opts) : null;
   resolveCache.set(cacheKey, result);
   return result;
 }

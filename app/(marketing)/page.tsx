@@ -1,4 +1,4 @@
-import { Bot, Play, Bug, Plug } from "lucide-react";
+import { Bot, Play, Bug, Plug, Hammer } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { B2BSection } from "@/components/marketing/B2BSection";
@@ -93,38 +93,61 @@ export default async function HomePage() {
 
       <section className="border-t border-line bg-card2/50">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
-          <div className="grid gap-10 md:grid-cols-3">
-            <div className="text-center">
-              <Plug className="mx-auto h-10 w-10 text-accent" />
-              <h3 className="mt-4 font-display text-lg font-semibold text-ink">
-                Connecte tes outils
-              </h3>
-              <p className="mt-2 text-sm text-ink-soft">
-                Gmail, Google Sheets, Slack, Telegram, Canva… Branche un compte
-                en un clic et choisis tes ressources dans une liste, sans copier
-                d&apos;ID à la main.
-              </p>
-            </div>
-            <div className="text-center">
-              <Play className="mx-auto h-10 w-10 text-accent" />
-              <h3 className="mt-4 font-display text-lg font-semibold text-ink">
-                Lance pour de vrai
-              </h3>
-              <p className="mt-2 text-sm text-ink-soft">
-                Exécution réelle par défaut, ou aperçu à blanc quand tu veux.
-                Étapes, parallélisme et validations humaines intégrées.
-              </p>
-            </div>
-            <div className="text-center">
-              <Bug className="mx-auto h-10 w-10 text-accent" />
-              <h3 className="mt-4 font-display text-lg font-semibold text-ink">
-                Débugge sans douleur
-              </h3>
-              <p className="mt-2 text-sm text-ink-soft">
-                Logs par étape, erreurs traduites en actions concrètes et
-                historique complet des runs. Tu vois exactement ce qui bloque.
-              </p>
-            </div>
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-accent">
+              Le parcours en 4 temps
+            </p>
+            <h2 className="mt-2 font-display text-2xl font-bold text-ink sm:text-3xl">
+              Comme Render, mais pour les agents
+            </h2>
+          </div>
+          <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                icon: Hammer,
+                step: "01",
+                title: "Construire",
+                desc:
+                  "Décris ton objectif : le copilote IA dessine l'arborescence des étapes et te guide nœud par nœud.",
+              },
+              {
+                icon: Plug,
+                step: "02",
+                title: "Connecter",
+                desc:
+                  "Gmail, Sheets, Slack, Notion, Canva… Branche un compte en un clic et choisis tes ressources dans une liste, sans copier d'ID.",
+              },
+              {
+                icon: Play,
+                step: "03",
+                title: "Lancer",
+                desc:
+                  "Exécution réelle par défaut, ou aperçu à blanc. Étapes, parallélisme et validations humaines intégrées.",
+              },
+              {
+                icon: Bug,
+                step: "04",
+                title: "Débugger",
+                desc:
+                  "Console live, logs par étape, erreurs traduites en actions et bouton Arrêter. Tu vois exactement ce qui bloque.",
+              },
+            ].map((s) => (
+              <div
+                key={s.step}
+                className="relative rounded-2xl border border-line bg-card p-6"
+              >
+                <span className="font-display text-sm font-bold text-ink-faint">
+                  {s.step}
+                </span>
+                <s.icon className="mt-3 h-9 w-9 text-accent" />
+                <h3 className="mt-4 font-display text-lg font-semibold text-ink">
+                  {s.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+                  {s.desc}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

@@ -18,7 +18,18 @@ export type PlanNodeKind =
   | "code"
   | "condition"
   | "approval"
+  | "retrieve"
   | "trigger";
+
+export type DataSourceKind =
+  | "file_upload"
+  | "google_drive"
+  | "notion"
+  | "google_sheets"
+  | "url"
+  | "gmail"
+  | "hubspot"
+  | "custom_api";
 
 export interface PlanNode {
   id: string;
@@ -35,6 +46,9 @@ export interface PlanNode {
   actionInputs?: ActionInput[];
   toolId?: "web_search" | "http_fetch" | "file_read";
   expression?: string;
+  /** Étape retrieve (RAG) : source de connaissance + requête. */
+  dataSource?: DataSourceKind;
+  query?: string;
   outputKey: string;
   riskLevel: "low" | "medium" | "high";
   requiresApproval: boolean;
@@ -134,6 +148,13 @@ function planStepToNode(
       return { ...base, kind: "condition", expression: step.description };
     case "approval":
       return { ...base, kind: "approval", prompt: step.description };
+    case "retrieve":
+      return {
+        ...base,
+        kind: "retrieve",
+        dataSource: step.dataSource ?? "file_upload",
+        query: step.query ?? step.description,
+      };
     default:
       return { ...base, kind: "llm", model: defaultModel, prompt: step.description };
   }
@@ -153,9 +174,11 @@ function nodeToPlanStep(node: PlanNode): GeneratedAgentPlan["steps"][number] {
               ? "condition"
               : node.kind === "approval"
                 ? "approval"
-                : node.kind === "action"
-                  ? "action"
-                  : "llm",
+                : node.kind === "retrieve"
+                  ? "retrieve"
+                  : node.kind === "action"
+                    ? "action"
+                    : "llm",
     name: node.name,
     description: node.description ?? node.prompt ?? "",
     model: node.model,
@@ -163,6 +186,8 @@ function nodeToPlanStep(node: PlanNode): GeneratedAgentPlan["steps"][number] {
     connectorId: node.connectorId,
     actionSlug: node.actionSlug ?? node.toolId,
     inputMapping: node.params,
+    dataSource: node.dataSource,
+    query: node.query,
     riskLevel: node.riskLevel,
     requiresApproval: node.requiresApproval,
     next: undefined,
@@ -312,6 +337,14 @@ function nodeToAgentStep(node: PlanNode, defaultModel: string): AgentStep {
         payloadTemplate: node.description,
         outputKey: node.outputKey,
         expiresInMinutes: 60,
+      };
+    case "retrieve":
+      return {
+        type: "retrieve",
+        source: node.dataSource ?? "file_upload",
+        query: node.query ?? node.description ?? "",
+        outputKey: node.outputKey,
+        maxResults: 5,
       };
     default:
       return {
@@ -628,7 +661,7 @@ export function moveNode(graph: PlanGraph, id: string, x: number, y: number): Pl
 }
 
 function nodeTextFields(node: PlanNode): string[] {
-  const texts = [node.prompt, node.description, node.expression].filter(Boolean) as string[];
+  const texts = [node.prompt, node.description, node.expression, node.query].filter(Boolean) as string[];
   if (node.params) texts.push(...Object.values(node.params));
   return texts;
 }
@@ -900,6 +933,8 @@ export function createDefaultNode(
       return { ...base, expression: "true" };
     case "approval":
       return { ...base, requiresApproval: true, riskLevel: "medium" };
+    case "retrieve":
+      return { ...base, dataSource: "file_upload", query: "" };
     default:
       return { ...base, model: defaultModel, prompt: "" };
   }

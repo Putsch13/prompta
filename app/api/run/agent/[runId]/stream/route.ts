@@ -5,7 +5,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const dynamic = "force-dynamic";
 
 const TERMINAL = new Set(["completed", "failed", "suspended", "cancelled"]);
-const POLL_MS = 600;
+// Backoff progressif : réactif au démarrage, plus économe si rien ne bouge
+// (réduit la charge Supabase quand beaucoup de runs streament en parallèle).
+const POLL_MIN_MS = 600;
+const POLL_MAX_MS = 2000;
+const STABLE_BEFORE_BACKOFF = 5;
 
 interface Params {
   params: { runId: string };
@@ -38,6 +42,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
         closed = true;
         controller.close();
       };
+
+      let lastSig = "";
+      let stableIterations = 0;
 
       try {
         while (!closed) {
@@ -109,7 +116,17 @@ export async function GET(_request: NextRequest, { params }: Params) {
             return;
           }
 
-          await new Promise((r) => setTimeout(r, POLL_MS));
+          // Backoff : si l'état (statut + steps + heartbeat) ne change pas, on
+          // espace progressivement les requêtes jusqu'à POLL_MAX_MS.
+          const sig = `${run.status}:${run.steps_completed}:${(steps ?? []).length}:${run.heartbeat_at}`;
+          if (sig === lastSig) stableIterations++;
+          else {
+            stableIterations = 0;
+            lastSig = sig;
+          }
+          const delay =
+            stableIterations >= STABLE_BEFORE_BACKOFF ? POLL_MAX_MS : POLL_MIN_MS;
+          await new Promise((r) => setTimeout(r, delay));
         }
       } catch (err) {
         send("error", {

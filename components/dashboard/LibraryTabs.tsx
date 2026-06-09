@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ExternalLink, Loader2, Pencil, Play, ShoppingBag, Sparkles, Trash2, User } from "lucide-react";
+import { ExternalLink, Loader2, Pencil, Play, Rocket, ShoppingBag, Sparkles, Trash2, User, X } from "lucide-react";
 import type { LibraryListing, LibrarySource } from "@/lib/library/user-listings";
-import { TypeBadge, PriceTag } from "@/components/ui";
+import { TypeBadge, PriceTag, EmptyState } from "@/components/ui";
+import { AgentRunConsole } from "@/components/run/AgentRunConsole";
 
 const TABS: { id: LibrarySource; label: string; icon: typeof User }[] = [
   { id: "created", label: "Mes créations", icon: Sparkles },
@@ -68,28 +69,33 @@ export function LibraryTabs({ created, purchased, subscribed }: Props) {
       </div>
 
       {items.length === 0 ? (
-        <div className="mt-8 rounded-xl border border-dashed border-line py-12 text-center">
-          <p className="text-sm text-ink-soft">
-            {tab === "created" && "Vous n'avez pas encore créé de prompt ou agent."}
-            {tab === "purchased" && "Aucun achat unique pour le moment."}
-            {tab === "subscribed" && "Aucun abonnement actif à un agent."}
-          </p>
-          {tab === "created" && (
-            <Link
-              href="/dashboard/new"
-              className="mt-3 inline-block text-sm font-medium text-accent hover:underline"
-            >
-              Créer un agent →
-            </Link>
-          )}
-          {tab !== "created" && (
-            <Link
-              href="/explore"
-              className="mt-3 inline-block text-sm font-medium text-accent hover:underline"
-            >
-              Explorer le catalogue →
-            </Link>
-          )}
+        <div className="mt-8">
+          <EmptyState
+            title={
+              tab === "created"
+                ? "Vous n'avez pas encore créé de prompt ou agent."
+                : tab === "purchased"
+                  ? "Aucun achat unique pour le moment."
+                  : "Aucun abonnement actif à un agent."
+            }
+            action={
+              tab === "created" ? (
+                <Link
+                  href="/dashboard/new"
+                  className="text-sm font-medium text-accent hover:underline"
+                >
+                  Créer un agent →
+                </Link>
+              ) : (
+                <Link
+                  href="/explore"
+                  className="text-sm font-medium text-accent hover:underline"
+                >
+                  Explorer le catalogue →
+                </Link>
+              )
+            }
+          />
         </div>
       ) : (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -118,11 +124,53 @@ function LibraryCard({
 }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [launching, setLaunching] = useState(false);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
+
+  const isAgent = item.type !== "prompt";
 
   const href =
     tab === "created"
       ? `/dashboard/listing/${item.id}/edit`
       : `/listing/${item.slug}`;
+
+  async function handleLaunch() {
+    setLaunching(true);
+    setLaunchError(null);
+    try {
+      const vRes = await fetch(`/api/listings/${item.id}/run-version`);
+      const vData = await vRes.json();
+      if (!vRes.ok) {
+        setLaunchError(vData.error ?? "Version introuvable");
+        return;
+      }
+      const res = await fetch("/api/run/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId: item.id,
+          versionId: vData.versionId,
+          inputs: {},
+          async: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        // Config incomplète (inputs/ressources requis) → renvoyer au masque complet.
+        setLaunchError(
+          data.message ??
+            "Cet agent demande des informations avant le lancement. Ouvrez le masque de lancement.",
+        );
+        return;
+      }
+      setRunId(data.runId ?? data.run_id ?? null);
+    } catch {
+      setLaunchError("Lancement impossible. Réessayez.");
+    } finally {
+      setLaunching(false);
+    }
+  }
 
   async function handleDelete() {
     if (!confirmDelete) {
@@ -198,6 +246,21 @@ function LibraryCard({
             </>
           )}
         </Link>
+        {tab === "created" && isAgent && (
+          <button
+            type="button"
+            onClick={handleLaunch}
+            disabled={launching}
+            className="inline-flex items-center gap-1 rounded-lg border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/5 disabled:opacity-50"
+          >
+            {launching ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Rocket className="h-3.5 w-3.5" />
+            )}
+            Lancer &amp; suivre
+          </button>
+        )}
         {(tab === "created" || tab === "purchased" || tab === "subscribed") &&
           item.type !== "prompt" &&
           item.status === "published" && (
@@ -237,6 +300,44 @@ function LibraryCard({
           </button>
         )}
       </div>
+
+      {launchError && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <span className="flex-1">{launchError}</span>
+          <Link href={`/listing/${item.slug}?run=1`} className="font-medium underline">
+            Ouvrir le masque de lancement →
+          </Link>
+        </div>
+      )}
+
+      {runId && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-card shadow-2xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <p className="text-sm font-semibold text-ink">Exécution — {item.title}</p>
+              <div className="flex items-center gap-3">
+                <Link
+                  href={`/dashboard/runs/${runId}`}
+                  className="text-xs text-accent hover:underline"
+                >
+                  Détail &amp; logs →
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setRunId(null)}
+                  className="rounded-lg p-1 text-ink-soft hover:bg-card2"
+                  aria-label="Fermer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto p-4">
+              <AgentRunConsole runId={runId} status="queued" pollWhileRunning title={item.title} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

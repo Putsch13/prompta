@@ -34,6 +34,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
     .from("listing_agent_runs")
     .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents, resume_from_step, output, steps_completed")
     .eq("status", "pending")
+    .eq("cancel_requested", false)
     .order("created_at", { ascending: true })
     .limit(limit);
 
@@ -64,6 +65,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
       })
       .eq("id", job.id)
       .eq("status", "pending")
+      .eq("cancel_requested", false)
       .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents")
       .maybeSingle();
 

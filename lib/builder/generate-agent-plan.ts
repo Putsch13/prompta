@@ -168,7 +168,7 @@ export const GeneratedAgentPlanSchema = z.object({
   entryStepId: z.string().optional(),
   steps: z.array(z.object({
     id: z.string(),
-    type: z.enum(["llm", "action", "tool", "code", "condition", "approval"]),
+    type: z.enum(["llm", "action", "tool", "code", "condition", "approval", "retrieve"]),
     name: z.string(),
     description: z.string(),
     /** Modèle IA choisi pour une étape llm (id catalogue). */
@@ -179,6 +179,11 @@ export const GeneratedAgentPlanSchema = z.object({
     connectorId: z.string().optional(),
     toolkitSlug: z.string().optional(),
     actionSlug: z.string().optional(),
+    /** Étape retrieve (RAG) : source de connaissance + requête. */
+    dataSource: z
+      .enum(["file_upload", "google_drive", "notion", "google_sheets", "url", "gmail", "hubspot", "custom_api"])
+      .optional(),
+    query: z.string().optional(),
     riskLevel: z.enum(["low", "medium", "high"]).default("low"),
     requiresApproval: z.boolean().default(false),
     next: z.array(z.string()).optional(),
@@ -218,7 +223,8 @@ export function parseGeneratedAgentPlan(raw: unknown): GeneratedAgentPlan {
 const COMPOSIO_CATALOG_COMPRESSED = `
 gmail: read_email, send_email, search_email, list_labels
 google_sheets: read_sheet, append_row, update_cell, create_sheet
-google_drive: list_files, read_file, upload_file, search_files
+google_drive: create_file_from_text (écrire un document texte/markdown), upload_file (importer un binaire existant), list_files, read_file, search_files
+google_docs: create_document (créer un Google Doc avec contenu), append_text, get_document
 slack: send_message, list_channels, read_channel, create_channel
 hubspot: create_contact, update_contact, create_deal, search_contacts, list_deals
 notion: create_page, search_pages, read_page, update_page, create_database
@@ -257,6 +263,8 @@ Règles strictes :
 12. Pour exécuter plusieurs actions en parallèle (ex. publier sur plusieurs réseaux), crée un step amont puis fais pointer son champ "next" vers tous les steps parallèles.
 13. Pour un embranchement conditionnel, crée un step condition dont "next" liste les steps de chaque branche ; mets "branchLabel" sur chaque step cible (ex. "si urgent", "sinon").
 14. "entryStepId" = id du premier step (défaut : steps[0].id). Sans "next" explicite, les steps sont chaînés séquentiellement.
+15. ÉCRITURE DE DOCUMENT : pour rédiger/écrire/enregistrer un texte dans Drive, utilise "google_docs.create_document" OU "google_drive.create_file_from_text" — JAMAIS "google_drive.create_file" (qui crée un fichier VIDE sans contenu). Mappe TOUJOURS le nom (file_name/title) ET le contenu (text_content/content) depuis le step amont qui a produit le texte (ex. inputMapping.text_content = "{{step_redaction.output}}").
+16. RAG / BASE DE CONNAISSANCES : si l'agent doit s'appuyer sur un corpus (documents fournis, dossier Drive, base Notion, page web), ajoute une étape de type "retrieve" EN AMONT, avec "dataSource" (file_upload | google_drive | notion | google_sheets | url | hubspot | gmail) et "query". Les étapes d'analyse référencent ensuite {{outputKey}} de l'étape retrieve.
 15. Pour chaque step action, mappe ses paramètres requis dans "inputMapping" soit à une sortie d'étape ({{outputKey}}), soit à une variable d'entrée {{snake_case}} déclarée aussi dans "variables". Ne mets JAMAIS de valeur réelle (email, nom, clé) en dur.
 16. "entryStepId" = l'unique step sans prédécesseur (aucun autre step ne le liste dans "next").
 17. Si le step B référence {{outputKey_de_A}} dans son prompt ou inputMapping, alors A précède B (A doit apparaître dans la chaîne "next" menant à B).

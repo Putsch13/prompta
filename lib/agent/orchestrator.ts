@@ -32,6 +32,8 @@ import {
   updateStepInput,
 } from "./step-logger";
 import { checkIdempotency, beginExecution, completeExecution, failExecution } from "./idempotency";
+import { checkWriteFileParams } from "@/lib/connectors/write-file-guard";
+import { isCancelRequested, markRunCancelled } from "./cancellation";
 import { saveDeliverable, sanitizeDeliverableFilename } from "./deliverables";
 
 export interface StepUsage {
@@ -82,7 +84,7 @@ export interface OrchestratorContext {
 }
 
 export interface OrchestratorResult {
-  status: "completed" | "failed" | "suspended" | "awaiting_approval";
+  status: "completed" | "failed" | "suspended" | "awaiting_approval" | "cancelled";
   stepsCompleted: number;
   output: Record<string, string>;
   error?: string;
@@ -432,6 +434,14 @@ async function executeStep(
         }
       }
 
+      // P0-1 : garde-fou écriture de fichier (évite les fichiers vides « Untitled »).
+      if (!simulated) {
+        const writeCheck = checkWriteFileParams(step.action, params);
+        if (!writeCheck.ok) {
+          throw new Error(`missing_file_content: ${writeCheck.reason}`);
+        }
+      }
+
       if (runId && stepDbId) {
         await updateStepInput(stepDbId, params).catch(() => undefined);
       }
@@ -610,7 +620,15 @@ async function executeStep(
     if (runId && stepDbId) {
       const errCode = extractErrorCode(err);
       const errMsg = err instanceof Error ? err.message : String(err);
-      await logStepFailed(stepDbId, errCode, errMsg, stepStartedAt).catch(() => undefined);
+      const detail =
+        step.type === "action"
+          ? {
+              connector: step.connector,
+              actionSlug: step.action,
+              rawProviderError: errMsg,
+            }
+          : undefined;
+      await logStepFailed(stepDbId, errCode, errMsg, stepStartedAt, detail).catch(() => undefined);
     }
     throw err;
   }
@@ -777,6 +795,24 @@ export async function runAgent(
       for (let i = startFromStep; i < manifestWithLimits.steps.length; i++) {
         const step = manifestWithLimits.steps[i];
         const stepStartedAt = Date.now();
+
+        // P0-2 : annulation coopérative — on s'arrête proprement entre 2 étapes.
+        if (context.runId && !effectiveContext.dryRun && (await isCancelRequested(context.runId))) {
+          await markRunCancelled(context.runId);
+          await logStepSkipped(
+            context.runId, i, `step_${i}`, step.type,
+            describeStep(step, i), "Annulé par l'utilisateur",
+          ).catch(() => undefined);
+          return {
+            status: "cancelled",
+            stepsCompleted,
+            output: outputs,
+            usage: usageLog,
+            stepTrace,
+            error: "Run annulé par l'utilisateur.",
+          };
+        }
+
         if (stepsCompleted >= manifestWithLimits.limits.max_steps) {
           if (context.runId) {
             await logStepSkipped(

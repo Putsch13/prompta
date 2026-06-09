@@ -12,19 +12,23 @@ import { profileFromComposioAccount } from "@/lib/connectors/fetch-account-profi
  * niveau d'accès dès le consentement OAuth.
  */
 const TOOLKIT_SCOPES: Record<string, string[]> = {
+  // spreadsheets : lecture/écriture des cellules. drive (complet) : nécessaire
+  // pour créer/déplacer une feuille existante et la retrouver dans le Drive.
   googlesheets: [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive",
   ],
   gmail: [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.modify",
   ],
+  // drive (complet) : lecture ET écriture de fichiers (create_file_from_text…).
   googledrive: ["https://www.googleapis.com/auth/drive"],
+  // documents : créer/éditer un Doc. drive : créer le fichier dans le Drive.
   googledocs: [
     "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive",
   ],
   googlecalendar: ["https://www.googleapis.com/auth/calendar"],
 };

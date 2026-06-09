@@ -79,7 +79,7 @@ export function DashboardNav() {
         key={item.href}
         href={item.href}
         prefetch
-        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex shrink-0 items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:shrink ${
           active
             ? "bg-accent/10 text-accent"
             : "text-ink-soft hover:bg-card hover:text-ink"
@@ -97,12 +97,15 @@ export function DashboardNav() {
   };
 
   return (
-    <nav className="sticky top-24 space-y-1">
-      {PRIMARY_ITEMS.map(renderItem)}
-      <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-        Compte &amp; facturation
-      </p>
-      {SECONDARY_ITEMS.map(renderItem)}
+    <nav className="sticky top-24">
+      {/* Mobile : barre horizontale scrollable. Desktop : nav verticale. */}
+      <div className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0">
+        {PRIMARY_ITEMS.map(renderItem)}
+        <span className="hidden px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-ink-faint lg:block">
+          Compte &amp; facturation
+        </span>
+        {SECONDARY_ITEMS.map(renderItem)}
+      </div>
     </nav>
   );
 }

@@ -12,11 +12,62 @@ export class ComposioExecutionError extends Error {
   }
 }
 
+/** Type attendu d'un argument, pour un coercition fiable (P3-2). */
+export type ComposioArgType = "object" | "array" | "number" | "boolean" | "string";
+
+/**
+ * Convertit une valeur string vers le type attendu.
+ *
+ * P3-2 : on NE parse PLUS agressivement chaque string (un titre « 123 » ou un
+ * texte commençant par « [ » devenait un nombre / tableau par erreur). On ne
+ * coerce que :
+ *  - selon le type de schéma fourni (argTypes), si connu ;
+ *  - sinon uniquement les objets/tableaux JSON (`{...}` / `[...]`), en gardant
+ *    les scalaires (nombres, booléens, texte) tels quels.
+ */
+export function coerceArg(value: string, expected?: ComposioArgType): unknown {
+  const trimmed = value.trim();
+  if (expected) {
+    switch (expected) {
+      case "string":
+        return value;
+      case "number": {
+        const n = Number(trimmed);
+        return Number.isFinite(n) && trimmed !== "" ? n : value;
+      }
+      case "boolean":
+        if (/^(true|false)$/i.test(trimmed)) return /^true$/i.test(trimmed);
+        return value;
+      case "object":
+      case "array":
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          return value;
+        }
+    }
+  }
+  // Sans schéma : ne parser QUE les structures JSON explicites.
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
 export async function executeComposioTool(
   toolSlug: string,
   userId: string,
   arguments_: Record<string, string>,
-  options?: { toolkitSlug?: string; actionVersion?: string; connectedAccountId?: string }
+  options?: {
+    toolkitSlug?: string;
+    actionVersion?: string;
+    connectedAccountId?: string;
+    argTypes?: Record<string, ComposioArgType>;
+  }
 ): Promise<{ output: string; metadata?: Record<string, unknown> }> {
   const composio = getComposioClient();
   const toolkitSlug = options?.toolkitSlug ?? toolSlug.split("_")[0]?.toLowerCase();
@@ -24,11 +75,7 @@ export async function executeComposioTool(
   const parsedArgs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(arguments_)) {
     if (v === "") continue;
-    try {
-      parsedArgs[k] = JSON.parse(v);
-    } catch {
-      parsedArgs[k] = v;
-    }
+    parsedArgs[k] = coerceArg(v, options?.argTypes?.[k]);
   }
 
   try {

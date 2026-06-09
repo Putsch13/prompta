@@ -29,6 +29,7 @@ export type AgentErrorCode =
   | "approval_rejected"
   | "approval_expired"
   | "idempotency_conflict"
+  | "missing_file_content"
   | "code_runtime"
   | "unknown";
 
@@ -78,6 +79,16 @@ export function mapAgentError(
   }
   if (/approval[\s_-]*expired|validation humaine.*expir|approbation.*expir/i.test(raw)) {
     return { code: "approval_expired", message: "Validation humaine expirée.", hint: "Relancez l'agent.", raw };
+  }
+
+  // ─── Écriture de fichier sans contenu (P0-1) ────────────────────────────
+  if (/missing_file_content/i.test(raw)) {
+    return {
+      code: "missing_file_content",
+      message: "Impossible d'écrire le fichier : nom ou contenu manquant.",
+      hint: "Le contenu ou le nom du fichier est vide — vérifiez le mapping de l'étape d'écriture Drive (file_name + contenu texte).",
+      raw, connector, action,
+    };
   }
 
   // ─── Placeholders / inputs non renseignés ───────────────────────────────

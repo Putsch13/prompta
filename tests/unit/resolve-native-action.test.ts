@@ -51,3 +51,29 @@ test("pickToolSlug — verbe sans correspondance → null", () => {
   );
   assert.equal(slug, null);
 });
+
+// P0-1 : écriture de document → préférer FROM_TEXT, jamais CREATE_FILE (métadonnée vide)
+const DRIVE_WRITE_TOOLS: ComposioToolEntry[] = [
+  tool("GOOGLEDRIVE_CREATE_FILE", "Create file"),
+  tool("GOOGLEDRIVE_CREATE_FILE_FROM_TEXT", "Create file from text"),
+  tool("GOOGLEDRIVE_UPLOAD_FILE", "Upload file"),
+];
+
+test("pickToolSlug — write_file avec contenu → FROM_TEXT (pas CREATE_FILE vide)", () => {
+  const slug = pickToolSlug(DRIVE_WRITE_TOOLS, "googledrive", "google_drive.write_file", {
+    hasTextContent: true,
+  });
+  assert.equal(slug, "GOOGLEDRIVE_CREATE_FILE_FROM_TEXT");
+});
+
+test("pickToolSlug — create_file objet 'document' → FROM_TEXT", () => {
+  const slug = pickToolSlug(DRIVE_WRITE_TOOLS, "googledrive", "google_drive.create_document");
+  assert.equal(slug, "GOOGLEDRIVE_CREATE_FILE_FROM_TEXT");
+});
+
+test("pickToolSlug — create_file sans indice texte ne choisit pas la métadonnée vide quand FROM_TEXT dispo", () => {
+  const slug = pickToolSlug(DRIVE_WRITE_TOOLS, "googledrive", "google_drive.create_file", {
+    hasTextContent: true,
+  });
+  assert.notEqual(slug, "GOOGLEDRIVE_CREATE_FILE");
+});

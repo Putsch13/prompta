@@ -36,6 +36,7 @@ import {
 } from "@/lib/builder/plan-graph";
 import { computeReadiness } from "@/lib/builder/agent-readiness";
 import { enrichComposioActions } from "@/lib/builder/enrich-composio-actions";
+import { KnowledgeBase } from "@/components/builder/canvas/KnowledgeBase";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -281,6 +282,9 @@ export function GuidedBuilder({
           />
         </div>
       </div>
+
+      {/* Base de connaissances (RAG) */}
+      <KnowledgeBase />
 
       {/* Prêt à tester */}
       {(done || readiness.ready) && (
