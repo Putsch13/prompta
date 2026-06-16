@@ -14,8 +14,7 @@ export interface ConnectionStatus {
   lastCheckedAt?: string | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function db(): any {
+function db() {
   return createAdminClient();
 }
 
@@ -247,17 +246,7 @@ export async function listUserConnections(userId: string): Promise<ConnectionSta
     .eq("owner_id", userId);
 
   return (data ?? []).map(
-    (r: {
-      connector_id: string;
-      status: string;
-      scopes: string[];
-      expires_at: string | null;
-      provider?: string;
-      account_email?: string | null;
-      account_name?: string | null;
-      workspace_name?: string | null;
-      last_checked_at?: string | null;
-    }) => ({
+    (r) => ({
       connectorId: r.connector_id,
       status: r.status as ConnectionStatus["status"],
       scopes: r.scopes ?? [],

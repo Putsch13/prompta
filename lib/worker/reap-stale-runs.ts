@@ -15,8 +15,7 @@ const STALE_PENDING_MS = 10 * 60 * 1000; // 10 min en pending = jamais pris
 
 export async function reapStalePendingRuns(): Promise<number> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = admin as any;
+  const db = admin;
   const pendingCutoff = new Date(Date.now() - STALE_PENDING_MS).toISOString();
 
   const { data: stalePending } = await db
@@ -58,8 +57,7 @@ export async function reapStaleRunningRuns(): Promise<number> {
   const heartbeatCutoff = new Date(Date.now() - STALE_HEARTBEAT_MS).toISOString();
   const createdCutoff = new Date(Date.now() - STALE_CREATED_MS).toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = admin as any;
+  const db = admin;
 
   const { data: staleHeartbeat } = await db
     .from("listing_agent_runs")
@@ -175,8 +173,7 @@ export async function getRunHealthStats(): Promise<{
   failedLast24h: number;
 }> {
   const admin = createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db2 = admin as any;
+  const db2 = admin;
   const heartbeatCutoff = new Date(Date.now() - STALE_HEARTBEAT_MS).toISOString();
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 

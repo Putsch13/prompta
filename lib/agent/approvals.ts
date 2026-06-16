@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/types.db";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function db(): any {
+function db() {
   return createAdminClient();
 }
 
@@ -20,7 +20,7 @@ export async function createPendingApproval(params: {
       step_id: params.stepId ?? `step_${params.stepIndex}`,
       step_index: params.stepIndex,
       status: "pending",
-      payload: params.payload,
+      payload: params.payload as Json,
       expires_at: expiresAt.toISOString(),
     })
     .select("id")
@@ -31,7 +31,8 @@ export async function createPendingApproval(params: {
     .update({ status: "awaiting_approval", paused_at_step: params.stepIndex })
     .eq("id", params.runId);
 
-  return data.id as string;
+  if (!data) throw new Error("Création de l'approbation échouée");
+  return data.id;
 }
 
 export async function decideApproval(
@@ -85,11 +86,12 @@ export async function decideApproval(
     runRow?.output && typeof runRow.output === "object"
       ? (runRow.output as Record<string, string>)
       : {};
-  const stepKey = `step_${approval.step_index}_output`;
+  const stepIndex = approval.step_index ?? 0;
+  const stepKey = `step_${stepIndex}_output`;
   const mergedOutput = {
     ...priorOutput,
     [stepKey]: approvedContent,
-    [`approval_${approval.step_index}`]: approvedContent,
+    [`approval_${stepIndex}`]: approvedContent,
   };
 
   await db()
@@ -101,7 +103,7 @@ export async function decideApproval(
       payload: {
         ...payload,
         approvedContent,
-      },
+      } as Json,
     })
     .eq("id", approvalId);
 
@@ -109,14 +111,14 @@ export async function decideApproval(
     .from("listing_agent_runs")
     .update({
       status: "pending",
-      resume_from_step: approval.step_index + 1,
-      steps_completed: approval.step_index + 1,
-      output: mergedOutput,
+      resume_from_step: stepIndex + 1,
+      steps_completed: stepIndex + 1,
+      output: mergedOutput as Json,
       error_message: null,
     })
     .eq("id", approval.run_id);
 
-  return { runId: approval.run_id, stepIndex: approval.step_index };
+  return { runId: approval.run_id, stepIndex };
 }
 
 export async function listPendingApprovals(userId: string) {

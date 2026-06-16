@@ -61,8 +61,7 @@ export async function fetchUserLibrary(userId: string): Promise<{
     .from("listings")
     .select(BASE_SELECT)
     .eq("creator_id", userId)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .neq("status", "deleted" as any)
+    .neq("status", "deleted")
     .order("updated_at", { ascending: false });
 
   // Colonnes optionnelles (migration 0031) — requête séparée si présentes

@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/types.db";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function db(): any {
+function db() {
   return createAdminClient();
 }
 
@@ -60,6 +60,6 @@ export async function saveKnowledgeChunk(
   await db().from("agent_knowledge_chunks").insert({
     source_id: sourceId,
     content: content.slice(0, 8000),
-    metadata: metadata ?? {},
+    metadata: (metadata ?? {}) as Json,
   });
 }

@@ -3,8 +3,6 @@ import { costToCredits, CREDIT_VALUE_CENTS } from "@/lib/billing/credits";
 import { billedCentsFromCost, marginCentsFromCost } from "@/lib/billing/profitability";
 import { recordPlatformRunEconomics } from "@/lib/billing/circuit-breaker";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export { CREDIT_PACKS } from "@/lib/credit-packs";
 export { costToCredits, creditsToEur, CREDIT_VALUE_CENTS, MARKUP } from "@/lib/billing/credits";
 
@@ -68,7 +66,7 @@ export async function holdCreditsForRun(
   const creditsNeeded = costToCredits(estimatedCostCents) * CREDIT_VALUE_CENTS;
 
   // Try atomic RPC first
-  const { data: rpcResult, error: rpcError } = await (admin.rpc as any)("hold_credits_for_run", {
+  const { data: rpcResult, error: rpcError } = await admin.rpc("hold_credits_for_run", {
     p_user_id: userId,
     p_amount_cents: creditsNeeded,
     p_run_id: runId,
@@ -94,14 +92,14 @@ export async function holdCreditsForRun(
 
   if (available < creditsNeeded) return false;
 
-  await (admin.from("user_credits") as any).upsert({
+  await admin.from("user_credits").upsert({
     user_id: userId,
     balance_cents: balance,
     held_cents: held + creditsNeeded,
     updated_at: new Date().toISOString(),
   });
 
-  await (admin.from("credit_transactions") as any).insert({
+  await admin.from("credit_transactions").insert({
     user_id: userId,
     amount_cents: -creditsNeeded,
     kind: "hold",
@@ -125,7 +123,7 @@ export async function releaseCreditHold(
   const admin = createAdminClient();
   const heldCredits = costToCredits(estimatedCostCents) * CREDIT_VALUE_CENTS;
 
-  const { error: rpcError } = await (admin.rpc as any)("release_credit_hold", {
+  const { error: rpcError } = await admin.rpc("release_credit_hold", {
     p_user_id: userId,
     p_held_cents: heldCredits,
     p_run_id: runId,
@@ -146,7 +144,7 @@ export async function releaseCreditHold(
   const held = (data as { held_cents?: number } | null)?.held_cents ?? 0;
   const newHeld = Math.max(0, held - heldCredits);
 
-  await (admin.from("user_credits") as any).upsert({
+  await admin.from("user_credits").upsert({
     user_id: userId,
     balance_cents: balance,
     held_cents: newHeld,
@@ -154,7 +152,7 @@ export async function releaseCreditHold(
   });
 
   if (heldCredits > 0) {
-    await (admin.from("credit_transactions") as any).insert({
+    await admin.from("credit_transactions").insert({
       user_id: userId,
       amount_cents: heldCredits,
       kind: "hold_release",
@@ -179,7 +177,7 @@ export async function settleCreditsForRun(
   const actualCredits = costToCredits(actualCostCents) * CREDIT_VALUE_CENTS;
   const heldCredits = costToCredits(estimatedCostCents) * CREDIT_VALUE_CENTS;
 
-  const { error: rpcError } = await (admin.rpc as any)("settle_credits_for_run", {
+  const { error: rpcError } = await admin.rpc("settle_credits_for_run", {
     p_user_id: userId,
     p_actual_cents: actualCredits,
     p_held_cents: heldCredits,
@@ -211,7 +209,7 @@ export async function settleCreditsForRun(
   const newHeld = Math.max(0, held - heldCredits);
   const newBalance = Math.max(0, balance - actualCredits);
 
-  await (admin.from("user_credits") as any).upsert({
+  await admin.from("user_credits").upsert({
     user_id: userId,
     balance_cents: newBalance,
     held_cents: newHeld,
@@ -219,7 +217,7 @@ export async function settleCreditsForRun(
   });
 
   if (heldCredits > actualCredits) {
-    await (admin.from("credit_transactions") as any).insert({
+    await admin.from("credit_transactions").insert({
       user_id: userId,
       amount_cents: heldCredits - actualCredits,
       kind: "hold_release",
@@ -229,7 +227,7 @@ export async function settleCreditsForRun(
     });
   }
 
-  await (admin.from("credit_transactions") as any).insert({
+  await admin.from("credit_transactions").insert({
     user_id: userId,
     amount_cents: -actualCredits,
     kind: "run_debit",
