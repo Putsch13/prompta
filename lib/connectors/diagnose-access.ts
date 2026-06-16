@@ -47,17 +47,14 @@ export async function diagnoseConnectorAccess(
   userId: string,
   connectorId: string,
 ): Promise<DiagnoseResult> {
-  // 1) Santé de base (connexion, expiration, scopes déclarés).
+  // 1) Santé de base — seul un blocage réel (pas de connexion / expiré) arrête
+  // le diagnostic ici. Les signaux scope/identité non bloquants n'empêchent pas
+  // le test réel d'accès (étape 2) de confirmer que ça marche.
   const issues = await checkConnectorHealth(userId, [connectorId]);
-  if (issues.length > 0) {
-    const issue = issues[0];
-    const code =
-      issue.code === "insufficient_scopes"
-        ? "insufficient_scopes"
-        : issue.code === "expired"
-          ? "expired"
-          : "not_connected";
-    return { ok: false, code, message: issue.message };
+  const blocker = issues.find((i) => i.blocking);
+  if (blocker) {
+    const code = blocker.code === "expired" ? "expired" : "not_connected";
+    return { ok: false, code, message: blocker.message };
   }
 
   const conn = await getUserConnection(userId, connectorId);

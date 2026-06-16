@@ -7,7 +7,7 @@ import {
   releaseAgentRunCredits,
 } from "@/lib/billing/agent-run-billing";
 import { randomUUID } from "crypto";
-import { checkConnectorHealth } from "@/lib/connectors/connection-health";
+import { checkConnectorHealth, blockingHealthIssues } from "@/lib/connectors/connection-health";
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
@@ -103,8 +103,12 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
           claimed.user_id,
           parsed.manifest.connectors,
         );
-        if (healthIssues.length > 0) {
-          const msg = healthIssues.map((i) => i.message).join("\n");
+        // Seuls les blocages réels (pas de connexion / token absent ou expiré)
+        // arrêtent le run. Les signaux scope/identité non bloquants laissent
+        // l'exécution tenter l'accès (l'erreur réelle sera alors diagnostiquée).
+        const blockers = blockingHealthIssues(healthIssues);
+        if (blockers.length > 0) {
+          const msg = blockers.map((i) => i.message).join("\n");
           throw new Error(`Connecteurs indisponibles :\n${msg}`);
         }
       }

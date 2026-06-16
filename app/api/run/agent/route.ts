@@ -249,19 +249,30 @@ export async function POST(request: NextRequest) {
   }
 
   if (!dryRun) {
-    const { checkConnectorHealth } = await import("@/lib/connectors/connection-health");
+    const { checkConnectorHealth, blockingHealthIssues } = await import(
+      "@/lib/connectors/connection-health"
+    );
     const { runnerRequiredConnectors } = await import("@/lib/agent/run-connectors");
     const requiredConnectors = runnerRequiredConnectors(parsedEnv.manifest, {
       userId: user.id,
       creatorId: listing.creator_id,
     });
     const healthIssues = await checkConnectorHealth(user.id, requiredConnectors);
-    if (healthIssues.length > 0) {
+    const blockers = blockingHealthIssues(healthIssues);
+    // On ne refuse le lancement que pour un vrai blocage (pas de connexion / token
+    // absent ou expiré). Les signaux scope/identité ne bloquent plus — sinon on
+    // refuse des connexions que l'UI montre « connecté » alors qu'elles marchent.
+    if (blockers.length > 0) {
+      console.warn("[run/agent] connector health blocked", {
+        userId: user.id,
+        listingId,
+        blockers: blockers.map((b) => b.code),
+      });
       return NextResponse.json(
         {
           error: "configuration_incomplete",
-          message: healthIssues[0].message,
-          issues: healthIssues.map((h) => ({
+          message: blockers[0].message,
+          issues: blockers.map((h) => ({
             code: "connector_health",
             message: h.message,
           })),

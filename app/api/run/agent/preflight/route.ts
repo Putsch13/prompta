@@ -204,15 +204,17 @@ export async function POST(request: NextRequest) {
 
   const requiredConnectors = dedupeConnectors(parsedEnv?.manifest?.connectors ?? []);
   if (requiredConnectors.length > 0) {
-    const { checkConnectorHealth, summarizeConnectorAccounts } = await import(
-      "@/lib/connectors/connection-health"
-    );
+    const { checkConnectorHealth, summarizeConnectorAccounts, blockingHealthIssues } =
+      await import("@/lib/connectors/connection-health");
     const [healthIssues, connectorAccounts] = await Promise.all([
       checkConnectorHealth(user.id, requiredConnectors),
       summarizeConnectorAccounts(user.id, requiredConnectors),
     ]);
 
-    if (healthIssues.length > 0) {
+    // Seuls les blocages réels empêchent de lancer. Les signaux scope/identité
+    // sont remontés (connectorHealthIssues) à titre informatif sans bloquer.
+    const blockers = blockingHealthIssues(healthIssues);
+    if (blockers.length > 0) {
       return NextResponse.json({
         canRun: false,
         mode: "blocked" as RunMode,
@@ -220,12 +222,12 @@ export async function POST(request: NextRequest) {
         missingConnectors: [],
         missingInputs,
         connectorAccounts,
-        connectorHealthIssues: healthIssues,
+        connectorHealthIssues: blockers,
         estimatedCostCents,
         estimatedCredits,
         creditBalance,
         freeRunsRemaining,
-        reason: healthIssues[0].message,
+        reason: blockers[0].message,
       } satisfies PreflightResult);
     }
   }

@@ -15,6 +15,21 @@ export interface ConnectorHealthIssue {
     | "insufficient_scopes"
     | "no_account_identity";
   message: string;
+  /**
+   * Vrai = le run ne peut pas démarrer (aucune connexion utilisable).
+   * Faux = signal de métadonnée (scope/identité non vérifiables) : on n'empêche
+   * PAS le lancement — sinon on bloque des connexions que l'UI montre « connecté »
+   * alors que le token fonctionne. La vraie erreur (403/forbidden) sera remontée
+   * à l'exécution puis traitée par l'assistant de debug.
+   */
+  blocking: boolean;
+}
+
+/** Ne garde que les problèmes qui empêchent réellement le run de démarrer. */
+export function blockingHealthIssues(
+  issues: ConnectorHealthIssue[],
+): ConnectorHealthIssue[] {
+  return issues.filter((i) => i.blocking);
 }
 
 export interface ConnectorAccountSummary {
@@ -77,6 +92,7 @@ export async function checkConnectorHealth(
         connectorId,
         code: "not_connected",
         message: `${label} n'est pas connecté. Liez votre compte dans Connexions puis relancez.`,
+        blocking: true,
       });
       continue;
     }
@@ -89,12 +105,14 @@ export async function checkConnectorHealth(
           connectorId,
           code: "expired",
           message: `Le token ${label} a expiré. Reconnectez votre compte dans Connexions.`,
+          blocking: true,
         });
       } else {
         issues.push({
           connectorId,
           code: "not_connected",
           message: `${label} n'est pas connecté correctement. Reconnectez-le.`,
+          blocking: true,
         });
       }
       continue;
@@ -106,6 +124,7 @@ export async function checkConnectorHealth(
         connectorId,
         code: "no_token",
         message: `${label} est connecté mais le token est absent. Reconnectez votre compte.`,
+        blocking: true,
       });
       continue;
     }
@@ -115,17 +134,23 @@ export async function checkConnectorHealth(
         connectorId,
         code: "expired",
         message: `Le token ${label} a expiré. Reconnectez votre compte.`,
+        blocking: true,
       });
       continue;
     }
 
+    // À partir d'ici la connexion est utilisable (token présent, non expiré).
+    // Les vérifs scope/identité sont des SIGNALS non bloquants : on ne refuse pas
+    // le lancement, car les colonnes scopes/email peuvent être vides même quand
+    // l'accès fonctionne (provider qui ne renvoie pas le scope, connexion ancienne…).
     const grantedScopes = connected.scopes ?? [];
     const missingScopes = missingRequiredScopes(grantedScopes, connectorId);
     if (!isComposio && missingScopes.length > 0) {
       issues.push({
         connectorId,
         code: "insufficient_scopes",
-        message: `${label} est connecté mais il manque des permissions (${missingScopes.join(", ")}). Reconnectez ${label}.`,
+        message: `${label} : permissions peut-être incomplètes (${missingScopes.join(", ")}). Si le run échoue sur cet accès, reconnectez ${label}.`,
+        blocking: false,
       });
       continue;
     }
@@ -141,7 +166,8 @@ export async function checkConnectorHealth(
         issues.push({
           connectorId,
           code: "no_account_identity",
-          message: `${label} est connecté mais aucun email de compte vérifiable. Reconnectez ${label}.`,
+          message: `${label} : email du compte non vérifiable. Si l'envoi échoue, reconnectez ${label}.`,
+          blocking: false,
         });
         continue;
       }
@@ -150,7 +176,8 @@ export async function checkConnectorHealth(
         issues.push({
           connectorId,
           code: "no_account_identity",
-          message: `${label} est connecté mais le compte utilisé n'est pas identifiable. Reconnectez ${label}.`,
+          message: `${label} : compte non identifiable. Si le run échoue, reconnectez ${label}.`,
+          blocking: false,
         });
       }
     }
