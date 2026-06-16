@@ -54,6 +54,31 @@ test("sheets.append → GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND", () => {
   assert.equal(args.values, "[[\"a\",\"b\"]]");
 });
 
+test("alias d'action générés par le builder → mapping canonique (anti faux 'pas dispo Composio')", () => {
+  // Le builder émet parfois des ids hors registry : on doit quand même router.
+  for (const alias of ["google_sheets.read_sheet", "googlesheets.read", "google_sheets.get_values"]) {
+    const m = composioMappingFor(alias);
+    assert.ok(m, `${alias} doit résoudre vers un mapping`);
+    assert.equal(m!.toolSlug, "GOOGLESHEETS_VALUES_GET", alias);
+  }
+  for (const alias of ["google_sheets.append_row", "googlesheets.add_row", "sheets.write"]) {
+    const m = composioMappingFor(alias);
+    assert.ok(m, `${alias} doit résoudre vers un mapping`);
+    assert.equal(m!.toolSlug, "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND", alias);
+  }
+  assert.equal(composioMappingFor("gmail.send_email")!.toolSlug, "GMAIL_SEND_EMAIL");
+});
+
+test("sheets.read tolère les noms d'id variés (file_id, spreadsheet_id…)", () => {
+  const m = composioMappingFor("google_sheets.read_sheet")!;
+  assert.equal(m.mapParams({ file_id: "1AbC", range: "A:Z" }).spreadsheet_id, "1AbC");
+  assert.equal(m.mapParams({ spreadsheet_id: "1Xyz", range: "A:Z" }).spreadsheet_id, "1Xyz");
+});
+
+test("connecteur inconnu → pas de mapping (laisse la résolution dynamique gérer)", () => {
+  assert.equal(composioMappingFor("notion.create_page"), undefined);
+});
+
 test("tous les mappings ont un slug UPPER_SNAKE et un toolkit", () => {
   for (const [actionId, m] of Object.entries(NATIVE_TO_COMPOSIO)) {
     assert.match(m.toolSlug, /^[A-Z][A-Z0-9_]+$/, `${actionId} slug invalide`);

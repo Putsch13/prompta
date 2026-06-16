@@ -49,6 +49,20 @@ function clean(obj: Record<string, string | undefined>): Record<string, string> 
   return out;
 }
 
+/** Première valeur non vide / non placeholder parmi plusieurs clés possibles. */
+function pick(p: Record<string, string>, ...keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = p[k];
+    if (v != null && !isPlaceholder(v)) return v;
+  }
+  return undefined;
+}
+
+/** ID de feuille tolérant aux noms variés générés par le builder. */
+function sheetId(p: Record<string, string>): string | undefined {
+  return pick(p, "spreadsheetId", "spreadsheet_id", "fileId", "file_id", "sheetId", "sheet_id", "id");
+}
+
 export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
   "gmail.send": {
     toolSlug: "GMAIL_SEND_EMAIL",
@@ -74,7 +88,7 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
     toolkitSlug: "googlesheets",
     mapParams: (p) =>
       clean({
-        spreadsheet_id: p.spreadsheetId,
+        spreadsheet_id: sheetId(p),
         range: composeRange(p),
       }),
   },
@@ -83,9 +97,9 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
     toolkitSlug: "googlesheets",
     mapParams: (p) =>
       clean({
-        spreadsheet_id: p.spreadsheetId,
+        spreadsheet_id: sheetId(p),
         range: composeRange(p),
-        values: p.values,
+        values: pick(p, "values", "rows", "data") ?? "",
       }),
   },
   "slack.send": {
@@ -99,6 +113,39 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
   },
 };
 
+/** Connecteur (forme variée) → préfixe canonique des clés de mapping. */
+const CONNECTOR_ALIAS: Record<string, string> = {
+  google_sheets: "sheets",
+  googlesheets: "sheets",
+  sheets: "sheets",
+  gmail: "gmail",
+  google_mail: "gmail",
+  slack: "slack",
+};
+
+/** Verbe (forme variée) → verbe canonique du mapping. */
+function canonicalVerb(verb: string): string {
+  const v = verb.toLowerCase();
+  if (/(read|get|fetch|list|values_get|load)/.test(v)) return "read";
+  if (/(append|add|write|insert|values_append|create_row)/.test(v)) return "append";
+  if (/(send|email|message|notify)/.test(v)) return "send";
+  return v;
+}
+
+/**
+ * Résout le mapping natif→Composio en tolérant les variantes d'id d'action
+ * générées par le builder (ex. `google_sheets.read_sheet` → `sheets.read`).
+ * Évite le faux « action pas disponible via Composio » sur des actions valides.
+ */
 export function composioMappingFor(actionId: string): ComposioActionMapping | undefined {
-  return NATIVE_TO_COMPOSIO[actionId];
+  const exact = NATIVE_TO_COMPOSIO[actionId];
+  if (exact) return exact;
+
+  const sep = actionId.includes(".") ? "." : "_";
+  const [rawConn, ...rest] = actionId.split(sep);
+  if (rest.length === 0) return undefined;
+  const conn = CONNECTOR_ALIAS[rawConn.toLowerCase()];
+  if (!conn) return undefined;
+  const verb = canonicalVerb(rest.join("_"));
+  return NATIVE_TO_COMPOSIO[`${conn}.${verb}`];
 }

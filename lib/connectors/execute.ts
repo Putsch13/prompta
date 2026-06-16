@@ -133,13 +133,15 @@ export async function executeConnectorAction(
     // 2) Action native MAIS la connexion de l'utilisateur passe par Composio :
     //    on traduit vers l'outil Composio équivalent (sinon 401 garanti côté API native).
     if (ctx.provider === "composio") {
+      if (!composioOn) {
+        throw new Error(
+          `${ctx.connector ?? actionId} est connecté via Composio mais COMPOSIO_API_KEY n'est pas configurée côté serveur.`,
+        );
+      }
+
+      // a) Mapping statique connu → traduction propre des paramètres.
       const mapping = composioMappingFor(actionId);
       if (mapping) {
-        if (!composioOn) {
-          throw new Error(
-            `${ctx.connector ?? actionId} est connecté via Composio mais COMPOSIO_API_KEY n'est pas configurée côté serveur.`,
-          );
-        }
         return runComposio(
           mapping.toolSlug,
           ctx.userId,
@@ -147,8 +149,20 @@ export async function executeConnectorAction(
           mapping.toolkitSlug,
         );
       }
+
+      // b) Pas de mapping statique → résolution dynamique du bon outil Composio
+      //    via le catalogue du toolkit (au lieu du faux « reconnectez en natif »).
+      const connectorId = ctx.connector?.trim() || actionId.split(".")[0] || "";
+      const toolkit = toComposioToolkitSlug(connectorId);
+      const hasTextContent = ["text_content", "content", "body", "text", "markdown_text", "html_content"]
+        .some((k) => Object.keys(params).some((p) => p.toLowerCase().includes(k) && String(params[p] ?? "").trim() !== ""));
+      const resolvedSlug = await resolveComposioToolSlug(connectorId, actionId, { hasTextContent });
+      if (resolvedSlug) {
+        return runComposio(resolvedSlug, ctx.userId, params, toolkit);
+      }
+
       throw new Error(
-        `L'action « ${actionId} » n'est pas encore disponible via Composio — reconnectez ${ctx.connector ?? "ce service"} en mode natif pour l'utiliser.`,
+        `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit} via Composio. Ouvrez l'étape dans le builder et choisissez une action existante.`,
       );
     }
 
