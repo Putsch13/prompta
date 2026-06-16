@@ -1,22 +1,25 @@
 import type { AgentManifest } from "@/lib/agent/schema";
 import type { KeyProvider } from "@/lib/keys";
 import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
-import { runnerRequiredConnectors } from "@/lib/agent/run-connectors";
 
 export interface PreflightIssue {
   code: "missing_key" | "missing_connector";
   message: string;
 }
 
-/** Vérifie clés BYOK et connecteurs requis avant de lancer un agent. */
+/**
+ * Vérifie les clés BYOK requises avant de lancer un agent.
+ *
+ * Source de vérité unique pour les CLÉS uniquement. La disponibilité des
+ * CONNECTEURS est gérée par `checkConnectorHealth` (lib/connectors/connection-health.ts) —
+ * seule autorité sur « ce connecteur est-il utilisable ? » — afin d'éviter la
+ * logique de connexion dupliquée qui produisait les faux « pas connecté ».
+ */
 export async function validateAgentPreflight(
   manifest: AgentManifest,
   apiKeys: Record<string, string>,
-  userId: string,
-  options?: { dryRun?: boolean; creatorId?: string }
 ): Promise<PreflightIssue[]> {
   const issues: PreflightIssue[] = [];
-  const dryRun = options?.dryRun ?? false;
 
   for (const secret of manifest.secrets) {
     if (!apiKeys[secret]) {
@@ -42,39 +45,6 @@ export async function validateAgentPreflight(
         code: "missing_key",
         message: "Clé Serper requise pour la recherche web.",
       });
-    }
-  }
-
-  if (!dryRun) {
-    const { listUserConnections } = await import("@/lib/connections");
-    const { connectionMatchesConnector } = await import("@/lib/connectors/resolve-id");
-    const connections = await listUserConnections(userId);
-    const connected = connections.filter((c) => c.status === "connected");
-    const requiredConnectors = runnerRequiredConnectors(manifest, {
-      userId,
-      creatorId: options?.creatorId,
-    });
-
-    for (const connectorId of requiredConnectors) {
-      const ok = connected.some((c) => connectionMatchesConnector(c.connectorId, connectorId));
-      if (!ok) {
-        issues.push({
-          code: "missing_connector",
-          message: `Connectez ${connectorId} pour lancer — liez votre compte dans Connexions.`,
-        });
-      }
-    }
-
-    for (const step of manifest.steps) {
-      if (step.type === "action" && step.connector === "gmail" && step.action === "send") {
-        const gmailOk = connected.some((c) => connectionMatchesConnector(c.connectorId, "gmail"));
-        if (!gmailOk) {
-          issues.push({
-            code: "missing_connector",
-            message: "Connectez la boîte d'envoi Gmail pour lancer cet agent.",
-          });
-        }
-      }
     }
   }
 

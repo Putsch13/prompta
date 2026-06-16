@@ -8,6 +8,8 @@ import {
 } from "@/lib/billing/agent-run-billing";
 import { randomUUID } from "crypto";
 import { checkConnectorHealth, blockingHealthIssues } from "@/lib/connectors/connection-health";
+import { runnerRequiredConnectors } from "@/lib/agent/run-connectors";
+import { captureError } from "@/lib/observability";
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
@@ -98,10 +100,16 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
         | import("@/lib/agent/contract").AgentContract
         | null;
 
-      if (parsed.manifest.connectors.length > 0 && !claimed.dry_run) {
+      // Source de vérité unique : mêmes connecteurs requis que la route de run
+      // (exclut les étapes sharedEnv du créateur pour un run d'abonné).
+      const requiredConnectors = runnerRequiredConnectors(parsed.manifest, {
+        userId: claimed.user_id,
+        creatorId: listing?.creator_id ?? undefined,
+      });
+      if (requiredConnectors.length > 0 && !claimed.dry_run) {
         const healthIssues = await checkConnectorHealth(
           claimed.user_id,
-          parsed.manifest.connectors,
+          requiredConnectors,
         );
         // Seuls les blocages réels (pas de connexion / token absent ou expiré)
         // arrêtent le run. Les signaux scope/identité non bloquants laissent
@@ -210,10 +218,10 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
       const message = err instanceof Error ? err.message : "Erreur worker";
       const durationMs = Date.now() - startMs;
 
-      console.error("[worker] failed run", {
+      void captureError(err, {
+        scope: "worker.run",
         runId: claimed.id,
-        errorCode: err instanceof Error ? err.constructor.name : "unknown",
-        message: message.slice(0, 500),
+        listingId: claimed.listing_id,
         durationMs,
       });
 

@@ -226,12 +226,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { validateAgentPreflight } = await import("@/lib/agent/preflight");
-  const preflightIssues = await validateAgentPreflight(
-    parsedEnv.manifest,
-    billing.apiKeys,
-    user.id,
-    { dryRun, creatorId: listing.creator_id }
-  );
+  const preflightIssues = await validateAgentPreflight(parsedEnv.manifest, billing.apiKeys);
   if (preflightIssues.length > 0) {
     console.warn("[run/agent] preflight blocked", {
       userId: user.id,

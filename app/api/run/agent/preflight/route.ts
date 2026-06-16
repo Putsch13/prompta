@@ -9,9 +9,7 @@ import { costToCredits, CREDIT_VALUE_CENTS } from "@/lib/billing/credits";
 import { estimateMaxCost } from "@/lib/billing/run-cost";
 import { getFreeRunsRemaining } from "@/lib/billing/free-quota";
 import { hasPlatformPro } from "@/lib/platform-access";
-import { isConnectorConnected } from "@/lib/connections";
 import { isSubscriptionAccessActive } from "@/lib/subscriptions/active";
-import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 import { buildContract } from "@/lib/agent/contract";
 import { preflightMissing } from "@/lib/agent/resolve-interface";
 
@@ -149,16 +147,35 @@ export async function POST(request: NextRequest) {
     }
   });
 
-  // Déterminer connecteurs manquants
+  // Connecteurs : SOURCE DE VÉRITÉ UNIQUE = checkConnectorHealth. On calcule la
+  // santé une seule fois et on en dérive connectionsStatus + missingConnectors,
+  // au lieu d'une logique de matching parallèle (cause des faux « pas connecté »).
+  const { checkConnectorHealth, summarizeConnectorAccounts, blockingHealthIssues } =
+    await import("@/lib/connectors/connection-health");
+  const { runnerRequiredConnectors } = await import("@/lib/agent/run-connectors");
+
+  const requiredConnectors = parsedEnv?.manifest
+    ? runnerRequiredConnectors(parsedEnv.manifest, {
+        userId: user.id,
+        creatorId: listing.creator_id ?? undefined,
+      })
+    : [];
+
+  const [healthIssues, connectorAccounts] =
+    requiredConnectors.length > 0
+      ? await Promise.all([
+          checkConnectorHealth(user.id, requiredConnectors),
+          summarizeConnectorAccounts(user.id, requiredConnectors),
+        ])
+      : [[], []];
+  const blockers = blockingHealthIssues(healthIssues);
+  const blockedConnectorIds = new Set(blockers.map((b) => b.connectorId));
+
   const connectionsStatus: Record<string, { connected: boolean }> = {};
-  const missingConnectors: string[] = [];
-  if (parsedEnv?.manifest?.connectors) {
-    for (const c of dedupeConnectors(parsedEnv.manifest.connectors)) {
-      const connected = await isConnectorConnected(user.id, c);
-      connectionsStatus[c] = { connected };
-      if (!connected) missingConnectors.push(c);
-    }
+  for (const c of requiredConnectors) {
+    connectionsStatus[c] = { connected: !blockedConnectorIds.has(c) };
   }
+  const missingConnectors = Array.from(blockedConnectorIds);
 
   // Pilier B : missingInputs via le Résolveur unique (champs + ressources)
   const missingInputs: NonNullable<PreflightResult["missingInputs"]> = [];
@@ -187,49 +204,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (missingConnectors.length > 0) {
+  // Unique porte de blocage connecteur : un vrai blocage (pas de connexion /
+  // token absent ou expiré). Les signaux scope/identité sont remontés via
+  // connectorHealthIssues sans bloquer.
+  if (blockers.length > 0) {
     return NextResponse.json({
       canRun: false,
       mode: "blocked" as RunMode,
       missingKeys,
       missingConnectors,
       missingInputs,
+      connectorAccounts,
+      connectorHealthIssues: blockers,
       estimatedCostCents,
       estimatedCredits,
       creditBalance,
       freeRunsRemaining,
-      reason: `Connexion manquante : ${missingConnectors.join(", ")}`,
+      reason: blockers[0].message,
     } satisfies PreflightResult);
-  }
-
-  const requiredConnectors = dedupeConnectors(parsedEnv?.manifest?.connectors ?? []);
-  if (requiredConnectors.length > 0) {
-    const { checkConnectorHealth, summarizeConnectorAccounts, blockingHealthIssues } =
-      await import("@/lib/connectors/connection-health");
-    const [healthIssues, connectorAccounts] = await Promise.all([
-      checkConnectorHealth(user.id, requiredConnectors),
-      summarizeConnectorAccounts(user.id, requiredConnectors),
-    ]);
-
-    // Seuls les blocages réels empêchent de lancer. Les signaux scope/identité
-    // sont remontés (connectorHealthIssues) à titre informatif sans bloquer.
-    const blockers = blockingHealthIssues(healthIssues);
-    if (blockers.length > 0) {
-      return NextResponse.json({
-        canRun: false,
-        mode: "blocked" as RunMode,
-        missingKeys,
-        missingConnectors: [],
-        missingInputs,
-        connectorAccounts,
-        connectorHealthIssues: blockers,
-        estimatedCostCents,
-        estimatedCredits,
-        creditBalance,
-        freeRunsRemaining,
-        reason: blockers[0].message,
-      } satisfies PreflightResult);
-    }
   }
 
   // BYOK complet ?
