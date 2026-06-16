@@ -97,7 +97,8 @@ export async function POST(request: Request) {
 
       if (!listing) break;
 
-      const { platformFeeCents } = computeFees(listing.price_cents);
+      const priceCents = listing.price_cents ?? 0;
+      const { platformFeeCents } = computeFees(priceCents);
 
       const taxCents = session.total_details?.amount_tax ?? 0;
 
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
           buyer_id: buyerId,
           listing_id: listingId,
           version_id: listing.current_version_id,
-          amount_cents: listing.price_cents,
+          amount_cents: priceCents,
           platform_fee_cents: platformFeeCents,
           tax_cents: taxCents,
           stripe_payment_intent: session.payment_intent as string,
@@ -136,7 +137,7 @@ export async function POST(request: Request) {
           listingTitle: listing.title,
           listingSlug: listing.slug,
           listingType: listing.type,
-          amountCents: listing.price_cents,
+          amountCents: priceCents,
           taxCents,
           purchaseId: purchase.id,
           versionId: listing.current_version_id || "",
@@ -156,7 +157,7 @@ export async function POST(request: Request) {
             await sendSaleNotification({
               to: creatorEmail,
               listingTitle: listing.title,
-              amountCents: listing.price_cents,
+              amountCents: priceCents,
               platformFeeCents,
               buyerName,
             });

@@ -5,7 +5,7 @@ import { useState } from "react";
 interface PendingListing {
   id: string;
   title: string;
-  status: string;
+  status: string | null;
 }
 
 interface Props {

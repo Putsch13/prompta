@@ -47,7 +47,7 @@ export async function runAnalyticsPricing(ctx: AgentContext): Promise<AgentResul
       .select("*", { count: "exact", head: true })
       .eq("listing_id", l.id)
       .eq("status", "completed");
-    stats.push({ id: l.id, title: l.title, price_cents: l.price_cents, sales: count ?? 0 });
+    stats.push({ id: l.id, title: l.title, price_cents: l.price_cents ?? 0, sales: count ?? 0 });
   }
 
   try {

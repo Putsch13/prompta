@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Listing introuvable" }, { status: 404 });
   }
 
-  if (listing.price_cents === 0) {
+  if (!listing.price_cents) {
     return NextResponse.json({ error: "Ce listing est gratuit" }, { status: 400 });
   }
 
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     line_items: [
       {
         price_data: {
-          currency: listing.currency,
+          currency: listing.currency ?? "eur",
           product_data: { name: listing.title },
           unit_amount: listing.price_cents,
           tax_behavior: "exclusive",

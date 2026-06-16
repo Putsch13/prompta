@@ -25,11 +25,11 @@ export async function consumeFreeRunQuota(userId: string): Promise<boolean> {
     return true;
   }
 
-  if (quota.runs_today >= FREE_RUNS_PER_DAY) return false;
+  if ((quota.runs_today ?? 0) >= FREE_RUNS_PER_DAY) return false;
 
   await supabase
     .from("free_run_quota")
-    .update({ runs_today: quota.runs_today + 1 })
+    .update({ runs_today: (quota.runs_today ?? 0) + 1 })
     .eq("user_id", userId);
 
   return true;
@@ -46,5 +46,5 @@ export async function getFreeRunsRemaining(userId: string): Promise<number> {
     .maybeSingle();
 
   if (!quota || quota.last_reset !== today) return FREE_RUNS_PER_DAY;
-  return Math.max(0, FREE_RUNS_PER_DAY - quota.runs_today);
+  return Math.max(0, FREE_RUNS_PER_DAY - (quota.runs_today ?? 0));
 }

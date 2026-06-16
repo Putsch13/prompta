@@ -369,7 +369,7 @@ export default async function ListingPage({ params }: Props) {
                         ))}
                       </div>
                       <span className="text-xs text-muted">
-                        {new Date(review.created_at).toLocaleDateString("fr-FR")}
+                        {new Date(review.created_at ?? Date.now()).toLocaleDateString("fr-FR")}
                       </span>
                     </div>
                     {review.body && (
@@ -569,7 +569,7 @@ export default async function ListingPage({ params }: Props) {
                 </h3>
                 <p className="mt-1 flex items-center gap-1 text-xs text-muted">
                   <Calendar className="h-3 w-3" />
-                  {new Date(version.created_at).toLocaleDateString("fr-FR")}
+                  {new Date(version.created_at ?? Date.now()).toLocaleDateString("fr-FR")}
                 </p>
                 {version.changelog && (
                   <p className="mt-2 text-sm text-muted">{version.changelog}</p>

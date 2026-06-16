@@ -46,7 +46,7 @@ export async function GET(
     );
   }
 
-  if (listing.price_cents > 0 && listing.creator_id !== user.id) {
+  if ((listing.price_cents ?? 0) > 0 && listing.creator_id !== user.id) {
     const { data: purchase } = await admin
       .from("purchases")
       .select("id")

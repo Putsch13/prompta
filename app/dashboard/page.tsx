@@ -294,8 +294,8 @@ export default async function DashboardPage() {
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge status={listing.status} />
-                        <PriceTag priceCents={listing.price_cents} size="sm" />
+                        <StatusBadge status={listing.status ?? "draft"} />
+                        <PriceTag priceCents={listing.price_cents ?? 0} size="sm" />
                         <Link href={`/dashboard/listing/${listing.id}/edit`} className="rounded-lg border border-line p-2 hover:bg-card2" title="Éditer">
                           <Pencil className="h-4 w-4 text-ink-faint" />
                         </Link>

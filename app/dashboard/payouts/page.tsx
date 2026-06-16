@@ -20,12 +20,12 @@ export default function PayoutsPage() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [stripeAccount, setStripeAccount] = useState<{
-    charges_enabled: boolean;
-    payouts_enabled: boolean;
+    charges_enabled: boolean | null;
+    payouts_enabled: boolean | null;
   } | null>(null);
 
   const [sales, setSales] = useState<
-    { id: string; amount_cents: number; platform_fee_cents: number; created_at: string; status: string }[]
+    { id: string; amount_cents: number; platform_fee_cents: number; created_at: string | null; status: string | null }[]
   >([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [mrrCents, setMrrCents] = useState(0);
@@ -252,7 +252,7 @@ export default function PayoutsPage() {
                     {sale.status === "completed" ? "Payé" : sale.status === "refunded" ? "Remboursé" : sale.status}
                   </span>
                   <p className="mt-1 text-xs text-ink-soft">
-                    {new Date(sale.created_at).toLocaleDateString("fr-FR")}
+                    {new Date(sale.created_at ?? Date.now()).toLocaleDateString("fr-FR")}
                   </p>
                 </div>
               </div>

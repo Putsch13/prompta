@@ -76,8 +76,8 @@ export default function EditListingPage() {
 
       setTitle(listing.title);
       setDescription(listing.description || "");
-      setPriceCents(listing.price_cents);
-      setListingStatus(listing.status);
+      setPriceCents(listing.price_cents ?? 0);
+      setListingStatus(listing.status ?? "draft");
       setListingSlug(listing.slug ?? null);
 
       if (listing.current_version_id) {

@@ -345,7 +345,7 @@ export default async function ExplorePage({ searchParams }: Props) {
                     slug={listing.slug}
                     title={listing.title}
                     type={listing.type as "prompt" | "agent" | "workflow"}
-                    priceCents={listing.price_cents}
+                    priceCents={listing.price_cents ?? 0}
                     description={listing.description}
                     rating={avgRating}
                     reviewCount={reviewCount}

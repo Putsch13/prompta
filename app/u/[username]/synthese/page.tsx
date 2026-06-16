@@ -131,7 +131,7 @@ export default async function SynthesePage({ params }: Props) {
                   title={l.title}
                   type={l.type as "prompt" | "agent" | "workflow"}
                   description={l.description ?? ""}
-                  priceCents={l.price_cents}
+                  priceCents={l.price_cents ?? 0}
                 />
               ))}
             </div>

@@ -171,7 +171,7 @@ export default async function OrgPage({ params, searchParams }: Props) {
                 >
                   <span className="font-medium text-ink">{entry.action}</span>
                   <span className="text-ink-faint">
-                    {new Date(entry.created_at).toLocaleString("fr-FR")}
+                    {new Date(entry.created_at ?? Date.now()).toLocaleString("fr-FR")}
                   </span>
                 </li>
               ))}

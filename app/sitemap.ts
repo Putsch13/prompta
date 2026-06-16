@@ -21,7 +21,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const l of listings) {
       entries.push({
         url: `${baseUrl}/listing/${l.slug}`,
-        lastModified: new Date(l.updated_at),
+        lastModified: new Date(l.updated_at ?? Date.now()),
         changeFrequency: "weekly",
         priority: 0.8,
       });
@@ -36,7 +36,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const p of profiles) {
       entries.push({
         url: `${baseUrl}/u/${p.username}`,
-        lastModified: new Date(p.created_at),
+        lastModified: new Date(p.created_at ?? Date.now()),
         changeFrequency: "weekly",
         priority: 0.6,
       });

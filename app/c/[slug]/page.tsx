@@ -142,7 +142,7 @@ export default async function CategoryPage({ params }: Props) {
                   title={listing.title}
                   type={listing.type as "prompt" | "agent" | "workflow"}
                   description={listing.description || ""}
-                  priceCents={listing.price_cents}
+                  priceCents={listing.price_cents ?? 0}
                   rating={avgRating}
                   reviewCount={ratings.length}
                   downloads={dlCount}
