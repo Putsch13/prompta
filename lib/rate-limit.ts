@@ -82,6 +82,8 @@ export const RATE_LIMITS = {
   auth: { maxRequests: 5, windowMs: 60 * 1000 },
   api: { maxRequests: 60, windowMs: 60 * 1000 },
   run: { maxRequests: 30, windowMs: 60 * 1000 },
+  // Génération / édition de plan, copilote, auto-réparation : appels LLM coûteux.
+  builder: { maxRequests: 20, windowMs: 60 * 1000 },
 } as const;
 
 /**

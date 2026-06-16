@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getBuilderApiKey } from "@/lib/builder/api-key";
+import { builderRateLimit } from "@/lib/builder/rate-limit";
 import { generateAgentSkeleton } from "@/lib/builder/generate-skeleton";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,9 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
+
+  const limited = await builderRateLimit(user.id);
+  if (limited) return limited;
 
   const body = await request.json();
   const { description, modelId } = body as { description?: string; modelId?: string };

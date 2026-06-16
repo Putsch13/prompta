@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { parseListingEnv } from "@/lib/agent/env";
 import { getBuilderApiKey } from "@/lib/builder/api-key";
+import { builderRateLimit } from "@/lib/builder/rate-limit";
 import { diagnoseFailedSteps, type FailedStepInfo } from "@/lib/agent/diagnose-run";
 import { autoFixRun } from "@/lib/agent/auto-fix-run";
 import { buildManifest } from "@/lib/builder/manifest";
@@ -31,6 +32,9 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
+
+  const limited = await builderRateLimit(user.id);
+  if (limited) return limited;
 
   const body = (await request.json().catch(() => ({}))) as { modelId?: string };
   const admin = createAdminClient();
