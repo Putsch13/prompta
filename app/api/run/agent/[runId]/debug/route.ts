@@ -28,7 +28,7 @@ async function computeNeededInputs(
   if (!versionId) return [];
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: version } = await (admin as any)
+    const { data: version } = await admin
       .from("listing_versions")
       .select("env, prompt_body")
       .eq("id", versionId)
@@ -82,7 +82,7 @@ export async function GET(
   const admin = createAdminClient();
   const runId = params.runId;
 
-  const { data: run } = await (admin as any)
+  const { data: run } = await admin
     .from("listing_agent_runs")
     .select("id, user_id, listing_id, version_id, inputs, status, error_message")
     .eq("id", runId)
@@ -102,7 +102,7 @@ export async function GET(
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
-  const { data: steps } = await (admin as any)
+  const { data: steps } = await admin
     .from("listing_agent_run_steps")
     .select("step_index, label, status, error_code, error_message, action_slug, tool_slug, error_detail")
     .eq("run_id", runId)

@@ -22,7 +22,7 @@ export async function POST(
   const admin = createAdminClient();
   const runId = params.runId;
 
-  const { data: run } = await (admin as any)
+  const { data: run } = await admin
     .from("listing_agent_runs")
     .select("id, user_id, status")
     .eq("id", runId)
@@ -51,13 +51,15 @@ export async function POST(
 
   // Si pas encore démarré → annulation immédiate ; sinon annulation coopérative.
   const notStarted = run.status === "pending" || run.status === "queued";
-  const update: Record<string, unknown> = { cancel_requested: true };
+  const update: { cancel_requested: boolean; status?: string; cancelled_at?: string } = {
+    cancel_requested: true,
+  };
   if (notStarted) {
     update.status = "cancelled";
     update.cancelled_at = new Date().toISOString();
   }
 
-  await (admin as any).from("listing_agent_runs").update(update).eq("id", runId);
+  await admin.from("listing_agent_runs").update(update).eq("id", runId);
 
   return NextResponse.json({
     status: notStarted ? "cancelled" : "cancelling",

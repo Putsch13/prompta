@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/types.db";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -45,11 +46,11 @@ export function redactSecrets(value: unknown, depth = 0): unknown {
   return value;
 }
 
-function truncateJson(obj: unknown, maxChars = 2000): unknown {
+function truncateJson(obj: unknown, maxChars = 2000): Json {
   if (obj === null || obj === undefined) return null;
   const safe = redactSecrets(obj);
   const str = JSON.stringify(safe);
-  if (str.length <= maxChars) return safe;
+  if (str.length <= maxChars) return safe as Json;
   return { _truncated: true, preview: str.slice(0, maxChars) };
 }
 
@@ -62,7 +63,7 @@ function redactString(message: string): string {
 
 export async function logStepStarted(step: StepLog): Promise<string> {
   const admin = createAdminClient();
-  const { data } = await (admin as any).from("listing_agent_run_steps").insert({
+  const { data } = await admin.from("listing_agent_run_steps").insert({
     run_id: step.runId,
     step_index: step.stepIndex,
     step_id: step.stepId ?? null,
@@ -89,7 +90,7 @@ export async function logStepSuccess(
   const now = new Date();
   const durationMs = startedAt ? now.getTime() - startedAt.getTime() : null;
 
-  await (admin as any).from("listing_agent_run_steps").update({
+  await admin.from("listing_agent_run_steps").update({
     status: "success",
     finished_at: now.toISOString(),
     duration_ms: durationMs,
@@ -129,13 +130,13 @@ export async function logStepFailed(
       }
     : null;
 
-  await (admin as any).from("listing_agent_run_steps").update({
+  await admin.from("listing_agent_run_steps").update({
     status: "failed",
     finished_at: now.toISOString(),
     duration_ms: durationMs,
     error_code: errorCode,
     error_message: redactString(errorMessage).slice(0, 2000),
-    error_detail: errorDetail,
+    error_detail: errorDetail as Json,
   }).eq("id", stepDbId);
 }
 
@@ -148,7 +149,7 @@ export async function logStepSkipped(
   reason: string
 ): Promise<void> {
   const admin = createAdminClient();
-  await (admin as any).from("listing_agent_run_steps").insert({
+  await admin.from("listing_agent_run_steps").insert({
     run_id: runId,
     step_index: stepIndex,
     step_id: stepId ?? null,
@@ -164,7 +165,7 @@ export async function logStepSkipped(
 
 export async function updateStepInput(stepDbId: string, input: unknown): Promise<void> {
   const admin = createAdminClient();
-  await (admin as any).from("listing_agent_run_steps").update({
+  await admin.from("listing_agent_run_steps").update({
     input_preview: truncateJson(input),
   }).eq("id", stepDbId);
 }

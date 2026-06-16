@@ -21,7 +21,7 @@ export async function GET(
 
   const admin = createAdminClient();
 
-  const { data: deliverable } = await (admin as any)
+  const { data: deliverable } = await admin
     .from("agent_deliverables")
     .select("*")
     .eq("id", params.deliverableId)

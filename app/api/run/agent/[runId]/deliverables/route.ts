@@ -22,7 +22,7 @@ export async function GET(
   const admin = createAdminClient();
   const runId = params.runId;
 
-  const { data: run } = await (admin as any)
+  const { data: run } = await admin
     .from("listing_agent_runs")
     .select("id, user_id")
     .eq("id", runId)
@@ -32,7 +32,7 @@ export async function GET(
     return NextResponse.json({ error: "Run introuvable" }, { status: 404 });
   }
 
-  const { data: deliverables } = await (admin as any)
+  const { data: deliverables } = await admin
     .from("agent_deliverables")
     .select("id, kind, filename, mime_type, preview_text, size_bytes, created_at")
     .eq("run_id", runId)

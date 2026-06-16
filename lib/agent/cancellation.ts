@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export async function isCancelRequested(runId: string): Promise<boolean> {
   try {
     const admin = createAdminClient();
-    const { data } = await (admin as any)
+    const { data } = await admin
       .from("listing_agent_runs")
       .select("cancel_requested, status")
       .eq("id", runId)
@@ -21,7 +21,7 @@ export async function isCancelRequested(runId: string): Promise<boolean> {
 export async function markRunCancelled(runId: string): Promise<void> {
   try {
     const admin = createAdminClient();
-    await (admin as any)
+    await admin
       .from("listing_agent_runs")
       .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
       .eq("id", runId);

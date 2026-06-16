@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: run } = await (supabase as any)
+  const { data: run } = await supabase
     .from("listing_agent_runs")
     .select("id, status, output, error_message, steps_completed, created_at, started_at, heartbeat_at, claimed_by")
     .eq("id", params.runId)
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (run.status === "awaiting_approval") {
     const admin = createAdminClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: pending } = await (admin as any)
+    const { data: pending } = await admin
       .from("agent_approvals")
       .select("id, payload, step_index")
       .eq("run_id", params.runId)
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         id: pending.id,
         label: payload.label,
         preview: payload.preview,
-        step_index: pending.step_index,
+        step_index: pending.step_index ?? 0,
       };
     }
   }

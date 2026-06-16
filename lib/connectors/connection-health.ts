@@ -69,7 +69,7 @@ export async function checkConnectorHealth(
   if (requiredConnectors.length === 0) return [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
   const issues: ConnectorHealthIssue[] = [];
 
   const { data: userConnections } = await admin
@@ -193,7 +193,7 @@ export async function summarizeConnectorAccounts(
   if (requiredConnectors.length === 0) return [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
   const { data: userConnections } = await admin
     .from("user_connections")
     .select(

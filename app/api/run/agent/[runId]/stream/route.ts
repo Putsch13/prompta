@@ -49,7 +49,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       try {
         while (!closed) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: run } = await (admin as any)
+          const { data: run } = await admin
             .from("listing_agent_runs")
             .select("id, status, output, error_message, steps_completed, started_at, heartbeat_at")
             .eq("id", params.runId)
@@ -63,7 +63,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
           }
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: steps } = await (admin as any)
+          const { data: steps } = await admin
             .from("listing_agent_run_steps")
             .select("id, step_index, step_type, label, status, output_preview, error_code, error_message, started_at, finished_at")
             .eq("run_id", params.runId)
@@ -78,7 +78,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
           } | null = null;
           if (run.status === "awaiting_approval") {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data: pending } = await (admin as any)
+            const { data: pending } = await admin
               .from("agent_approvals")
               .select("id, payload, step_index")
               .eq("run_id", params.runId)
@@ -93,7 +93,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
                 id: pending.id,
                 label: payload.label,
                 preview: payload.preview,
-                step_index: pending.step_index,
+                step_index: pending.step_index ?? 0,
               };
             }
           }

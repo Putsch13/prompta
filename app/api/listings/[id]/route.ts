@@ -68,7 +68,7 @@ export async function DELETE(
   const now = new Date().toISOString();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from("listings")
     .update({
       status: "deleted",

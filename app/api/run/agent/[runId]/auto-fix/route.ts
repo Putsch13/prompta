@@ -40,7 +40,7 @@ export async function POST(
   const admin = createAdminClient();
   const runId = params.runId;
 
-  const { data: run } = await (admin as any)
+  const { data: run } = await admin
     .from("listing_agent_runs")
     .select("id, user_id, listing_id, version_id, inputs, status")
     .eq("id", runId)
@@ -67,7 +67,7 @@ export async function POST(
   }
 
   // Étapes en échec (avec aperçus + détail technique).
-  const { data: steps } = await (admin as any)
+  const { data: steps } = await admin
     .from("listing_agent_run_steps")
     .select(
       "step_index, label, status, error_code, error_message, action_slug, tool_slug, error_detail, input_preview, output_preview",
@@ -90,7 +90,7 @@ export async function POST(
   }));
 
   // Manifeste courant du run.
-  const { data: version } = await (admin as any)
+  const { data: version } = await admin
     .from("listing_versions")
     .select("env, prompt_body")
     .eq("id", run.version_id)
@@ -190,7 +190,7 @@ export async function POST(
           const parts = String(oldSemver).split(".").map(Number);
           const newSemver = `${parts[0]}.${(parts[1] ?? 0) + 1}.0`;
 
-          const { data: newVersion } = await (admin as any)
+          const { data: newVersion } = await admin
             .from("listing_versions")
             .insert({
               listing_id: run.listing_id,
@@ -204,7 +204,7 @@ export async function POST(
             .single();
 
           if (newVersion?.id) {
-            await (admin as any)
+            await admin
               .from("listings")
               .update({ current_version_id: newVersion.id })
               .eq("id", run.listing_id);
@@ -212,7 +212,7 @@ export async function POST(
             applied = true;
           }
         } else {
-          await (admin as any)
+          await admin
             .from("listing_versions")
             .update({ env: envPayload, contract })
             .eq("id", run.version_id);

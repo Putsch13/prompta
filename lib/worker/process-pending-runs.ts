@@ -32,7 +32,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
   const wid = workerId();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: jobs } = await (admin as any)
+  const { data: jobs } = await admin
     .from("listing_agent_runs")
     .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents, resume_from_step, output, steps_completed")
     .eq("status", "pending")
@@ -56,7 +56,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
 
     const now = new Date().toISOString();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: claimed } = await (admin as any)
+    const { data: claimed } = await admin
       .from("listing_agent_runs")
       .update({
         status: "running",
@@ -138,7 +138,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
       const heartbeatTimer = setInterval(async () => {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (admin as any)
+          await admin
             .from("listing_agent_runs")
             .update({ heartbeat_at: new Date().toISOString() })
             .eq("id", claimed.id);
@@ -163,7 +163,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
           ...(frozenContract ? { contract: frozenContract } : {}),
           onProgress: async (stepsCompleted, partialOutput) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (admin as any)
+            await admin
               .from("listing_agent_runs")
               .update({
                 steps_completed: stepsCompleted,

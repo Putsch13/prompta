@@ -14,7 +14,7 @@ export async function GET() {
   const stats = await getRunHealthStats();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
+  const db = createAdminClient();
 
   const { data: recentRuns } = await db
     .from("listing_agent_runs")

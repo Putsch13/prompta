@@ -62,7 +62,7 @@ export async function saveDeliverable(params: SaveDeliverableParams): Promise<st
     contentText = null;
   }
 
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("agent_deliverables")
     .insert({
       run_id: params.runId,

@@ -43,7 +43,7 @@ export async function GET(
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
-  const { data: steps } = await (admin as any)
+  const { data: steps } = await admin
     .from("listing_agent_run_steps")
     .select("*")
     .eq("run_id", runId)

@@ -40,7 +40,7 @@ export async function checkIdempotency(
   const admin = createAdminClient();
   const executionKey = buildExecutionKey(runId, stepIndex, actionSlug, params);
 
-  const { data } = await (admin as any)
+  const { data } = await admin
     .from("agent_action_executions")
     .select("id, result_output, status")
     .eq("run_id", runId)
@@ -84,7 +84,7 @@ export async function beginExecution(
   const executionKey = buildExecutionKey(runId, stepIndex, actionSlug, params);
   const now = new Date().toISOString();
 
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from("agent_action_executions")
     .insert({
       run_id: runId,
@@ -110,7 +110,7 @@ export async function beginExecution(
     return cached.executionId ?? "";
   }
 
-  const { data: existing } = await (admin as any)
+  const { data: existing } = await admin
     .from("agent_action_executions")
     .select("id, status")
     .eq("run_id", runId)
@@ -122,7 +122,7 @@ export async function beginExecution(
   }
 
   if (existing?.id) {
-    await (admin as any)
+    await admin
       .from("agent_action_executions")
       .update({ status: "started", error_message: null, updated_at: now })
       .eq("id", existing.id);
@@ -139,7 +139,7 @@ export async function completeExecution(
 ): Promise<void> {
   if (!executionId) return;
   const admin = createAdminClient();
-  await (admin as any)
+  await admin
     .from("agent_action_executions")
     .update({
       status: "completed",
@@ -154,7 +154,7 @@ export async function completeExecution(
 export async function failExecution(executionId: string, errorMessage: string): Promise<void> {
   if (!executionId) return;
   const admin = createAdminClient();
-  await (admin as any)
+  await admin
     .from("agent_action_executions")
     .update({
       status: "failed",

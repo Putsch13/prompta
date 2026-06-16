@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/types.db";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export async function POST(
 ) {
   const triggerId = params.triggerId;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any;
+  const admin = createAdminClient();
 
   const { data: trigger } = await admin
     .from("agent_triggers")
@@ -61,7 +62,7 @@ export async function POST(
       user_id: trigger.owner_id,
       listing_id: trigger.listing_id,
       version_id: listing.current_version_id,
-      inputs: payload,
+      inputs: payload as Json,
       status: "pending",
     })
     .select("id")
@@ -70,7 +71,7 @@ export async function POST(
   await admin.from("agent_trigger_events").insert({
     trigger_id: triggerId,
     run_id: run?.id,
-    payload,
+    payload: payload as Json,
   });
 
   return NextResponse.json({ ok: true, runId: run?.id });
