@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Loader2, RotateCcw, Settings } from "lucide-react";
+import { Loader2, RotateCcw, Settings, X, MessageSquareReply } from "lucide-react";
 import { AgentRunConsole } from "@/components/run/AgentRunConsole";
 import { StatusPill, statusTone, EmptyState } from "@/components/ui";
 
@@ -66,6 +66,7 @@ function RunsHistoryContent() {
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [relancing, setRelancing] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(focusRunId);
   const [filter, setFilter] = useState<RunFilter>("all");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(
@@ -88,6 +89,18 @@ function RunsHistoryContent() {
   useEffect(() => {
     if (focusRunId) setExpanded(focusRunId);
   }, [focusRunId]);
+
+  async function cancelRun(run: RunRow) {
+    setCancelling(run.id);
+    try {
+      await fetch(`/api/run/agent/${run.id}/cancel`, { method: "POST" });
+    } catch {
+      /* best-effort */
+    } finally {
+      setCancelling(null);
+      loadRuns();
+    }
+  }
 
   async function handleRetry(run: RunRow) {
     if (!run.listing_id || !run.version_id) return;
@@ -316,6 +329,31 @@ function RunsHistoryContent() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {run.status === "awaiting_approval" && (
+                    <button
+                      onClick={() => setExpanded(run.id)}
+                      className="flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-400"
+                    >
+                      <MessageSquareReply className="h-3 w-3" /> Répondre
+                    </button>
+                  )}
+                  {(run.status === "running" ||
+                    run.status === "pending" ||
+                    run.status === "queued" ||
+                    run.status === "awaiting_approval") && (
+                    <button
+                      onClick={() => cancelRun(run)}
+                      disabled={cancelling === run.id}
+                      className="flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-medium hover:bg-card2 disabled:opacity-50"
+                    >
+                      {cancelling === run.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
+                      Arrêter
+                    </button>
+                  )}
                   {(run.status === "failed" || run.status === "suspended") &&
                     run.error_message?.includes("Clé") && (
                       <Link

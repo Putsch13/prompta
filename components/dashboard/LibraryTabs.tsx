@@ -246,11 +246,12 @@ function LibraryCard({
             </>
           )}
         </Link>
-        {tab === "created" && isAgent && (
+        {isAgent && (
           <button
             type="button"
             onClick={handleLaunch}
             disabled={launching}
+            title="Démarre l'agent en tâche de fond — vous pouvez fermer la fenêtre, il continue."
             className="inline-flex items-center gap-1 rounded-lg border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/5 disabled:opacity-50"
           >
             {launching ? (
@@ -258,7 +259,7 @@ function LibraryCard({
             ) : (
               <Rocket className="h-3.5 w-3.5" />
             )}
-            Lancer &amp; suivre
+            Lancer en fond
           </button>
         )}
         {(tab === "created" || tab === "purchased" || tab === "subscribed") &&
@@ -333,6 +334,14 @@ function LibraryCard({
               </div>
             </div>
             <div className="overflow-y-auto p-4">
+              <p className="mb-3 rounded-lg bg-card2 px-3 py-2 text-xs text-ink-soft">
+                ⚡ L&apos;agent tourne en tâche de fond. Vous pouvez fermer cette fenêtre — il
+                continue. Retrouvez-le (et arrêtez-le) dans{" "}
+                <Link href="/dashboard/runs" className="font-medium text-accent hover:underline">
+                  Runs &amp; logs
+                </Link>
+                .
+              </p>
               <AgentRunConsole runId={runId} status="queued" pollWhileRunning title={item.title} />
             </div>
           </div>

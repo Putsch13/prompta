@@ -21,6 +21,7 @@ import {
 import type { RunStepLog } from "@/components/run/RunStepTimeline";
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 import { RunDebugAssistant } from "@/components/run/RunDebugAssistant";
+import { HumanApprovalModal, type ApprovalDetails } from "@/components/run/HumanApprovalModal";
 
 type RunStatus = "pending" | "running" | "queued" | "completed" | "failed" | "suspended" | "awaiting_approval";
 
@@ -183,6 +184,13 @@ export function AgentRunConsole({
   const [elapsed, setElapsed] = useState(0);
   const [copied, setCopied] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [approval, setApproval] = useState<ApprovalDetails | null>(null);
+  // L'utilisateur a fermé la modale sans décider — on garde la donnée pour
+  // pouvoir la rouvrir via la bannière « Répondre ».
+  const [modalDismissed, setModalDismissed] = useState(false);
+  // Bump pour relancer le polling/stream après une décision d'approbation
+  // (le stream SSE se ferme sur `awaiting_approval`).
+  const [reloadKey, setReloadKey] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
   async function cancelRun() {
@@ -193,6 +201,48 @@ export function AgentRunConsole({
     } catch {
       /* best-effort */
     }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyApproval(run: any) {
+    if (run?.status === "awaiting_approval" && run?.approval) {
+      setApproval((prev) => {
+        // Nouvelle demande d'approbation → on rouvre la modale.
+        if (prev?.id !== run.approval.id) setModalDismissed(false);
+        return {
+          id: run.approval.id,
+          label: run.approval.label,
+          preview: run.approval.preview,
+          stepIndex: run.approval.step_index,
+        };
+      });
+    } else if (run?.status !== "awaiting_approval") {
+      setApproval(null);
+    }
+  }
+
+  async function handleApprove(approvalId: string, modifiedContent: string) {
+    if (!runId) return;
+    await fetch(`/api/run/agent/${runId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvalId, decision: "approved", modifiedContent }),
+    });
+    setApproval(null);
+    setLiveStatus("running");
+    setReloadKey((k) => k + 1);
+  }
+
+  async function handleReject(approvalId: string) {
+    if (!runId) return;
+    await fetch(`/api/run/agent/${runId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvalId, decision: "rejected" }),
+    });
+    setApproval(null);
+    setLiveStatus("failed");
+    setReloadKey((k) => k + 1);
   }
 
   async function copyReport() {
@@ -259,6 +309,7 @@ export function AgentRunConsole({
             if (run.steps_completed != null) setLiveCompleted(run.steps_completed);
             if (run.started_at) setStartedAt(run.started_at);
             if (run.heartbeat_at) setHeartbeatAt(run.heartbeat_at);
+            applyApproval(run);
           }
         }
       } finally {
@@ -288,6 +339,7 @@ export function AgentRunConsole({
           if (run.steps_completed != null) setLiveCompleted(run.steps_completed);
           if (run.started_at) setStartedAt(run.started_at);
           if (run.heartbeat_at) setHeartbeatAt(run.heartbeat_at);
+          applyApproval(run);
         } catch {
           // ignore malformed SSE
         }
@@ -317,7 +369,7 @@ export function AgentRunConsole({
       es?.close();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [runId, pollWhileRunning, isActive]);
+  }, [runId, pollWhileRunning, isActive, reloadKey]);
 
   useEffect(() => {
     if (!startedAt || !isActive) return;
@@ -610,11 +662,36 @@ export function AgentRunConsole({
         )}
       </div>
 
+      {runStatus === "awaiting_approval" && approval && (
+        <div className="border-t border-amber-300/50 bg-amber-50 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium text-amber-900">
+              ⏸️ L&apos;agent attend votre validation pour continuer.
+            </p>
+            <button
+              type="button"
+              onClick={() => setModalDismissed(false)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-400"
+            >
+              Répondre
+            </button>
+          </div>
+        </div>
+      )}
+
       {showDebugAssistant && runId && runStatus === "failed" && (
         <div className="border-t border-line p-4 sm:p-5">
           <RunDebugAssistant runId={runId} status="failed" />
         </div>
       )}
+
+      <HumanApprovalModal
+        open={runStatus === "awaiting_approval" && approval != null && !modalDismissed}
+        approval={approval}
+        onApprove={handleApprove}
+        onReject={handleReject}
+        onClose={() => setModalDismissed(true)}
+      />
     </div>
   );
 }
