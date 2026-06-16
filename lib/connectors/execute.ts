@@ -6,6 +6,7 @@ import { composioMappingFor } from "./native-to-composio";
 import { toComposioToolkitSlug, isSameConnector } from "./resolve-id";
 import { CONNECTORS } from "./registry";
 import { resolveComposioToolSlug, actionVerb } from "@/lib/composio/resolve-native-action";
+import { getComposioToolInputKeys, alignArgKeysToSchema } from "@/lib/composio/catalog";
 
 /** Le connecteur existe-t-il dans le registre natif maison ? */
 function hasNativeConnector(connectorId?: string): boolean {
@@ -32,6 +33,34 @@ async function runComposio(
     }
     throw err;
   }
+}
+
+function hasTextContentParam(params: Record<string, string>): boolean {
+  return ["text_content", "content", "body", "text", "markdown_text", "html_content"].some((k) =>
+    Object.keys(params).some(
+      (p) => p.toLowerCase().includes(k) && String(params[p] ?? "").trim() !== "",
+    ),
+  );
+}
+
+/**
+ * Résout dynamiquement le bon outil Composio pour une action native, aligne les
+ * noms de paramètres sur le schéma réel de l'outil (générique, tous toolkits),
+ * puis exécute. Retourne `null` si aucun outil pertinent n'est trouvé.
+ */
+async function runComposioDynamic(
+  connectorId: string,
+  toolkit: string,
+  actionId: string,
+  userId: string,
+  params: Record<string, string>,
+): Promise<ExecuteResult | null> {
+  const resolvedSlug = await resolveComposioToolSlug(connectorId, actionId, {
+    hasTextContent: hasTextContentParam(params),
+  });
+  if (!resolvedSlug) return null;
+  const expectedKeys = await getComposioToolInputKeys(toolkit, resolvedSlug);
+  return runComposio(resolvedSlug, userId, alignArgKeysToSchema(params, expectedKeys), toolkit);
 }
 
 const RETRY_BACKOFF_MS = [1000, 3000, 9000];
@@ -119,12 +148,8 @@ export async function executeConnectorAction(
           `Le connecteur ${toolkit} fonctionne via Composio, mais COMPOSIO_API_KEY n'est pas configurée côté serveur.`,
         );
       }
-      const hasTextContent = ["text_content", "content", "body", "text", "markdown_text", "html_content"]
-        .some((k) => Object.keys(params).some((p) => p.toLowerCase().includes(k) && String(params[p] ?? "").trim() !== ""));
-      const resolvedSlug = await resolveComposioToolSlug(connectorId, actionId, { hasTextContent });
-      if (resolvedSlug) {
-        return runComposio(resolvedSlug, ctx.userId, params, toolkit);
-      }
+      const result = await runComposioDynamic(connectorId, toolkit, actionId, ctx.userId, params);
+      if (result) return result;
       throw new Error(
         `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit}. Ouvrez l'étape dans le builder et choisissez une action existante.`,
       );
@@ -151,15 +176,12 @@ export async function executeConnectorAction(
       }
 
       // b) Pas de mapping statique → résolution dynamique du bon outil Composio
-      //    via le catalogue du toolkit (au lieu du faux « reconnectez en natif »).
+      //    via le catalogue du toolkit (au lieu du faux « reconnectez en natif »),
+      //    avec alignement générique des noms de paramètres sur le schéma réel.
       const connectorId = ctx.connector?.trim() || actionId.split(".")[0] || "";
       const toolkit = toComposioToolkitSlug(connectorId);
-      const hasTextContent = ["text_content", "content", "body", "text", "markdown_text", "html_content"]
-        .some((k) => Object.keys(params).some((p) => p.toLowerCase().includes(k) && String(params[p] ?? "").trim() !== ""));
-      const resolvedSlug = await resolveComposioToolSlug(connectorId, actionId, { hasTextContent });
-      if (resolvedSlug) {
-        return runComposio(resolvedSlug, ctx.userId, params, toolkit);
-      }
+      const result = await runComposioDynamic(connectorId, toolkit, actionId, ctx.userId, params);
+      if (result) return result;
 
       throw new Error(
         `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit} via Composio. Ouvrez l'étape dans le builder et choisissez une action existante.`,

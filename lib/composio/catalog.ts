@@ -197,3 +197,40 @@ export async function listComposioTools(toolkitSlug: string): Promise<ComposioTo
   toolCache.set(toolkitSlug, { at: now, items });
   return items;
 }
+
+/** Clés d'entrée réellement attendues par un outil Composio (depuis le catalogue). */
+export async function getComposioToolInputKeys(
+  toolkitSlug: string,
+  toolSlug: string,
+): Promise<string[]> {
+  try {
+    const tools = await listComposioTools(toolkitSlug);
+    const entry = tools.find((t) => t.slug === toolSlug);
+    return entry ? entry.inputs.map((i) => i.key) : [];
+  } catch {
+    return [];
+  }
+}
+
+const canonKey = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Aligne les noms de paramètres fournis sur le schéma réel de l'outil Composio,
+ * de façon générique (vaut pour les 300+ toolkits) : `spreadsheetId` →
+ * `spreadsheet_id`, `recipientEmail` → `recipient_email`, etc. Ne renomme que
+ * lorsqu'une clé attendue correspond à la forme canonique (casse/séparateurs
+ * ignorés) ; sinon la clé est laissée telle quelle (best-effort, jamais destructif).
+ */
+export function alignArgKeysToSchema(
+  params: Record<string, string>,
+  expectedKeys: string[],
+): Record<string, string> {
+  if (expectedKeys.length === 0) return params;
+  const byCanon = new Map(expectedKeys.map((k) => [canonKey(k), k]));
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(params)) {
+    const target = byCanon.get(canonKey(k)) ?? k;
+    out[target] = v;
+  }
+  return out;
+}
