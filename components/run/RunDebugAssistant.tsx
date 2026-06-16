@@ -57,6 +57,22 @@ interface DebugResponse {
   status: string;
 }
 
+interface AutoFixUserAction {
+  type: string;
+  connector?: string;
+  detail: string;
+}
+
+interface AutoFixResponse {
+  explanation: string;
+  changes: string[];
+  requiresUser: AutoFixUserAction[];
+  autoFixable: boolean;
+  applied: boolean;
+  blockedReason?: string | null;
+  relaunch: { listingId: string | null; versionId: string | null; inputs: Record<string, string> };
+}
+
 interface Props {
   runId: string;
   /** Statut du run — l'assistant ne s'affiche que sur un run échoué. */
@@ -72,6 +88,8 @@ export function RunDebugAssistant({ runId, status }: Props) {
   const [diag, setDiag] = useState<Record<string, DiagState>>({});
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [relaunching, setRelaunching] = useState<"test" | "agent" | null>(null);
+  const [autoFixing, setAutoFixing] = useState(false);
+  const [autoFix, setAutoFix] = useState<AutoFixResponse | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,6 +121,32 @@ export function RunDebugAssistant({ runId, status }: Props) {
       }));
     } catch {
       setDiag((d) => ({ ...d, [connector]: { status: "ko", message: "Test impossible" } }));
+    }
+  }
+
+  async function runAutoFix() {
+    setAutoFixing(true);
+    try {
+      const res = await fetch(`/api/run/agent/${runId}/auto-fix`, { method: "POST" });
+      const json = (await res.json().catch(() => ({}))) as AutoFixResponse & { error?: string };
+      if (!res.ok) {
+        setAutoFix({
+          explanation: json.error ?? "L'auto-correction a échoué.",
+          changes: [],
+          requiresUser: [],
+          autoFixable: false,
+          applied: false,
+          relaunch: { listingId: null, versionId: null, inputs: {} },
+        });
+        return;
+      }
+      setAutoFix(json);
+      // Si une correction de plan a été appliquée, relancer sur la version corrigée.
+      if (json.applied && json.relaunch.versionId && data) {
+        setData({ ...data, relaunch: { ...data.relaunch, versionId: json.relaunch.versionId } });
+      }
+    } finally {
+      setAutoFixing(false);
     }
   }
 
@@ -167,6 +211,72 @@ export function RunDebugAssistant({ runId, status }: Props) {
         ) : (
           <>
             <p className="text-sm text-ink">{data.summary}</p>
+
+            <div className="rounded-xl border border-accent/30 bg-accent/5 p-3">
+              <div className="flex items-start gap-2">
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-ink">Réparation automatique par l&apos;IA</p>
+                  <p className="mt-0.5 text-xs text-ink-soft">
+                    L&apos;IA lit les logs, corrige le plan quand c&apos;est possible et prépare le relancement.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={runAutoFix}
+                    disabled={autoFixing}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {autoFixing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Wrench className="h-4 w-4" />
+                    )}
+                    {autoFixing ? "Diagnostic & correction…" : "Réparer avec l'IA"}
+                  </button>
+
+                  {autoFix && (
+                    <div className="mt-3 space-y-2">
+                      <p className="whitespace-pre-line text-xs text-ink">{autoFix.explanation}</p>
+
+                      {autoFix.applied && (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                          <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-800">
+                            <Check className="h-3.5 w-3.5" /> Plan corrigé et enregistré.
+                          </p>
+                          {autoFix.changes.length > 0 && (
+                            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-emerald-900">
+                              {autoFix.changes.map((c, i) => (
+                                <li key={i}>{c}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+
+                      {!autoFix.applied && autoFix.blockedReason && (
+                        <p className="text-xs text-amber-700">{autoFix.blockedReason}</p>
+                      )}
+
+                      {autoFix.requiresUser.length > 0 && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2">
+                          <p className="text-xs font-medium text-amber-800">
+                            À faire de votre côté (l&apos;IA ne peut pas le faire seule) :
+                          </p>
+                          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-amber-900">
+                            {autoFix.requiresUser.map((r, i) => (
+                              <li key={i}>
+                                {r.connector ? `${r.connector} — ` : ""}
+                                {r.detail}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {data.fixes.map((fix) => (
               <div
