@@ -37,6 +37,10 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
     .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents, resume_from_step, output, steps_completed")
     .eq("status", "pending")
     .eq("cancel_requested", false)
+    // Les runs d'aperçu (builder) n'ont pas de version persistée → non reprenables
+    // par le worker (il ne peut pas charger le manifeste). Le builder les reprend
+    // en direct. On les ignore ici pour ne pas les marquer « failed » à tort.
+    .not("version_id", "is", null)
     .order("created_at", { ascending: true })
     .limit(limit);
 

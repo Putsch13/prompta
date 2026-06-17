@@ -474,19 +474,66 @@ export function CreateWizard({ categories }: Props) {
   async function handleTestApprove(approvalId: string, modifiedContent?: string) {
     if (!testResult?.runId) return;
     setTestRunning(true);
-    const res = await fetch(`/api/run/agent/${testResult.runId}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ approvalId, decision: "approved", modifiedContent }),
-    });
-    if (!res.ok) {
-      setTestResult((prev) => ({ ...prev, status: "failed", error: "Approbation échouée" }));
+    try {
+      // 1) Enregistre la décision : fusionne le contenu validé + fixe resume_from_step.
+      const decideRes = await fetch(`/api/run/agent/${testResult.runId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalId, decision: "approved", modifiedContent }),
+      });
+      const decideData = await decideRes.json().catch(() => ({}));
+      if (!decideRes.ok) {
+        setTestResult((prev) => ({ ...prev, status: "failed", error: decideData.error || "Approbation échouée" }));
+        return;
+      }
+      setTestApprovalDetails(null);
+
+      // 2) Reprise EN DIRECT du run d'aperçu (le worker ne reprend pas les
+      //    aperçus — pas de version persistée). On relit l'output fusionné puis
+      //    on relance le manifeste depuis l'étape suivante.
+      const runData = await fetch(`/api/run/agent/${testResult.runId}`).then((r) => r.json()).catch(() => ({}));
+      const resumeOutputs =
+        runData.output && typeof runData.output === "object" ? runData.output : {};
+      const resumeFromStep =
+        typeof decideData.resumeFromStep === "number"
+          ? decideData.resumeFromStep
+          : (testApprovalDetails?.stepIndex ?? 0) + 1;
+
+      const res = await fetch("/api/run/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          preview: true,
+          manifest: buildCurrentManifest(),
+          inputs: testInputs,
+          async: false,
+          dryRun: false,
+          fullDemo: true,
+          resumeFromStep,
+          resumeOutputs,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setTestResult((prev) => ({ ...prev, status: "failed", error: data.error || data.message || "Reprise échouée" }));
+        return;
+      }
+      setTestResult({
+        status: data.status,
+        output: data.output,
+        error: data.error,
+        stepsCompleted: data.stepsCompleted,
+        stepTrace: data.stepTrace,
+        runId: data.runId ?? testResult.runId,
+        approvalId: data.approvalId,
+      });
+      // Enchaîne une éventuelle approbation suivante.
+      if (data.status === "awaiting_approval" && data.runId) {
+        await pollTestRun(data.runId);
+      }
+    } finally {
       setTestRunning(false);
-      return;
     }
-    setTestApprovalDetails(null);
-    await pollTestRun(testResult.runId);
-    setTestRunning(false);
   }
 
   async function handleTestReject(approvalId: string) {

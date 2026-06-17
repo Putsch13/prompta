@@ -603,9 +603,21 @@ async function executeStep(
     }
 
     if (step.type === "approval") {
-      const payloadText = step.payloadTemplate
-        ? interpolate(step.payloadTemplate, vars)
-        : JSON.stringify(Object.fromEntries(Object.entries(vars).slice(0, 10)));
+      // Le contenu À VALIDER = template interpolé + contenu produit par l'étape
+      // amont (le rapport/email/message), pour que l'utilisateur voie vraiment
+      // ce qu'il approuve (et pas juste « Action : … »).
+      const interpolated = step.payloadTemplate
+        ? interpolate(step.payloadTemplate, vars).trim()
+        : "";
+      const upstream = (vars[`step_${stepIndex - 1}_output`] ?? "").trim();
+      const previewParts: string[] = [];
+      if (interpolated) previewParts.push(interpolated);
+      if (upstream && !interpolated.includes(upstream.slice(0, 80))) {
+        previewParts.push(`— Contenu à valider —\n${upstream}`);
+      }
+      const payloadText =
+        previewParts.join("\n\n") ||
+        JSON.stringify(Object.fromEntries(Object.entries(vars).slice(0, 10)));
       if (simulated || ctx.demoMode) {
         const preview = ctx.demoMode
           ? `[DÉMO — validation auto-approuvée]\n${payloadText.slice(0, 500)}`
@@ -632,6 +644,11 @@ async function executeStep(
 
     throw new Error("Étape inconnue");
   } catch (err) {
+    // "awaiting_approval" est un signal de PAUSE, pas une erreur : l'étape reste
+    // « en attente » (déjà loggée), on ne la marque PAS en échec.
+    if (err instanceof Error && err.message === "awaiting_approval") {
+      throw err;
+    }
     if (runId && stepDbId) {
       const errCode = extractErrorCode(err);
       const errMsg = err instanceof Error ? err.message : String(err);

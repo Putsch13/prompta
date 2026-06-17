@@ -43,6 +43,8 @@ export async function POST(request: NextRequest) {
     preview,
     manifest: previewManifest,
     fullDemo = false,
+    resumeFromStep,
+    resumeOutputs,
   } = body as {
     listingId?: string;
     versionId?: string;
@@ -52,6 +54,8 @@ export async function POST(request: NextRequest) {
     preview?: boolean;
     manifest?: unknown;
     fullDemo?: boolean;
+    resumeFromStep?: number;
+    resumeOutputs?: Record<string, string>;
   };
 
   const admin = createAdminClient();
@@ -124,6 +128,9 @@ export async function POST(request: NextRequest) {
       runId: previewRunId,
       dryRun: previewDryRun,
       demoMode: previewDryRun,
+      // Reprise après validation humaine dans le builder (run d'aperçu).
+      ...(typeof resumeFromStep === "number" ? { resumeFromStep } : {}),
+      ...(resumeOutputs ? { resumeOutputs } : {}),
     });
 
     if (previewRunId) {
