@@ -73,6 +73,8 @@ function fixForStep(s: FailedStepInfo): RunFix {
     case "invalid_credentials":
     case "gmail_forbidden":
     case "sheets_forbidden":
+    case "permission_denied":
+    case "insufficient_scopes":
       return {
         ...base,
         id: `fix-${stepIndex}`,
@@ -81,7 +83,7 @@ function fixForStep(s: FailedStepInfo): RunFix {
         retryable: false,
         title: connector ? `Reconnecter ${connector}` : "Reconnecter le service",
         detail:
-          "L'accès est insuffisant ou expiré (token/permissions). Reconnectez le service en autorisant les accès demandés, puis testez l'accès.",
+          "L'accès est insuffisant ou expiré (token/permissions). Reconnectez le service en autorisant TOUS les accès demandés (lecture + écriture), puis testez l'accès. Astuce : si la feuille a été créée par un autre compte, partagez-la aussi avec le compte connecté.",
       };
     case "sheets_not_found":
       return {

@@ -39,6 +39,16 @@ test("invalid_credentials → reconnect", () => {
   assert.equal(fixes[0].connector, "googlesheets");
 });
 
+test("permission_denied (403) → reconnect bloquant, PAS un retry temporaire", () => {
+  const { fixes, summary } = diagnoseFailedSteps([
+    { stepIndex: 2, errorCode: "permission_denied", connector: "google_sheets" },
+  ]);
+  assert.equal(fixes[0].kind, "reconnect");
+  assert.equal(fixes[0].severity, "blocker");
+  assert.equal(fixes[0].retryable, false);
+  assert.match(summary, /bloquant/);
+});
+
 test("rate_limit/timeout → retry (warning, retryable)", () => {
   const { fixes, summary } = diagnoseFailedSteps([
     { stepIndex: 0, errorCode: "timeout" },
