@@ -200,7 +200,9 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
           status: result.status,
           steps_completed: result.stepsCompleted,
           output: result.output,
-          error_message: result.error ?? null,
+          // En attente d'approbation = pas une erreur : on n'enregistre pas de
+          // message d'erreur (sinon le run paraît échoué dans l'UI).
+          error_message: result.status === "awaiting_approval" ? null : (result.error ?? null),
           heartbeat_at: new Date().toISOString(),
         })
         .eq("id", claimed.id);

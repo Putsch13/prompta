@@ -35,6 +35,27 @@ export async function createPendingApproval(params: {
   return data.id;
 }
 
+/** outputKey de l'étape d'approbation (pour câbler le contenu validé aux étapes aval). */
+async function approvalStepOutputKey(
+  versionId: string | null | undefined,
+  stepIndex: number,
+): Promise<string | undefined> {
+  if (!versionId) return undefined;
+  try {
+    const { data: version } = await db()
+      .from("listing_versions")
+      .select("env, prompt_body")
+      .eq("id", versionId)
+      .single();
+    const { parseListingEnv } = await import("@/lib/agent/env");
+    const parsed = parseListingEnv(version?.env, version?.prompt_body);
+    const step = parsed?.manifest.steps?.[stepIndex];
+    return step && "outputKey" in step ? (step.outputKey as string | undefined) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function decideApproval(
   approvalId: string,
   userId: string,
@@ -78,7 +99,7 @@ export async function decideApproval(
 
   const { data: runRow } = await db()
     .from("listing_agent_runs")
-    .select("output, steps_completed")
+    .select("output, steps_completed, version_id")
     .eq("id", approval.run_id)
     .single();
 
@@ -88,11 +109,18 @@ export async function decideApproval(
       : {};
   const stepIndex = approval.step_index ?? 0;
   const stepKey = `step_${stepIndex}_output`;
-  const mergedOutput = {
+  const mergedOutput: Record<string, string> = {
     ...priorOutput,
     [stepKey]: approvedContent,
+    [`step_${stepIndex}`]: approvedContent,
     [`approval_${stepIndex}`]: approvedContent,
   };
+
+  // Le contenu validé doit aussi être disponible sous l'outputKey de l'étape
+  // d'approbation, sinon une étape aval qui référence {{outputKey}} ne le
+  // retrouve pas à la reprise.
+  const approvalOutputKey = await approvalStepOutputKey(runRow?.version_id, stepIndex);
+  if (approvalOutputKey) mergedOutput[approvalOutputKey] = approvedContent;
 
   await db()
     .from("agent_approvals")

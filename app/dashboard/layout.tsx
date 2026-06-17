@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { DashboardNav } from "@/components/DashboardNav";
+import { ApprovalNotifier } from "@/components/run/ApprovalNotifier";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default function DashboardLayout({
           <div className="min-w-0 flex-1">{children}</div>
         </div>
       </div>
+      <ApprovalNotifier />
     </div>
   );
 }
