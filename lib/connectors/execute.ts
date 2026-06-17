@@ -19,6 +19,15 @@ function isNativeAction(actionId: string): boolean {
   return actionId.includes(".") && actionId === actionId.toLowerCase();
 }
 
+/**
+ * Ressemble à un vrai slug d'outil Composio (UPPER_SNAKE, ex. CANVA_CREATE_DESIGN) ?
+ * Un « verbe » nu généré par le builder (ex. create_design) n'en est PAS un et
+ * doit être résolu via le catalogue, sinon Composio renvoie « Unable to retrieve tool ».
+ */
+function looksLikeComposioSlug(actionId: string): boolean {
+  return /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$/.test(actionId);
+}
+
 async function runComposio(
   toolSlug: string,
   userId: string,
@@ -124,15 +133,27 @@ export async function executeConnectorAction(
   return withRetry(actionId, async () => {
     const composioOn = isComposioEnabled();
 
-    // 1) Action déjà au format Composio (UPPER_SNAKE) → exécution Composio directe.
-    //    Le toolkit vient du connecteur de l'étape (slug du catalogue) si dispo,
-    //    sinon on le déduit du préfixe du slug (ex. GOOGLESHEETS_… → googlesheets).
-    if (composioOn && !isNativeAction(actionId)) {
-      // Normalise le slug toolkit (ex. google_drive → googledrive) pour éviter
-      // que la classe de bug Drive se reproduise sur n'importe quel connecteur.
+    // 1) Action déjà au format Composio (UPPER_SNAKE, ex. CANVA_CREATE_DESIGN) →
+    //    exécution Composio directe. Le toolkit vient du connecteur de l'étape si
+    //    dispo, sinon du préfixe du slug (ex. GOOGLESHEETS_… → googlesheets).
+    if (composioOn && looksLikeComposioSlug(actionId)) {
       const rawToolkit = ctx.connector?.trim() || actionId.split("_")[0]?.toLowerCase() || "";
       const toolkitSlug = rawToolkit ? toComposioToolkitSlug(rawToolkit) : undefined;
-      return runComposio(actionId, ctx.userId, params, toolkitSlug);
+      const expectedKeys = toolkitSlug ? await getComposioToolInputKeys(toolkitSlug, actionId) : [];
+      return runComposio(actionId, ctx.userId, alignArgKeysToSchema(params, expectedKeys), toolkitSlug);
+    }
+
+    // 1bis) « Verbe » nu généré par le builder (ex. create_design, send_message) :
+    //       ni slug Composio valide, ni action native dotée. On résout le bon
+    //       outil via le catalogue du toolkit au lieu d'envoyer un slug invalide.
+    if (composioOn && !isNativeAction(actionId)) {
+      const connectorId = ctx.connector?.trim() || actionId.split(/[._]/)[0] || "";
+      const toolkit = toComposioToolkitSlug(connectorId);
+      const result = await runComposioDynamic(connectorId, toolkit, actionId, ctx.userId, params);
+      if (result) return result;
+      throw new Error(
+        `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit} via Composio. Ouvrez l'étape dans le builder et choisissez une action existante.`,
+      );
     }
 
     // 0bis) Action au format natif (connector.verb) MAIS connecteur Composio-only
