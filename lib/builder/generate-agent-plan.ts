@@ -271,6 +271,8 @@ Règles strictes :
 18. Tout step doit être atteignable depuis entryStepId. Aucun nœud orphelin.
 19. Chaque variable "type" doit être exactement : text | number | boolean | json | file | url | email (pas "string", "textarea", etc.).
 20. "triggers" : tableau de { "type": "manual" | "schedule" | "webhook" | "email" | "app_event" } uniquement — pas "cron", "form", "api", etc. Par défaut [{ "type": "manual" }].
+21. INTENTION UTILISATEUR (important) : tout ce qui dépend du choix de l'utilisateur au lancement DOIT être une variable d'entrée "required" (déclarée dans "variables" et référencée via {{snake_case}}), JAMAIS deviné ni codé en dur. Exemples : ce qu'il faut analyser, le sujet/thème, le ton, les critères, le destinataire, la ressource ciblée (feuille/dossier précis). Un agent d'analyse/rédaction qui tournerait sans rien demander à l'utilisateur est presque toujours une erreur de conception — expose au moins une variable d'intention. N'invente pas de feuille/fichier au hasard : si l'utilisateur doit choisir la ressource, déclare une variable de type resource.
+22. APPROBATION HUMAINE : avant toute action irréversible ou externe sensible (envoi d'email, publication, écriture/partage de fichier, message), ajoute une étape "approval" en amont (requiresApproval true) pour que l'utilisateur valide le contenu avant exécution.
 
 Catalogue d'actions disponibles :
 ${COMPOSIO_CATALOG_COMPRESSED}
