@@ -77,3 +77,22 @@ test("pickToolSlug — create_file sans indice texte ne choisit pas la métadonn
   });
   assert.notEqual(slug, "GOOGLEDRIVE_CREATE_FILE");
 });
+
+// Verbe nu sans connecteur (ex. canva create_design) — cas du bug en prod.
+function canvaTool(slug: string): ComposioToolEntry {
+  return { slug, name: slug, toolkit: "canva", inputs: [] };
+}
+
+test("pickToolSlug — create_design (verbe nu) → CANVA_CREATE_DESIGN", () => {
+  const tools = [
+    canvaTool("CANVA_CREATE_DESIGN"),
+    canvaTool("CANVA_LIST_DESIGNS"),
+    canvaTool("CANVA_GET_DESIGN"),
+  ];
+  assert.equal(pickToolSlug(tools, "canva", "create_design"), "CANVA_CREATE_DESIGN");
+});
+
+test("pickToolSlug — read_design ne choisit jamais DELETE_DESIGN", () => {
+  const tools = [canvaTool("CANVA_DELETE_DESIGN"), canvaTool("CANVA_GET_DESIGN")];
+  assert.equal(pickToolSlug(tools, "canva", "read_design"), "CANVA_GET_DESIGN");
+});
