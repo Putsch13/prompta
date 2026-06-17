@@ -2,9 +2,35 @@ import type { AgentManifest } from "@/lib/agent/schema";
 import { extractRunResourceFields } from "@/lib/connectors/extract-run-resources";
 
 export interface RunResourceIssue {
-  code: "missing_resource";
+  code: "missing_resource" | "missing_input";
   message: string;
   fieldId: string;
+}
+
+/**
+ * Bloque un run réel si une variable d'entrée REQUISE (texte libre, non-ressource)
+ * n'est pas renseignée. Sans ça, l'agent partait avec des variables vides
+ * (ex. requête Drive vide → 400) sans rien demander à l'utilisateur.
+ */
+export function validateRequiredInputs(
+  manifest: AgentManifest,
+  inputs: Record<string, string>,
+): RunResourceIssue[] {
+  const issues: RunResourceIssue[] = [];
+  for (const input of manifest.inputs ?? []) {
+    if (!input.required) continue;
+    // Les ressources (connecteur) sont gérées par validateRunResourcesForExecution.
+    if (input.connectorId || input.paramKey) continue;
+    const val = inputs[input.key]?.trim();
+    if (!val) {
+      issues.push({
+        code: "missing_input",
+        fieldId: input.key,
+        message: `Renseignez : ${input.label}`,
+      });
+    }
+  }
+  return issues;
 }
 
 /** Extrait les ressources des inputs run et normalise les clés « stepIndex:paramKey ». */

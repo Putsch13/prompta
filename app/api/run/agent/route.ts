@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
   const {
     buildRunResourcesFromInputs,
     validateRunResourcesForExecution,
+    validateRequiredInputs,
   } = await import("@/lib/agent/build-run-resources");
 
   function prepareRunContext(manifest: import("@/lib/agent/schema").AgentManifest, rawInputs: Record<string, string>) {
@@ -76,7 +77,10 @@ export async function POST(request: NextRequest) {
     // fullDemo conserve sa sémantique « persister le run en base ».
     const previewDryRun = dryRun === true;
     if (!previewDryRun) {
-      const resourceIssues = validateRunResourcesForExecution(parsed.data, inputs);
+      const resourceIssues = [
+        ...validateRunResourcesForExecution(parsed.data, inputs),
+        ...validateRequiredInputs(parsed.data, inputs),
+      ];
       if (resourceIssues.length > 0) {
         return NextResponse.json(
           {
@@ -278,7 +282,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (!dryRun) {
-    const resourceIssues = validateRunResourcesForExecution(parsedEnv.manifest, inputs);
+    const resourceIssues = [
+      ...validateRunResourcesForExecution(parsedEnv.manifest, inputs),
+      ...validateRequiredInputs(parsedEnv.manifest, inputs),
+    ];
     if (resourceIssues.length > 0) {
       return NextResponse.json(
         {

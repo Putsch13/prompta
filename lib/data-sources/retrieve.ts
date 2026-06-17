@@ -63,6 +63,17 @@ export async function retrieveFromSource(params: RetrieveParams): Promise<Retrie
         throw new Error(`Connectez ${params.source} avant de récupérer des données`);
       }
 
+      // Garde-fou : une requête vide ou un placeholder non résolu provoque un
+      // 400 cryptique côté provider (ex. Google Drive « Bad Request »). On
+      // remonte un message actionnable à la place.
+      const q = params.query?.trim() ?? "";
+      if (!q || q.includes("{{")) {
+        throw new Error(
+          `unresolved_placeholder: La requête de recherche ${params.source} est vide ou non renseignée. ` +
+            `Renseignez la variable de recherche (mot-clé / nom de fichier) au lancement de l'agent.`,
+        );
+      }
+
       const actionMap: Record<string, string> = {
         google_sheets: "GOOGLESHEETS_SEARCH_SPREADSHEETS",
         notion: "NOTION_SEARCH_NOTION_PAGE",
