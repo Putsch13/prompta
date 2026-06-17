@@ -208,11 +208,28 @@ export function deriveManifestInputsFromSteps(
   }));
 }
 
-/** Champs run dérivés du graphe builder (source unique pour envFields). */
+/** Mappe le type de variable déclarée (plan) vers un type de champ env. */
+function declaredVarType(t?: string): EnvFieldInput["type"] {
+  if (t === "number") return "number";
+  if (t === "file") return "file";
+  if (t === "textarea") return "textarea";
+  return "text"; // text | url | email | json | boolean → champ texte
+}
+
+/**
+ * Champs run dérivés du graphe builder (source unique pour envFields).
+ *
+ * On combine DEUX sources :
+ *  1. les placeholders effectivement utilisés par les steps (contrat) ;
+ *  2. les variables DÉCLARÉES dans le plan (graph.meta.variables) — même si un
+ *     step ne les référence pas encore. Sans (2), un plan qui déclare « quoi
+ *     analyser / destinataire / ton » mais oublie de câbler le placeholder ne
+ *     demandait RIEN à l'utilisateur → l'agent partait avec des champs vides.
+ */
 export function graphRunInputs(graph: PlanGraph, defaultModel = "gpt-5.4"): EnvFieldInput[] {
   const steps = graphToSteps(graph, defaultModel);
   const asked = askedInputs(buildContract(steps));
-  return asked.map((needed) => ({
+  const fields: EnvFieldInput[] = asked.map((needed) => ({
     key: needed.key,
     label: needed.label,
     required: needed.required,
@@ -221,4 +238,19 @@ export function graphRunInputs(graph: PlanGraph, defaultModel = "gpt-5.4"): EnvF
     connectorId: needed.connectorParam?.connector,
     paramKey: needed.connectorParam?.key,
   }));
+
+  const seen = new Set(fields.map((f) => f.key));
+  for (const v of graph.meta?.variables ?? []) {
+    if (!v?.key || seen.has(v.key) || isFakeVariable(v.key)) continue;
+    seen.add(v.key);
+    fields.push({
+      key: v.key,
+      label: v.label || keyToLabel(v.key),
+      required: v.required !== false,
+      type: declaredVarType(v.type),
+      help: v.help,
+    });
+  }
+
+  return fields;
 }
