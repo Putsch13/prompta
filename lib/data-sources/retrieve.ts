@@ -27,6 +27,16 @@ export interface RetrieveResult {
   sources: { type: string; label: string }[];
 }
 
+/** Extrait la 1re URL http(s) d'un texte (tolère une query en phrase). */
+export function extractFirstUrl(text: string): string | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  // Déjà une URL nue ?
+  if (/^https?:\/\/\S+$/i.test(trimmed)) return trimmed.replace(/[).,;]+$/, "");
+  const match = trimmed.match(/https?:\/\/[^\s<>"')]+/i);
+  return match ? match[0].replace(/[).,;]+$/, "") : null;
+}
+
 export async function retrieveFromSource(params: RetrieveParams): Promise<RetrieveResult> {
   const max = params.maxResults ?? 5;
   const sources: RetrieveResult["sources"] = [];
@@ -45,8 +55,17 @@ export async function retrieveFromSource(params: RetrieveParams): Promise<Retrie
     }
 
     case "url": {
-      const content = await httpFetch(params.query);
-      sources.push({ type: "url", label: params.query });
+      // La query peut être une phrase (« Extraire … depuis https://… pour … »).
+      // On en extrait la 1re URL http(s) plutôt que de parser tout le texte.
+      const url = extractFirstUrl(params.query);
+      if (!url) {
+        throw new Error(
+          `unresolved_placeholder: Aucune URL valide trouvée dans la requête de l'étape « ${params.source} ». ` +
+            `Fournissez une URL complète (https://…).`,
+        );
+      }
+      const content = await httpFetch(url);
+      sources.push({ type: "url", label: url });
       return { content: content.slice(0, 12000), sources };
     }
 
