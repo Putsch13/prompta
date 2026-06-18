@@ -16,9 +16,31 @@ const ALLOWED_MIME = new Set([
   "text/markdown",
   "application/pdf",
   "application/json",
+  // Word
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/msword",
+  // Excel
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  // PowerPoint
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-powerpoint",
+  // OpenDocument
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/vnd.oasis.opendocument.presentation",
 ]);
+
+/** Extensions acceptées (filet quand le mime-type est absent/générique). */
+const ALLOWED_EXT = new Set([
+  "txt", "csv", "md", "json", "pdf",
+  "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+  "odt", "ods", "odp",
+]);
+
+function fileExt(name: string): string {
+  return name.split(".").pop()?.toLowerCase() ?? "";
+}
 
 export async function listUserDocuments(userId: string): Promise<UserDocument[]> {
   const admin = createAdminClient();
@@ -37,8 +59,14 @@ export async function uploadUserDocument(
   if (file.size > MAX_DOC_BYTES) {
     throw new Error("Fichier trop volumineux (max 10 Mo).");
   }
-  if (file.type && !ALLOWED_MIME.has(file.type) && !file.type.startsWith("text/")) {
-    throw new Error("Type de fichier non supporté (PDF, TXT, CSV, MD, JSON, DOCX).");
+  const typeOk =
+    (file.type && (ALLOWED_MIME.has(file.type) || file.type.startsWith("text/"))) ||
+    ALLOWED_EXT.has(fileExt(file.name));
+  if (!typeOk) {
+    throw new Error(
+      "Type de fichier non supporté. Formats acceptés : PDF, Word (.doc/.docx), " +
+        "Excel (.xls/.xlsx), PowerPoint (.ppt/.pptx), OpenDocument, TXT, CSV, MD, JSON.",
+    );
   }
 
   const admin = createAdminClient();
@@ -101,12 +129,32 @@ export async function getDocumentText(userId: string, documentId: string): Promi
   if (error || !blob) throw new Error("Impossible de lire le document");
 
   const buf = Buffer.from(await blob.arrayBuffer());
+  const ext = fileExt(doc.name);
+  const mime = doc.mime_type ?? "";
 
-  if (doc.mime_type === "application/pdf") {
-    return `[Document PDF: ${doc.name} — ${buf.length} octets. Extraction texte PDF à brancher si besoin.]`;
+  // Formats texte → lecture directe.
+  const isTextLike =
+    mime.startsWith("text/") ||
+    mime === "application/json" ||
+    ["txt", "csv", "md", "json"].includes(ext);
+  if (isTextLike) {
+    return buf.toString("utf-8").slice(0, 200_000);
   }
 
-  return buf.toString("utf-8").slice(0, 120_000);
+  // Formats binaires (PDF, Word, Excel, PowerPoint, OpenDocument) → extraction
+  // de texte via officeparser (détection par magic bytes).
+  try {
+    const { parseOffice } = await import("officeparser");
+    const ast = await parseOffice(buf);
+    const text = ast.toText().trim();
+    if (text) return text.slice(0, 200_000);
+    return `[Document « ${doc.name} » : aucun texte extractible (peut-être un scan/image).]`;
+  } catch (err) {
+    console.error("[documents] extraction échouée", { name: doc.name, mime, err: err instanceof Error ? err.message : err });
+    throw new Error(
+      `Impossible d'extraire le texte de « ${doc.name} ». Format non lisible ou fichier corrompu.`,
+    );
+  }
 }
 
 /** Résout document_id / {{document}} depuis les inputs agent. */

@@ -95,7 +95,7 @@ export function KnowledgeBase() {
             type="file"
             onChange={onFile}
             className="hidden"
-            accept=".pdf,.txt,.md,.docx,.csv,.json"
+            accept=".pdf,.txt,.md,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp"
           />
 
           {docs.length > 0 && (

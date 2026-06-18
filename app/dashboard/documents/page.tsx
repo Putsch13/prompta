@@ -73,7 +73,7 @@ export default function DocumentsPage() {
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.txt,.csv,.md,.json,.doc,.docx,text/*"
+          accept=".pdf,.txt,.csv,.md,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,text/*"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
