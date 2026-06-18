@@ -243,7 +243,14 @@ export async function runCopilotTurn(opts: {
     try {
       newPlan = parseGeneratedAgentPlan(raw.plan);
       changedIds = diffPlanIds(plan, newPlan);
-    } catch {
+    } catch (err) {
+      // Le copilote a renvoyé un plan mais il n'a pas passé la validation —
+      // on le trace (ne plus l'avaler silencieusement : c'était la cause des
+      // « il pose des questions mais n'ajoute jamais le nœud »).
+      console.error(
+        "[copilot] plan renvoyé invalide (nœud non ajouté) :",
+        err instanceof Error ? err.message : err,
+      );
       newPlan = undefined;
     }
   }

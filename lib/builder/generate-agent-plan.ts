@@ -140,6 +140,29 @@ export function coerceGeneratedPlanRaw(raw: unknown): unknown {
 
   plan.triggers = normalizeTriggers(plan.triggers);
 
+  // Répare les steps incomplets (souvent un nœud AJOUTÉ par le copilote sans
+  // tous les champs requis) pour qu'ils ne fassent PAS échouer tout le plan.
+  if (Array.isArray(plan.steps)) {
+    const usedIds = new Set<string>();
+    plan.steps = plan.steps.map((s, i) => {
+      if (!s || typeof s !== "object") return s;
+      const step = { ...(s as Record<string, unknown>) };
+      // id unique obligatoire.
+      let id = typeof step.id === "string" && step.id.trim() ? step.id.trim() : `step_${i + 1}`;
+      while (usedIds.has(id)) id = `${id}_${i + 1}`;
+      usedIds.add(id);
+      step.id = id;
+      if (typeof step.type !== "string") step.type = "llm";
+      if (typeof step.name !== "string" || !step.name.trim()) step.name = id.replace(/_/g, " ");
+      if (typeof step.description !== "string") step.description = "";
+      // outputKey requis : par défaut dérivé de l'id.
+      if (typeof step.outputKey !== "string" || !step.outputKey.trim()) {
+        step.outputKey = `${id}_output`;
+      }
+      return step;
+    });
+  }
+
   return plan;
 }
 
@@ -188,7 +211,7 @@ export const GeneratedAgentPlanSchema = z.object({
     requiresApproval: z.boolean().default(false),
     next: z.array(z.string()).optional(),
     branchLabel: z.string().optional(),
-  })).min(1).max(15),
+  })).min(1).max(40),
   triggers: z.array(z.object({
     type: z.preprocess(
       (val) => normalizePlanTriggerType(val),
