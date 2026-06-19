@@ -141,8 +141,32 @@ export async function getDocumentText(userId: string, documentId: string): Promi
     return buf.toString("utf-8").slice(0, 200_000);
   }
 
-  // Formats binaires (PDF, Word, Excel, PowerPoint, OpenDocument) → extraction
-  // de texte via officeparser (détection par magic bytes).
+  // Tableurs (Excel/ODS) → SheetJS, bien plus tolérant qu'officeparser
+  // (gère .xls binaire legacy, .xlsx, .ods, exports Google).
+  const isSpreadsheet =
+    ["xls", "xlsx", "xlsm", "xlsb", "ods"].includes(ext) ||
+    mime.includes("spreadsheet") ||
+    mime.includes("ms-excel");
+  if (isSpreadsheet) {
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(buf, { type: "buffer" });
+      const parts: string[] = [];
+      for (const name of wb.SheetNames) {
+        const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name]);
+        if (csv.trim()) parts.push(`# Feuille : ${name}\n${csv}`);
+      }
+      const text = parts.join("\n\n").trim();
+      if (text) return text.slice(0, 200_000);
+      return `[Classeur « ${doc.name} » : aucune donnée lisible.]`;
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error("[documents] extraction Excel échouée", { name: doc.name, mime, reason });
+      throw new Error(`Impossible de lire le classeur « ${doc.name} » : ${reason.slice(0, 200)}`);
+    }
+  }
+
+  // Autres formats binaires (PDF, Word, PowerPoint, OpenDocument) → officeparser.
   try {
     const { parseOffice } = await import("officeparser");
     const ast = await parseOffice(buf);
@@ -150,9 +174,10 @@ export async function getDocumentText(userId: string, documentId: string): Promi
     if (text) return text.slice(0, 200_000);
     return `[Document « ${doc.name} » : aucun texte extractible (peut-être un scan/image).]`;
   } catch (err) {
-    console.error("[documents] extraction échouée", { name: doc.name, mime, err: err instanceof Error ? err.message : err });
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error("[documents] extraction échouée", { name: doc.name, mime, reason });
     throw new Error(
-      `Impossible d'extraire le texte de « ${doc.name} ». Format non lisible ou fichier corrompu.`,
+      `Impossible d'extraire le texte de « ${doc.name} » : ${reason.slice(0, 200)}`,
     );
   }
 }
