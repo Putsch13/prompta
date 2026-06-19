@@ -93,6 +93,24 @@ export async function retrieveFromSource(params: RetrieveParams): Promise<Retrie
         );
       }
 
+      // Google Sheets : si la requête contient l'ID/URL d'une feuille précise,
+      // on LIT directement ses valeurs (scope Sheets seul) au lieu de
+      // SEARCH_SPREADSHEETS qui cherche dans Drive → exige le scope Drive et
+      // provoque sinon un 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT.
+      if (params.source === "google_sheets") {
+        const { extractResourceId } = await import("@/lib/connectors/extract-resource-id");
+        const fromUrl = extractFirstUrl(q);
+        const candidate = (fromUrl ? extractResourceId(fromUrl) : extractResourceId(q)).trim();
+        if (/^[a-zA-Z0-9_-]{20,}$/.test(candidate)) {
+          const valuesResult = await executeComposioTool("GOOGLESHEETS_VALUES_GET", params.userId, {
+            spreadsheet_id: candidate,
+            range: "A:Z",
+          });
+          sources.push({ type: "google_sheets", label: candidate });
+          return { content: valuesResult.output.slice(0, 12000), sources };
+        }
+      }
+
       const actionMap: Record<string, string> = {
         google_sheets: "GOOGLESHEETS_SEARCH_SPREADSHEETS",
         notion: "NOTION_SEARCH_NOTION_PAGE",
