@@ -181,9 +181,11 @@ export async function listComposioTools(toolkitSlug: string): Promise<ComposioTo
   if (cached && now - cached.at < CACHE_MS) return cached.items;
 
   const composio = getComposioClient();
+  // limit 100 tronquait les gros toolkits (GitHub, HubSpot… : centaines d'outils)
+  // → actions légitimes déclarées « introuvables ».
   const tools = await composio.tools.getRawComposioTools({
     toolkits: [toolkitSlug],
-    limit: 100,
+    limit: 500,
   });
 
   const items: ComposioToolEntry[] = (tools ?? []).map((t) => ({

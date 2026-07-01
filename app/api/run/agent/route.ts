@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -140,7 +140,8 @@ export async function POST(request: NextRequest) {
           status: result.status,
           steps_completed: result.stepsCompleted,
           output: result.output,
-          error_message: result.error ?? null,
+          // Pause d'approbation ≠ échec : ne pas afficher d'erreur dans l'UI.
+          error_message: result.status === "awaiting_approval" ? null : (result.error ?? null),
         })
         .eq("id", previewRunId);
     }
@@ -416,7 +417,9 @@ export async function POST(request: NextRequest) {
   if (billing.usedCredits && agentRun?.id) {
     if (result.status === "completed" && result.usage) {
       await settleAgentRunCredits(user.id, agentRun.id, { steps: result.usage }, billing.estimatedMax);
-    } else {
+    } else if (result.status !== "awaiting_approval") {
+      // awaiting_approval = pause : le hold reste posé, il sera régularisé
+      // à la reprise par le worker (même logique que process-pending-runs).
       await releaseAgentRunCredits(user.id, agentRun.id, billing.estimatedMax);
     }
   }
@@ -427,7 +430,9 @@ export async function POST(request: NextRequest) {
       status: result.status,
       steps_completed: result.stepsCompleted,
       output: result.output,
-      error_message: result.error ?? null,
+      // En attente d'approbation = pas une erreur : pas de message d'erreur
+      // (sinon le run paraît échoué dans l'UI).
+      error_message: result.status === "awaiting_approval" ? null : (result.error ?? null),
       heartbeat_at: new Date().toISOString(),
     })
     .eq("id", agentRun?.id ?? "");

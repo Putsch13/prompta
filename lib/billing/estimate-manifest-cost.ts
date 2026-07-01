@@ -7,7 +7,13 @@ export function estimateMaxCostForManifest(manifest: AgentManifest): number {
   let total = COMPUTE_FLAT_CENTS;
   let toolCalls = 0;
 
-  for (const step of manifest.steps) {
+  // Les sous-étapes des branches parallèles coûtent aussi — les ignorer
+  // sous-estimait le hold de crédits.
+  const flatSteps = manifest.steps.flatMap((s) =>
+    s.type === "parallel" ? s.branches.flatMap((b) => b.steps) : [s],
+  );
+
+  for (const step of flatSteps) {
     if (step.type === "llm") {
       const { apiModel } = resolveModelOrDefault(step.model);
       const pricing = getModelPricing(apiModel);

@@ -144,15 +144,18 @@ export const AgentManifestSchema = z.object({
   connectors: z.array(z.string()).default([]),
   tools: z.array(z.string()).default([]),
   steps: z.array(AgentStepSchema).default([]),
+  // Défauts alignés sur computeManifestLimits (lib/builder/manifest.ts) et le
+  // plancher runtime de l'orchestrateur — les anciens défauts (60 s, 5 calls,
+  // 8 000 tokens, 50 Ko) faisaient échouer des agents valides.
   limits: z
     .object({
-      max_steps: z.number().default(10),
-      max_tokens: z.number().default(8000),
-      timeout_ms: z.number().default(60000),
-      max_tool_calls: z.number().default(5),
-      max_output_bytes: z.number().default(51200),
+      max_steps: z.number().default(20),
+      max_tokens: z.number().default(16000),
+      timeout_ms: z.number().default(180000),
+      max_tool_calls: z.number().default(10),
+      max_output_bytes: z.number().default(512000),
     })
-    .default({ max_steps: 10, max_tokens: 8000, timeout_ms: 60000, max_tool_calls: 5, max_output_bytes: 51200 }),
+    .default({ max_steps: 20, max_tokens: 16000, timeout_ms: 180000, max_tool_calls: 10, max_output_bytes: 512000 }),
   outputs: z.array(z.string()).default(["result"]),
   provisioning: z
     .object({

@@ -46,6 +46,7 @@ interface ConnectionRow {
   status: string;
   expires_at: string | null;
   access_token_enc: string | null;
+  refresh_token_enc: string | null;
   composio_account_id: string | null;
   provider: string | null;
   scopes: string[] | null;
@@ -75,7 +76,7 @@ export async function checkConnectorHealth(
   const { data: userConnections } = await admin
     .from("user_connections")
     .select(
-      "connector_id, status, expires_at, access_token_enc, composio_account_id, provider, scopes, account_email, account_name, workspace_name",
+      "connector_id, status, expires_at, access_token_enc, refresh_token_enc, composio_account_id, provider, scopes, account_email, account_name, workspace_name",
     )
     .eq("owner_id", userId);
 
@@ -101,12 +102,23 @@ export async function checkConnectorHealth(
     if (!connected) {
       const expired = matching.find((c) => c.status === "expired");
       if (expired) {
-        issues.push({
-          connectorId,
-          code: "expired",
-          message: `Le token ${label} a expiré. Reconnectez votre compte dans Connexions.`,
-          blocking: true,
-        });
+        // Un refresh token permet de raviver la connexion au lancement
+        // (getUserConnection le tente à l'exécution) : ne pas bloquer.
+        if (expired.refresh_token_enc) {
+          issues.push({
+            connectorId,
+            code: "expired",
+            message: `Le token ${label} a expiré — il sera rafraîchi automatiquement au lancement.`,
+            blocking: false,
+          });
+        } else {
+          issues.push({
+            connectorId,
+            code: "expired",
+            message: `Le token ${label} a expiré. Reconnectez votre compte dans Connexions.`,
+            blocking: true,
+          });
+        }
       } else {
         issues.push({
           connectorId,
@@ -130,12 +142,24 @@ export async function checkConnectorHealth(
     }
 
     if (connected.expires_at && new Date(connected.expires_at) < new Date()) {
-      issues.push({
-        connectorId,
-        code: "expired",
-        message: `Le token ${label} a expiré. Reconnectez votre compte.`,
-        blocking: true,
-      });
+      // Les access tokens OAuth (Google : 1 h) expirent en permanence — c'est
+      // NORMAL. Avec un refresh token, la connexion est ravivée à l'exécution :
+      // bloquer ici refusait des runs parfaitement lançables.
+      if (connected.refresh_token_enc) {
+        issues.push({
+          connectorId,
+          code: "expired",
+          message: `Le token ${label} sera rafraîchi automatiquement au lancement.`,
+          blocking: false,
+        });
+      } else {
+        issues.push({
+          connectorId,
+          code: "expired",
+          message: `Le token ${label} a expiré. Reconnectez votre compte.`,
+          blocking: true,
+        });
+      }
       continue;
     }
 

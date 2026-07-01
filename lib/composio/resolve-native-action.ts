@@ -159,7 +159,8 @@ export function pickToolSlug(
   return best && best.score >= 200 ? best.slug : null;
 }
 
-const resolveCache = new Map<string, string | null>();
+const resolveCache = new Map<string, { at: number; slug: string | null }>();
+const RESOLVE_CACHE_MS = 15 * 60 * 1000; // aligné sur le cache catalogue
 
 /**
  * Trouve le slug Composio le mieux assorti à `actionId` pour le toolkit du
@@ -174,16 +175,22 @@ export async function resolveComposioToolSlug(
   // La préférence d'écriture texte influe sur le choix → clé de cache distincte.
   const cacheKey = `${toolkit}::${actionId}::${opts.hasTextContent ? "txt" : "any"}`;
   const cached = resolveCache.get(cacheKey);
-  if (cached !== undefined) return cached;
+  if (cached && Date.now() - cached.at < RESOLVE_CACHE_MS) return cached.slug;
 
-  let tools: ComposioToolEntry[] = [];
+  let tools: ComposioToolEntry[];
   try {
     tools = await listComposioTools(toolkit);
-  } catch {
-    tools = [];
+  } catch (err) {
+    // Échec TRANSITOIRE du catalogue (réseau, rate-limit) : surtout ne pas le
+    // mettre en cache comme « action introuvable » (avant : un seul hoquet
+    // réseau rendait l'action indisponible jusqu'au redémarrage du serveur).
+    // Le [503] rend l'erreur retryable par withRetry côté exécution.
+    throw new Error(
+      `[503] Catalogue Composio momentanément indisponible (${err instanceof Error ? err.message : "erreur réseau"}) — réessayez.`,
+    );
   }
 
   const result = tools.length > 0 ? pickToolSlug(tools, toolkit, actionId, opts) : null;
-  resolveCache.set(cacheKey, result);
+  resolveCache.set(cacheKey, { at: Date.now(), slug: result });
   return result;
 }

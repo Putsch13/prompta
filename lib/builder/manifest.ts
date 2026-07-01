@@ -32,6 +32,37 @@ export interface BuildManifestParams {
 
 const LONG_TOOLS = new Set(["http_fetch", "file_read"]);
 
+/**
+ * Limites dimensionnées sur le contenu réel de l'agent.
+ * Les anciens plafonds fixes (5 tool calls, 60 s, 8 000 tokens cumulés, 50 Ko)
+ * faisaient échouer des agents pourtant valides construits dans le builder
+ * (jusqu'à 40 nœuds) : « Plafond atteint » au run alors que le build passait.
+ * Le coût, lui, est gardé par le hold de crédits (estimate-manifest-cost
+ * plafonne à 4 096 tokens de sortie par étape LLM, indépendamment d'ici).
+ */
+export function computeManifestLimits(steps: AgentStep[]): AgentManifest["limits"] {
+  const flat = steps.flatMap((s) =>
+    s.type === "parallel" ? s.branches.flatMap((b) => b.steps) : [s],
+  );
+  const llmCount = flat.filter((s) => s.type === "llm").length;
+  const toolActionCount = flat.filter(
+    (s) => s.type === "tool" || s.type === "action",
+  ).length;
+
+  return {
+    max_steps: Math.max(steps.length + 2, 10),
+    // Cumul entrée+sortie sur tout le run : les prompts embarquent les sorties
+    // des étapes amont (Sheets, docs…), 8 000 cumulés était intenable.
+    max_tokens: Math.max(16_000, llmCount * 8_000),
+    // ~45 s par étape (LLM lents + retries connecteur 1+3+9 s), borné à 5 min
+    // (aligné sur maxDuration=300 de la route sync ; le worker n'a pas de borne HTTP).
+    timeout_ms: Math.min(Math.max(120_000, flat.length * 45_000), 300_000),
+    // Chaque étape tool/action compte 1 appel + marge retries/reprises.
+    max_tool_calls: Math.max(10, toolActionCount * 2),
+    max_output_bytes: 512_000,
+  };
+}
+
 export function buildManifest(params: BuildManifestParams): AgentManifest {
   const model = params.defaultModel ?? "gpt-5.4";
   const toolsUsed = new Set<string>();
@@ -68,13 +99,7 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
     ]),
     tools: Array.from(toolsUsed),
     steps,
-    limits: {
-      max_steps: Math.max(steps.length + 2, 10),
-      max_tokens: 8000,
-      timeout_ms: steps.some((s) => s.type === "tool" && LONG_TOOLS.has(s.tool)) ? 120000 : 60000,
-      max_tool_calls: 5,
-      max_output_bytes: 51200,
-    },
+    limits: computeManifestLimits(steps),
     outputs: ["result"],
     provisioning:
       params.type === "prompt"

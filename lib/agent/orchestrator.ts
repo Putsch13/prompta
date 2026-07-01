@@ -362,6 +362,15 @@ async function executeStep(
         ctx.creatorId !== ctx.userId;
       const connUserId = useCreatorEnv ? ctx.creatorId! : ctx.userId;
       const conn = await getUserConnection(connUserId, step.connector);
+      // Sans connexion utilisable, ne pas appeler l'API du service avec un token
+      // undefined (401 cryptique) : message clair et actionnable tout de suite.
+      if (!conn && !simulated) {
+        throw new Error(
+          useCreatorEnv
+            ? `Le connecteur ${step.connector} du créateur de l'agent n'est plus connecté — le créateur doit le reconnecter.`
+            : `${step.connector} n'est pas connecté (ou la connexion a expiré sans pouvoir être rafraîchie). Reconnectez-le dans Connexions puis relancez.`,
+        );
+      }
       const params: Record<string, string> = {};
       for (const [k, v] of Object.entries(step.params)) {
         let raw = v;
@@ -747,9 +756,21 @@ export async function runAgent(
 
   const manifest: AgentManifest = parsed.data;
   const privileges = await getUserPrivileges(context.userId);
+  // Plancher runtime : les versions publiées avant le redimensionnement des
+  // limites (builder ≤ 2026-07) portent des plafonds intenables figés dans leur
+  // manifeste (60 s, 5 tool calls, 8 000 tokens cumulés, 50 Ko) qui faisaient
+  // échouer des runs valides. Le coût reste gardé par le hold de crédits.
+  const flooredLimits = {
+    ...manifest.limits,
+    max_steps: Math.max(manifest.limits.max_steps, manifest.steps.length + 2),
+    max_tokens: Math.max(manifest.limits.max_tokens, 16_000),
+    timeout_ms: Math.max(manifest.limits.timeout_ms ?? 60_000, 120_000),
+    max_tool_calls: Math.max(manifest.limits.max_tool_calls ?? 5, 10),
+    max_output_bytes: Math.max(manifest.limits.max_output_bytes ?? 51_200, 512_000),
+  };
   const effectiveLimits = privileges.unrestricted
-    ? { ...manifest.limits, ...UNRESTRICTED_LIMITS }
-    : manifest.limits;
+    ? { ...flooredLimits, ...UNRESTRICTED_LIMITS }
+    : flooredLimits;
   const manifestWithLimits = { ...manifest, limits: effectiveLimits };
 
   let runInputs = { ...context.inputs };
@@ -803,6 +824,11 @@ export async function runAgent(
     resolvedInterface,
   };
   let latestStepsCompleted = 0;
+  let latestOutputs: Record<string, string> = {};
+  // Signal d'arrêt coopératif : quand le timeout global a déjà fait échouer le
+  // run, la boucle abandonnée ne doit plus exécuter d'étape (actions externes
+  // fantômes) ni réécrire l'état d'un run déjà marqué failed.
+  let timedOut = false;
   const memoryEnabled = manifest.memory?.enabled ?? false;
   const startFromStep = context.resumeFromStep ?? 0;
   const resumeOutputs = context.resumeOutputs ?? {};
@@ -810,15 +836,13 @@ export async function runAgent(
   const run = async (): Promise<OrchestratorResult> => {
     const vars = { ...effectiveContext.inputs, ...resumeOutputs };
     const outputs: Record<string, string> = { ...resumeOutputs };
+    latestOutputs = outputs;
     const usageLog: StepUsage[] = [];
     const stepTrace: StepTraceEntry[] = [];
     let stepsCompleted = startFromStep;
     let tokensUsed = 0;
     let toolCalls = 0;
     let totalOutputBytes = 0;
-    const seenHashes = new Set<string>();
-    let lastOutputSig = "";
-    let repeatStreak = 0;
 
     const maxToolCalls = manifestWithLimits.limits.max_tool_calls ?? 5;
     const maxOutputBytes = manifestWithLimits.limits.max_output_bytes ?? 51200;
@@ -827,6 +851,12 @@ export async function runAgent(
       for (let i = startFromStep; i < manifestWithLimits.steps.length; i++) {
         const step = manifestWithLimits.steps[i];
         const stepStartedAt = Date.now();
+
+        // Timeout global déjà déclenché : le résultat « failed » a été renvoyé,
+        // on n'exécute plus d'étape (sinon actions externes fantômes).
+        if (timedOut) {
+          throw new Error("Timeout agent dépassé");
+        }
 
         // P0-2 : annulation coopérative — on s'arrête proprement entre 2 étapes.
         if (context.runId && !effectiveContext.dryRun && (await isCancelRequested(context.runId))) {
@@ -941,7 +971,7 @@ export async function runAgent(
           stepsCompleted++;
           latestStepsCompleted = stepsCompleted;
 
-          if (context.onProgress) {
+          if (context.onProgress && !timedOut) {
             await context.onProgress(stepsCompleted, { ...outputs });
           }
           continue;
@@ -977,46 +1007,11 @@ export async function runAgent(
           throw new Error("Plafond max_output_bytes atteint");
         }
 
-        if (!effectiveContext.dryRun) {
-          const sig = content.slice(0, 400);
-          if (sig.length > 0 && sig === lastOutputSig) {
-            repeatStreak++;
-          } else {
-            repeatStreak = 0;
-            lastOutputSig = sig;
-          }
-          if (repeatStreak >= 2) {
-            stepTrace.push({
-              stepIndex: i,
-              stepType: step.type,
-              label: describeStep(step, i),
-              status: "failed",
-              outputPreview: content.slice(0, 800),
-              durationMs: Date.now() - stepStartedAt,
-              model: step.type === "llm" ? step.model : usage?.model,
-              actionSlug: step.type === "action" ? step.action : undefined,
-            });
-            throw new Error(
-              `Boucle détectée à l'étape ${i + 1} (${describeStep(step, i)}) — 3 sorties identiques d'affilée`
-            );
-          }
-
-          const hash = `${describeStep(step, i)}:${content.slice(0, 120)}`;
-          if (seenHashes.has(hash)) {
-            stepTrace.push({
-              stepIndex: i,
-              stepType: step.type,
-              label: describeStep(step, i),
-              status: "failed",
-              outputPreview: content.slice(0, 800),
-              durationMs: Date.now() - stepStartedAt,
-            });
-            throw new Error(
-              `Boucle détectée à l'étape ${i + 1} (${describeStep(step, i)}) — même sortie qu'une étape précédente du même type`
-            );
-          }
-          seenHashes.add(hash);
-        }
+        // NOTE : l'ancienne « détection de boucle » (sorties identiques entre
+        // étapes du même type) a été retirée : un manifeste est une liste
+        // LINÉAIRE d'étapes exécutées une seule fois — aucune boucle possible —
+        // et le garde échouait des runs légitimes (deux envois Slack renvoient
+        // tous deux « ok », deux lectures d'une même feuille sont identiques).
 
         // Always set by index for backward compat
         vars[`step_${stepsCompleted}_output`] = content;
@@ -1047,7 +1042,7 @@ export async function runAgent(
             content.includes("[APERÇU"),
         });
 
-        if (context.onProgress) {
+        if (context.onProgress && !timedOut) {
           await context.onProgress(stepsCompleted, { ...outputs });
         }
       }
@@ -1115,9 +1110,13 @@ export async function runAgent(
   };
 
   const timeoutMs = manifestWithLimits.limits.timeout_ms ?? 60000;
-  const timeout = new Promise<OrchestratorResult>((_, reject) =>
-    setTimeout(() => reject(new Error("Timeout agent dépassé")), timeoutMs)
-  );
+  let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      reject(new Error("Timeout agent dépassé"));
+    }, timeoutMs);
+  });
 
   try {
     return await Promise.race([run(), timeout]);
@@ -1126,8 +1125,10 @@ export async function runAgent(
     return {
       status: "failed",
       stepsCompleted: latestStepsCompleted,
-      output: {},
+      output: latestOutputs,
       error: message,
     };
+  } finally {
+    if (timeoutTimer) clearTimeout(timeoutTimer);
   }
 }

@@ -1,10 +1,16 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
-import { connectorLookupIds } from "@/lib/connectors/resolve-id";
+import { connectionMatchesConnector, connectorLookupIds } from "@/lib/connectors/resolve-id";
 
 export interface ConnectionStatus {
   connectorId: string;
   status: "connected" | "disconnected" | "expired";
+  /**
+   * Vérité UNIQUE côté UI : la connexion peut servir un run maintenant.
+   * `connected`, ou `expired` avec refresh token (ravivée au lancement).
+   * Le masque de run / la page Connexions doivent lire CE champ, pas status.
+   */
+  usable: boolean;
   scopes?: string[];
   expiresAt?: string | null;
   provider?: "native" | "composio";
@@ -25,12 +31,47 @@ export interface ResolvedConnection {
   provider?: "native" | "composio";
 }
 
+interface ResolvableRow {
+  connector_id: string;
+  access_token_enc: string | null;
+  refresh_token_enc: string | null;
+  status: string;
+  expires_at: string | null;
+  provider: string | null;
+  composio_account_id: string | null;
+}
+
+/**
+ * Résout la connexion utilisable pour un connecteur.
+ *
+ * MÊME prédicat de matching que `checkConnectorHealth` (connectionMatchesConnector) :
+ * une connexion vue « connectée » par la porte de santé est GARANTIE trouvable ici
+ * (avant : la santé matchait en canonique large, la résolution en ids exacts —
+ * d'où des runs refusant une auth pourtant affichée verte).
+ *
+ * Un statut « expired » n'est PAS éliminatoire : si un refresh token existe on le
+ * tente (et on repasse la ligne en « connected » en cas de succès). Avant, une
+ * ligne marquée expired ne retentait plus jamais son refresh token valide.
+ */
 export async function getUserConnection(
   userId: string,
   connectorId: string
 ): Promise<ResolvedConnection | null> {
-  for (const id of connectorLookupIds(connectorId)) {
-    const conn = await getUserConnectionDirect(userId, id);
+  const { data } = await db()
+    .from("user_connections")
+    .select(
+      "connector_id, access_token_enc, refresh_token_enc, status, expires_at, provider, composio_account_id"
+    )
+    .eq("owner_id", userId)
+    .in("status", ["connected", "expired"]);
+
+  const rows = ((data ?? []) as ResolvableRow[])
+    .filter((r) => connectionMatchesConnector(r.connector_id, connectorId))
+    // « connected » d'abord ; « expired » ensuite (tentative de refresh).
+    .sort((a, b) => (a.status === "connected" ? 0 : 1) - (b.status === "connected" ? 0 : 1));
+
+  for (const row of rows) {
+    const conn = await resolveConnectionRow(userId, row);
     if (conn) return conn;
   }
   return null;
@@ -40,47 +81,45 @@ export async function isConnectorConnected(userId: string, connectorId: string):
   return (await getUserConnection(userId, connectorId)) !== null;
 }
 
-async function getUserConnectionDirect(
+async function resolveConnectionRow(
   userId: string,
-  connectorId: string
+  row: ResolvableRow
 ): Promise<ResolvedConnection | null> {
-  const { data } = await db()
-    .from("user_connections")
-    .select("access_token_enc, refresh_token_enc, status, expires_at, provider, composio_account_id")
-    .eq("owner_id", userId)
-    .eq("connector_id", connectorId)
-    .eq("status", "connected")
-    .maybeSingle();
-
-  if (data?.provider === "composio") {
-    return data.composio_account_id
-      ? { accessToken: data.composio_account_id, provider: "composio" }
+  if (row.provider === "composio") {
+    return row.composio_account_id
+      ? { accessToken: row.composio_account_id, provider: "composio" }
       : null;
   }
 
-  if (!data?.access_token_enc) return null;
+  if (!row.access_token_enc) return null;
 
-  if (data.expires_at && new Date(data.expires_at) < new Date()) {
-    // Try refreshing the token before giving up
-    if (data.refresh_token_enc) {
+  const expired =
+    row.status === "expired" ||
+    (row.expires_at != null && new Date(row.expires_at) < new Date());
+
+  if (expired) {
+    // Tente le refresh avant d'abandonner (tokens Google : durée de vie 1 h).
+    if (row.refresh_token_enc) {
       const refreshed = await tryRefreshToken(
         userId,
-        connectorId,
-        decryptSecret(data.refresh_token_enc)
+        row.connector_id,
+        decryptSecret(row.refresh_token_enc)
       );
       if (refreshed) return refreshed;
     }
-    await db()
-      .from("user_connections")
-      .update({ status: "expired" })
-      .eq("owner_id", userId)
-      .eq("connector_id", connectorId);
+    if (row.status !== "expired") {
+      await db()
+        .from("user_connections")
+        .update({ status: "expired" })
+        .eq("owner_id", userId)
+        .eq("connector_id", row.connector_id);
+    }
     return null;
   }
 
   return {
-    accessToken: decryptSecret(data.access_token_enc),
-    refreshToken: data.refresh_token_enc ? decryptSecret(data.refresh_token_enc) : undefined,
+    accessToken: decryptSecret(row.access_token_enc),
+    refreshToken: row.refresh_token_enc ? decryptSecret(row.refresh_token_enc) : undefined,
     provider: "native",
   };
 }
@@ -97,7 +136,12 @@ async function tryRefreshToken(
   connectorId: string,
   refreshToken: string
 ): Promise<ResolvedConnection | null> {
-  const config = REFRESH_CONFIGS[connectorId];
+  // Lookup tolérant aux variantes d'id (google_sheets / googlesheets / …).
+  const config =
+    REFRESH_CONFIGS[connectorId] ??
+    Object.entries(REFRESH_CONFIGS).find(([key]) =>
+      connectionMatchesConnector(connectorId, key)
+    )?.[1];
   if (!config) return null;
 
   const clientId = process.env[config.clientIdEnv];
@@ -241,7 +285,7 @@ export async function listUserConnections(userId: string): Promise<ConnectionSta
   const { data } = await db()
     .from("user_connections")
     .select(
-      "connector_id, status, scopes, expires_at, provider, account_email, account_name, workspace_name, last_checked_at",
+      "connector_id, status, scopes, expires_at, provider, account_email, account_name, workspace_name, last_checked_at, refresh_token_enc",
     )
     .eq("owner_id", userId);
 
@@ -249,6 +293,9 @@ export async function listUserConnections(userId: string): Promise<ConnectionSta
     (r) => ({
       connectorId: r.connector_id,
       status: r.status as ConnectionStatus["status"],
+      usable:
+        r.status === "connected" ||
+        (r.status === "expired" && Boolean(r.refresh_token_enc)),
       scopes: r.scopes ?? [],
       expiresAt: r.expires_at,
       provider: (r.provider as ConnectionStatus["provider"]) ?? "native",
