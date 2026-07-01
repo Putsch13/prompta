@@ -108,6 +108,9 @@ function RunsHistoryContent() {
     setExpanded(run.id);
 
     if (run.kind === "agent") {
+      // async:true = même chemin que le lancement normal (worker). Le mode
+      // sync bloquait la requête HTTP pendant tout le run (timeout proxy
+      // possible) et perdait la reprise worker en cas de coupure.
       const res = await fetch("/api/run/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -117,23 +120,13 @@ function RunsHistoryContent() {
           // P3-1 : on réutilise les entrées du run d'origine (sinon un agent
           // qui exige des inputs échouerait silencieusement avec inputs:{}).
           inputs: run.inputs ?? {},
-          async: false,
+          async: true,
         }),
       });
       const data = await res.json();
-      if (res.ok) {
-        setRuns((prev) =>
-          prev.map((r) =>
-            r.id === run.id
-              ? {
-                  ...r,
-                  status: data.status,
-                  output: data.output?.result ?? JSON.stringify(data.output),
-                  error_message: data.error ?? null,
-                }
-              : r
-          )
-        );
+      if (res.ok && data.runId) {
+        // Le nouveau run apparaît en tête via loadRuns ; on ouvre sa console.
+        setExpanded(data.runId);
       }
       setRelancing(null);
       loadRuns();

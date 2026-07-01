@@ -43,11 +43,16 @@ export default function RunDetailPage() {
 
   useEffect(() => {
     load();
-    const t = setInterval(() => {
-      if (run && ACTIVE.has(run.status)) load();
-    }, 3000);
+  }, [load]);
+
+  // Poll séparé, keyé sur le statut : dépendre de `run` relançait l'effet à
+  // chaque tick (setRun → cleanup → load immédiat + nouvel interval = double fetch).
+  const isActive = run == null || ACTIVE.has(run.status);
+  useEffect(() => {
+    if (!isActive) return;
+    const t = setInterval(load, 3000);
     return () => clearInterval(t);
-  }, [load, run]);
+  }, [isActive, load]);
 
   const failedSteps = steps.filter((s) => s.status === "failed");
 

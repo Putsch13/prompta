@@ -23,9 +23,15 @@ interface KeyStatus {
 interface ConnectionStatus {
   connectorId: string;
   status: string;
+  /** Calculé serveur : connectée, ou expirée avec refresh token (ravivée au run). */
+  usable?: boolean;
   accountEmail?: string | null;
   accountName?: string | null;
   workspaceName?: string | null;
+}
+
+function isUsable(conn: ConnectionStatus): boolean {
+  return conn.usable ?? conn.status === "connected";
 }
 
 function connectionAccountLabel(conn: ConnectionStatus): string | null {
@@ -52,7 +58,7 @@ function connectorLabel(id: string, composioLabels: Record<string, string>): str
 
 function isConnectorLinked(id: string, connections: ConnectionStatus[]): boolean {
   return connections.some(
-    (x) => x.status === "connected" && connectionMatchesConnector(x.connectorId, id)
+    (x) => isUsable(x) && connectionMatchesConnector(x.connectorId, id)
   );
 }
 
@@ -186,7 +192,7 @@ export function ConnectionsMasque({
         {requiredConnectors.map((id) => {
           const meta = CONNECTORS.find((c) => connectionMatchesConnector(c.id, id));
           const conn = connections.find(
-            (x) => x.status === "connected" && connectionMatchesConnector(x.connectorId, id),
+            (x) => isUsable(x) && connectionMatchesConnector(x.connectorId, id),
           );
           const ok = Boolean(conn);
           const accountLabel = conn ? connectionAccountLabel(conn) : null;

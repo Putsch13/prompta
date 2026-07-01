@@ -21,7 +21,7 @@ const CATEGORIES = [
 
 interface Props {
   toolkits: ComposioToolkitEntry[];
-  connections: { connectorId: string; status: string }[];
+  connections: { connectorId: string; status: string; usable?: boolean }[];
   onRefresh: () => void;
 }
 
@@ -32,7 +32,13 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
   const [testResult, setTestResult] = useState<Record<string, string>>({});
 
   const connectedSet = useMemo(
-    () => new Set(connections.filter((c) => c.status === "connected").map((c) => c.connectorId)),
+    () =>
+      new Set(
+        connections
+          // `usable` (serveur) inclut « expirée mais rafraîchissable au run ».
+          .filter((c) => c.usable ?? c.status === "connected")
+          .map((c) => c.connectorId),
+      ),
     [connections]
   );
 

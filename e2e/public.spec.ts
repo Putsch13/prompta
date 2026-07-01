@@ -37,4 +37,25 @@ test.describe("Prompta — parcours public", () => {
     });
     expect(res.status()).toBe(401);
   });
+
+  test("dashboard redirige vers login si non connecté (gate proxy)", async ({ page }) => {
+    await page.goto("/dashboard");
+    await expect(page).toHaveURL(/\/login\?redirect=%2Fdashboard/);
+  });
+
+  test("APIs sensibles refusent sans auth", async ({ request }) => {
+    for (const path of ["/api/approvals", "/api/connectors", "/api/keys", "/api/credits"]) {
+      const res = await request.get(path);
+      expect(res.status(), path).toBe(401);
+    }
+  });
+
+  test("cron tick refuse sans secret (fail-closed)", async ({ request }) => {
+    const res = await request.get("/api/cron/tick");
+    expect(res.status()).toBe(401);
+    const bad = await request.get("/api/cron/tick", {
+      headers: { authorization: "Bearer undefined" },
+    });
+    expect(bad.status()).toBe(401);
+  });
 });

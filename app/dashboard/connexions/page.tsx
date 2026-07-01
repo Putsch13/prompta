@@ -40,6 +40,7 @@ function ConnexionsContent() {
   const [toast, setToast] = useState<string | null>(null);
   const [telegramToken, setTelegramToken] = useState("");
   const [savingTelegram, setSavingTelegram] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   async function loadAll() {
     const [keysRes, connRes, tkRes] = await Promise.all([
@@ -60,6 +61,7 @@ function ConnexionsContent() {
       setComposioEnabled(Boolean(data.enabled));
       setToolkits(data.toolkits ?? []);
     }
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -135,7 +137,12 @@ function ConnexionsContent() {
 
       <section className="mb-10">
         <h2 className="mb-3 font-display text-lg font-semibold text-ink">Clés API LLM (BYOK)</h2>
-        {keys.length === 0 ? (
+        {loading ? (
+          <div className="animate-pulse space-y-3">
+            <div className="h-[72px] rounded-xl border border-line bg-card2" />
+            <div className="h-[72px] rounded-xl border border-line bg-card2" />
+          </div>
+        ) : keys.length === 0 ? (
           <div className="rounded-xl border border-line bg-card p-8 text-center">
             <p className="text-ink-soft">Aucune clé configurée</p>
             <button
