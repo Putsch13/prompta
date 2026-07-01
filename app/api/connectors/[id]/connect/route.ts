@@ -39,7 +39,7 @@ const OAUTH_CONFIG: Record<
 };
 
 interface Params {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 function safeReturnUrl(appUrl: string, raw: string | null): string | null {
@@ -54,8 +54,9 @@ function safeReturnUrl(appUrl: string, raw: string | null): string | null {
   }
 }
 
-export async function GET(req: NextRequest, { params }: Params) {
-  const supabase = createClient();
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -114,7 +115,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const state = createSignedState({ userId: user.id, connectorId, returnUrl: returnUrl ?? undefined });
   const isProduction = process.env.NODE_ENV === "production";
-  cookies().set("oauth_state", state, {
+  (await cookies()).set("oauth_state", state, {
     httpOnly: true,
     secure: isProduction,
     sameSite: "lax",

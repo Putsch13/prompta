@@ -6,11 +6,9 @@ export const dynamic = "force-dynamic";
 
 const DOWNLOADABLE_TYPES = new Set(["prompt"]);
 
-export async function GET(
-  _request: Request,
-  { params }: { params: { versionId: string } }
-) {
-  const supabase = createClient();
+export async function GET(_request: Request, props: { params: Promise<{ versionId: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {

@@ -6,19 +6,20 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 interface Props {
-  searchParams: { session_id?: string };
+  searchParams: Promise<{ session_id?: string }>;
 }
 
 const RUNNABLE_TYPES = new Set(["agent", "workflow"]);
 
-export default async function PurchaseSuccessPage({ searchParams }: Props) {
+export default async function PurchaseSuccessPage(props: Props) {
+  const searchParams = await props.searchParams;
   const sessionId = searchParams.session_id;
 
   if (!sessionId) {
     redirect("/");
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },

@@ -8,7 +8,7 @@ interface Props {
 }
 
 export async function BuilderOnboardingChecklist({ userId, kycComplete }: Props) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: userListings } = await supabase
     .from("listings")

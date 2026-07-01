@@ -14,11 +14,9 @@ export const maxDuration = 60;
  * SANS valider l'étape : le texte révisé revient dans la modale, l'humain
  * décide ensuite d'approuver ou non.
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { runId: string } },
-) {
-  const supabase = createClient();
+export async function POST(request: NextRequest, props: { params: Promise<{ runId: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

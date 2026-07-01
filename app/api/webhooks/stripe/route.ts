@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const body = await request.text();
-  const sig = headers().get("stripe-signature");
+  const sig = (await headers()).get("stripe-signature");
 
   if (!sig) {
     return NextResponse.json({ error: "Missing signature" }, { status: 400 });

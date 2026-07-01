@@ -6,7 +6,7 @@ import { PROMPTA_PRO_PRICE_CENTS } from "@/lib/stripe-plans";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

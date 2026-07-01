@@ -22,7 +22,7 @@ export type AdminUser = {
  * Renvoie les infos de l'admin sinon.
  */
 export async function requireAdmin(): Promise<AdminUser> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
@@ -52,7 +52,7 @@ export async function requireAdmin(): Promise<AdminUser> {
 
 /** Variante pour les routes API : renvoie null si non-admin (pas de redirect). */
 export async function getAdminOrNull(): Promise<AdminUser | null> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

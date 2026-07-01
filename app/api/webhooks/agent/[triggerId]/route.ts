@@ -5,10 +5,8 @@ import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { triggerId: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ triggerId: string }> }) {
+  const params = await props.params;
   const triggerId = params.triggerId;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const admin = createAdminClient();

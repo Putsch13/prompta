@@ -38,7 +38,7 @@ interface ModerationFlag {
 export default async function ModerationPage() {
   await requireAdmin();
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: pendingListings } = await supabase
     .from("listings")

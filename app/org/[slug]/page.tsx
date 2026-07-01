@@ -8,12 +8,14 @@ import { OrgBillingPanel } from "@/components/org/OrgBillingPanel";
 export const dynamic = "force-dynamic";
 
 interface Props {
-  params: { slug: string };
-  searchParams: { subscribed?: string };
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ subscribed?: string }>;
 }
 
-export default async function OrgPage({ params, searchParams }: Props) {
-  const supabase = createClient();
+export default async function OrgPage(props: Props) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
+  const supabase = await createClient();
 
   const {
     data: { user },

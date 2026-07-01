@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Active instrumentation.ts (init Sentry côté serveur quand SENTRY_DSN est défini).
-  experimental: {
-    instrumentationHook: true,
-  },
+  // instrumentation.ts est activé par défaut depuis Next 15 (init Sentry serveur).
 };
 
 export default nextConfig;

@@ -8,11 +8,12 @@ import { Download, Star, FileText, TrendingUp } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 interface Props {
-  params: { username: string };
+  params: Promise<{ username: string }>;
 }
 
-export default async function SynthesePage({ params }: Props) {
-  const supabase = createClient();
+export default async function SynthesePage(props: Props) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: profile } = await supabase
     .from("profiles")

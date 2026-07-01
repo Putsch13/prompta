@@ -7,7 +7,7 @@ interface Props {
 }
 
 export async function OnboardingChecklist({ userId }: Props) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const [{ count: keyCount }, { count: runCount }, { count: downloadCount }] =
     await Promise.all([

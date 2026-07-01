@@ -12,12 +12,10 @@ export const dynamic = "force-dynamic";
  * - Refuse si abonnements actifs existent.
  * - Passe status = "deleted" (jamais de hard delete).
  */
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id } = params;
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

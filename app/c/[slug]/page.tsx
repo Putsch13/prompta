@@ -8,11 +8,12 @@ export const revalidate = 3600;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://prompta.app";
 
 interface Props {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const supabase = createClient();
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
+  const supabase = await createClient();
   const { data: category } = await supabase
     .from("categories")
     .select("name, slug")
@@ -38,8 +39,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function CategoryPage({ params }: Props) {
-  const supabase = createClient();
+export default async function CategoryPage(props: Props) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: category } = await supabase
     .from("categories")

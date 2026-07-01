@@ -9,11 +9,9 @@ export const dynamic = "force-dynamic";
  * « Mes agents ». Retourne { versionId, slug } pour que le client lance le run
  * via /api/run/agent (qui gère preflight, droits et facturation).
  */
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  const supabase = createClient();
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

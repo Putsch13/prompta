@@ -5,11 +5,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const dynamic = "force-dynamic";
 
 interface Params {
-  params: { runId: string };
+  params: Promise<{ runId: string }>;
 }
 
-export async function GET(request: NextRequest, { params }: Params) {
-  const supabase = createClient();
+export async function GET(request: NextRequest, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const {
     data: { user },

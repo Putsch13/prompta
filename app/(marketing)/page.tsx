@@ -19,7 +19,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 export default async function HomePage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: categories } = await supabase
     .from("categories")

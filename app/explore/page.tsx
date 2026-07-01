@@ -33,7 +33,7 @@ const SORT_OPTIONS = [
 ];
 
 interface Props {
-  searchParams: {
+  searchParams: Promise<{
     q?: string;
     type?: string;
     price?: string;
@@ -42,13 +42,14 @@ interface Props {
     integration?: string;
     sort?: string;
     page?: string;
-  };
+  }>;
 }
 
 const PAGE_SIZE = 12;
 
-export default async function ExplorePage({ searchParams }: Props) {
-  const supabase = createClient();
+export default async function ExplorePage(props: Props) {
+  const searchParams = await props.searchParams;
+  const supabase = await createClient();
   const q = searchParams.q || "";
   const typeFilter = searchParams.type || "";
   const priceFilter = searchParams.price || "";

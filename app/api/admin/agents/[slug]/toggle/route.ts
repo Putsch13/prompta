@@ -4,10 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const admin = await getAdminOrNull();
   if (!admin) return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
 

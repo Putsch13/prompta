@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const API_KEY_CONNECTORS = new Set(["telegram"]);
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

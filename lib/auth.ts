@@ -11,7 +11,7 @@ export interface AuthResult {
  * Redirige vers /login si non connecté.
  */
 export async function requireAuth(): Promise<AuthResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
@@ -38,7 +38,7 @@ export async function requireAuth(): Promise<AuthResult> {
  * Redirige vers /login si non connecté, vers / si non admin.
  */
 export async function requireAdmin(): Promise<AuthResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
@@ -69,7 +69,7 @@ export async function requireAdmin(): Promise<AuthResult> {
  * Retourne null si l'utilisateur n'est pas admin.
  */
 export async function checkAdminApi(): Promise<AuthResult | null> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },

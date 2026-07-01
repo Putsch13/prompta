@@ -19,11 +19,12 @@ import { Avatar, BadgePill, fmt } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 interface Props {
-  params: { username: string };
+  params: Promise<{ username: string }>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const supabase = createClient();
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
+  const supabase = await createClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("display_name, headline, username")
@@ -39,8 +40,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function ProfilePage({ params }: Props) {
-  const supabase = createClient();
+export default async function ProfilePage(props: Props) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: profile } = await supabase
     .from("profiles")

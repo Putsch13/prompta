@@ -2,11 +2,14 @@
   "name": "prompta-init",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
-    "lint": "next lint",
+    "lint": "eslint .",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "seed:signature-agent": "tsx scripts/seed-signature-agent.ts",
     "validate:signature-agent": "tsx scripts/validate-signature-agent.ts",
@@ -16,6 +19,7 @@
     "test:e2e:ui": "playwright test --ui",
     "secrets:scan": "bash scripts/secrets-scan.sh",
     "composio:smoke": "tsx scripts/composio-smoke.ts",
+    "qa": "npx tsc --noEmit && npm run lint && npm run test:unit && npm run secrets:scan",
     "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:integration": "tsx --test tests/integration/*.test.ts",
     "smoke:local": "tsx scripts/smoke-local.ts"
@@ -26,23 +30,29 @@
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.1",
     "lucide-react": "^1.16.0",
-    "next": "14.2.35",
+    "next": "^16.2.10",
     "officeparser": "^7.2.1",
     "posthog-js": "^1.376.0",
-    "react": "^18",
-    "react-dom": "^18",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "resend": "^6.12.3",
     "stripe": "^22.1.1",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.4.3"
   },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.10"
+    }
+  },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
     "@playwright/test": "^1.52.0",
     "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.35",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.10",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.22.3",

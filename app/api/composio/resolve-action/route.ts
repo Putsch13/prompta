@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * outil Composio + son schéma d'entrées, pour enrichir le graphe à la conception.
  */
 export async function GET(request: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

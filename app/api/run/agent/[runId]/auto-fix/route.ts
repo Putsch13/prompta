@@ -21,11 +21,9 @@ export const maxDuration = 120;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { runId: string } },
-) {
-  const supabase = createClient();
+export async function POST(request: NextRequest, props: { params: Promise<{ runId: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

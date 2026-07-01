@@ -6,11 +6,9 @@ export const dynamic = "force-dynamic";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { runId: string } }
-) {
-  const supabase = createClient();
+export async function GET(_request: NextRequest, props: { params: Promise<{ runId: string }> }) {
+  const params = await props.params;
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

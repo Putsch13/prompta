@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * cancel_at_period_end = true pour garder l'accès jusqu'à la fin de la période.
  */
 export async function POST() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

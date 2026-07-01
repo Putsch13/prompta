@@ -33,11 +33,12 @@ export const revalidate = 3600;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://prompta.app";
 
 interface Props {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const supabase = createClient();
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
+  const supabase = await createClient();
   const { data: listing } = await supabase
     .from("listings")
     .select("title, description, type, slug")
@@ -88,8 +89,9 @@ interface ListingWithTech {
   updated_at: string;
 }
 
-export default async function ListingPage({ params }: Props) {
-  const supabase = createClient();
+export default async function ListingPage(props: Props) {
+  const params = await props.params;
+  const supabase = await createClient();
 
   const { data: rawListing } = await supabase
     .from("listings")

@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const redirect = searchParams.get("redirect") || "/onboarding";
 
   if (token_hash && type) {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({
       type,
       token_hash,

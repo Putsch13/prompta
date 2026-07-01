@@ -10,12 +10,10 @@ export const dynamic = "force-dynamic";
  * POST /api/subscriptions/:id/cancel — Annuler un abonnement agent.
  * Utilise cancel_at_period_end pour ne pas couper immédiatement.
  */
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id } = params;
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

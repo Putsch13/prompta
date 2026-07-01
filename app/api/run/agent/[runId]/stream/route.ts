@@ -12,11 +12,12 @@ const POLL_MAX_MS = 2000;
 const STABLE_BEFORE_BACKOFF = 5;
 
 interface Params {
-  params: { runId: string };
+  params: Promise<{ runId: string }>;
 }
 
-export async function GET(_request: NextRequest, { params }: Params) {
-  const supabase = createClient();
+export async function GET(_request: NextRequest, props: Params) {
+  const params = await props.params;
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

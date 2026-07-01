@@ -31,14 +31,15 @@ const TOKEN_URL: Record<string, { url: string; clientIdEnv: string; clientSecret
 };
 
 interface Params {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
   const connectorId = params.id;
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
-  const storedState = cookies().get("oauth_state")?.value;
+  const storedState = (await cookies()).get("oauth_state")?.value;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const failRedirect = `${appUrl}/dashboard/connexions?error=oauth`;
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   // Verify current user matches state
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -114,7 +115,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     workspaceName: profile.workspaceName,
   });
 
-  cookies().delete("oauth_state");
+  (await cookies()).delete("oauth_state");
   const successUrl = parsed.returnUrl
     ? `${parsed.returnUrl}${parsed.returnUrl.includes("?") ? "&" : "?"}connected=${connectorId}`
     : `${appUrl}/dashboard/connexions?connected=${connectorId}`;

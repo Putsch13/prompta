@@ -19,7 +19,7 @@ const KEY_LABELS: Record<string, string> = {
 };
 
 export default async function WalletPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
