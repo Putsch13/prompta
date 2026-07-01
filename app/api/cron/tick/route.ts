@@ -20,7 +20,8 @@ export const maxDuration = 300; // 5 min max
 export async function GET(req: NextRequest) {
   // ── Sécurité : vérifie le secret cron ──
   const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Fail-closed : sans CRON_SECRET configuré, « Bearer undefined » passerait.
+  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 

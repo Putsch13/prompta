@@ -241,7 +241,7 @@ test("assertNoLeakedCredentials — rejette clé OpenAI dans prompt", () => {
       {
         type: "llm",
         model: "gpt-5.4",
-        prompt: "Utilise sk-1234567890abcdefghijklmnopqrst",
+        prompt: "Utilise sk-1234567890abcdefghijklmnopqrst", // pragma: allowlist secret
       },
     ],
   };

@@ -30,6 +30,19 @@ export async function addCredits(
   stripeSessionId?: string
 ): Promise<void> {
   const admin = createAdminClient();
+
+  // Idempotence : Stripe rejoue les webhooks (timeout/5xx) — un même checkout
+  // ne doit créditer qu'une seule fois.
+  if (stripeSessionId) {
+    const { data: existing } = await admin
+      .from("credit_transactions")
+      .select("id")
+      .eq("stripe_session_id", stripeSessionId)
+      .eq("kind", kind)
+      .maybeSingle();
+    if (existing) return;
+  }
+
   const { data } = await admin
     .from("user_credits")
     .select("balance_cents")

@@ -39,3 +39,11 @@ next-env.d.ts
 
 # Supabase CLI temp
 supabase/.temp/
+
+# playwright
+/test-results/
+/playwright-report/
+
+# claude local
+.claude/settings.local.json
+.claude/launch.json

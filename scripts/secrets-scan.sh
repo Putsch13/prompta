@@ -25,8 +25,9 @@ PATTERNS=(
 
 FOUND=0
 
+# Lines carrying "pragma: allowlist secret" are known fakes (CI placeholders, test fixtures).
 for pattern in "${PATTERNS[@]}"; do
-  matches=$(git grep -n -E "$pattern" -- ':!.env*' ':!node_modules' ':!.next' ':!scripts/secrets-scan.sh' 2>/dev/null || true)
+  matches=$(git grep -n -E "$pattern" -- ':!.env*' ':!node_modules' ':!.next' ':!scripts/secrets-scan.sh' 2>/dev/null | grep -v 'pragma: allowlist secret' || true)
   if [ -n "$matches" ]; then
     echo -e "${RED}LEAKED:${NC} Pattern '$pattern' found:"
     echo "$matches" | head -20
