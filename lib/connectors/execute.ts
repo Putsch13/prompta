@@ -37,14 +37,17 @@ async function runComposio(
 ): Promise<ExecuteResult> {
   // Garde générique (300+ toolkits) : défauts du schéma + validation des
   // champs requis AVANT l'appel — erreur actionnable plutôt que le
-  // « Following fields are missing » brut du provider.
+  // « Following fields are missing » brut du provider. Les types du schéma
+  // (array/object/number) pilotent la coercition des arguments.
   let finalArgs = args;
+  let argTypes: Record<string, import("@/lib/composio/execute").ComposioArgType> | undefined;
   if (toolkitSlug) {
     const guarded = await guardComposioParams(toolkitSlug, toolSlug, args);
     finalArgs = guarded.args;
+    argTypes = guarded.argTypes;
   }
   try {
-    return await executeComposioTool(toolSlug, userId, finalArgs, { toolkitSlug });
+    return await executeComposioTool(toolSlug, userId, finalArgs, { toolkitSlug, argTypes });
   } catch (err) {
     if (err instanceof ComposioExecutionError) {
       throw new Error(`[${err.details.code}] ${err.details.message}`);

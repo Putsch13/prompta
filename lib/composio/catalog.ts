@@ -36,6 +36,8 @@ export interface ComposioToolEntry {
     enumValues?: string[];
     /** Longueur max déclarée par le schéma (troncature côté garde). */
     maxLength?: number;
+    /** Type JSON-schema brut (array/object/number…) — pour la coercition d'exécution. */
+    rawType?: string;
   }[];
 }
 
@@ -124,6 +126,7 @@ function parseToolInputs(
       meta.default !== undefined && meta.default !== null ? String(meta.default) : undefined;
     const enumValues = Array.isArray(meta.enum) ? meta.enum.map((v) => String(v)) : undefined;
     const maxLength = typeof meta.maxLength === "number" && meta.maxLength > 0 ? meta.maxLength : undefined;
+    const rawType = typeof meta.type === "string" ? meta.type : undefined;
     // Curaté (mapping connu) prioritaire, sinon tout `*_id` devient une ressource
     // listable dynamiquement (picker universel sur les 300+ toolkits).
     const resourceType =
@@ -143,6 +146,7 @@ function parseToolInputs(
         defaultValue,
         enumValues,
         maxLength,
+        rawType,
       };
     }
     return {
@@ -157,6 +161,7 @@ function parseToolInputs(
       defaultValue,
       enumValues,
       maxLength,
+      rawType,
     };
   });
 }

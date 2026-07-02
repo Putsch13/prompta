@@ -99,7 +99,7 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
       clean({
         spreadsheet_id: sheetId(p),
         range: composeRange(p),
-        values: pick(p, "values", "rows", "data") ?? "",
+        values: toSheetValues(pick(p, "values", "rows", "data") ?? ""),
         // Requis par l'outil : interprète les valeurs comme une saisie
         // utilisateur (formules/formats), le choix sûr par défaut.
         value_input_option: "USER_ENTERED",
@@ -135,6 +135,23 @@ const CONNECTOR_ALIAS: Record<string, string> = {
   google_mail: "gmail",
   slack: "slack",
 };
+
+/**
+ * Valeurs libres → tableau 2D JSON attendu par VALUES_APPEND.
+ * « a;b;c » → [["a","b","c"]] ; multi-lignes → une ligne de feuille par ligne
+ * de texte ; un JSON déjà formé passe tel quel.
+ */
+export function toSheetValues(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (t.startsWith("[")) return t;
+  const rows = t
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split(/[;,\t]/).map((c) => c.trim()));
+  return JSON.stringify(rows.length ? rows : [[t]]);
+}
 
 /** Verbe (forme variée) → verbe canonique du mapping. */
 function canonicalVerb(verb: string): string {

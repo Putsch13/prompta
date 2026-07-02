@@ -173,3 +173,14 @@ test("mapping curaté — creer_tableau / nouvelle_feuille → création de feui
 test("mapping curaté — create_row reste un APPEND (pas une création de feuille)", () => {
   assert.equal(composioMappingFor("google_sheets.create_row")?.toolSlug, "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND");
 });
+
+import { toSheetValues } from "../../lib/connectors/native-to-composio";
+
+test("sheets.append — valeurs libres converties en tableau 2D JSON", () => {
+  assert.equal(toSheetValues("QA;Prompta;ok"), '[["QA","Prompta","ok"]]');
+  assert.equal(toSheetValues("a,b\nc,d"), '[["a","b"],["c","d"]]');
+  assert.equal(toSheetValues('[["x"]]'), '[["x"]]');
+  const m = composioMappingFor("google_sheets.append_row");
+  const mapped = m!.mapParams({ spreadsheet_id: "abc", values: "1;2" });
+  assert.equal(mapped.values, '[["1","2"]]');
+});

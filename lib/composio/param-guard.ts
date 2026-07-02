@@ -14,8 +14,28 @@
  */
 
 import { listComposioTools, type ComposioToolEntry } from "./catalog";
+import type { ComposioArgType } from "./execute";
 
 type ToolInput = ComposioToolEntry["inputs"][number];
+
+/** Type JSON-schema brut → type de coercition d'exécution. */
+export function argTypeFromRaw(rawType?: string): ComposioArgType | undefined {
+  switch (rawType) {
+    case "array":
+      return "array";
+    case "object":
+      return "object";
+    case "number":
+    case "integer":
+      return "number";
+    case "boolean":
+      return "boolean";
+    case "string":
+      return "string";
+    default:
+      return undefined;
+  }
+}
 
 function isBlank(v: string | undefined): boolean {
   return v === undefined || v === null || String(v).trim() === "";
@@ -62,6 +82,8 @@ export function missingRequiredComposioParams(
 
 export interface GuardResult {
   args: Record<string, string>;
+  /** Types attendus par le schéma (clé → type) pour la coercition d'exécution. */
+  argTypes?: Record<string, ComposioArgType>;
 }
 
 /**
@@ -86,6 +108,12 @@ export async function guardComposioParams(
   const withDefaults = applyComposioSchemaDefaults(entry.inputs, args);
   const missing = missingRequiredComposioParams(entry.inputs, withDefaults);
 
+  const argTypes: Record<string, ComposioArgType> = {};
+  for (const input of entry.inputs) {
+    const t = argTypeFromRaw(input.rawType);
+    if (t) argTypes[input.key] = t;
+  }
+
   if (missing.length > 0) {
     const list = missing
       .map((m) => {
@@ -101,5 +129,5 @@ export async function guardComposioParams(
     );
   }
 
-  return { args: withDefaults };
+  return { args: withDefaults, argTypes };
 }
