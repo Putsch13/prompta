@@ -27,10 +27,28 @@ export async function GET(req: NextRequest) {
 
   const sb = createAdminClient();
 
-  // ── Vérification du coupe-circuit global ──
+  // ── TOUJOURS : file marketplace + reaper (filet de sécurité si le worker
+  // dédié est down). Le coupe-circuit budget ne concerne QUE les agents ops
+  // admin ci-dessous — avant, il court-circuitait toute la route et les runs
+  // utilisateurs restaient « Démarrage… » pour toujours.
+  const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
+  const pendingProcessed = await processPendingAgentRuns(5).catch((e) => {
+    console.error("[cron:tick] pending runs failed:", e);
+    return 0;
+  });
+  const { reapStalePendingRuns, reapStaleRunningRuns } = await import("@/lib/worker/reap-stale-runs");
+  const reaped =
+    (await reapStalePendingRuns().catch(() => 0)) +
+    (await reapStaleRunningRuns().catch(() => 0));
+
+  // ── Coupe-circuit des agents OPS ADMIN uniquement ──
   const { data: budget } = await sb.from("agent_budget").select("is_paused").eq("id", 1).single();
   if (budget?.is_paused) {
-    return NextResponse.json({ skipped: "Budget en pause (coupe-circuit)." });
+    return NextResponse.json({
+      pendingProcessed,
+      reaped,
+      skippedAgents: "Budget agents admin en pause (coupe-circuit).",
+    });
   }
 
   // ── Heure et jour courants (timezone Europe/Paris) ──
@@ -50,11 +68,11 @@ export async function GET(req: NextRequest) {
   );
 
   if (due.length === 0) {
-    const processed = await (await import("@/lib/worker/process-pending-runs")).processPendingAgentRuns(5);
     return NextResponse.json({
       ran: [],
-      pendingProcessed: processed,
-      message: `Rien de planifié à ${hour}h (jour ${day}). ${processed} run(s) marketplace traité(s).`,
+      pendingProcessed,
+      reaped,
+      message: `Rien de planifié à ${hour}h (jour ${day}). ${pendingProcessed} run(s) marketplace traité(s).`,
     });
   }
 
@@ -69,7 +87,5 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const pendingProcessed = await (await import("@/lib/worker/process-pending-runs")).processPendingAgentRuns(5);
-
-  return NextResponse.json({ ran: results, at: `${hour}h jour ${day}`, pendingProcessed });
+  return NextResponse.json({ ran: results, at: `${hour}h jour ${day}`, pendingProcessed, reaped });
 }

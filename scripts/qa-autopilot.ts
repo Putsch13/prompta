@@ -275,6 +275,20 @@ async function main() {
   const user = users.users.find((u) => u.email?.toLowerCase() === SELF_EMAIL);
   if (!user) throw new Error(`Compte ${SELF_EMAIL} introuvable`);
 
+  // Nettoyage des runs QA orphelins d'une exécution précédente interrompue.
+  const { data: orphans } = await sb
+    .from("listing_agent_runs")
+    .select("id")
+    .eq("user_id", user.id)
+    .filter("inputs->>__qa", "eq", "1");
+  if (orphans && orphans.length > 0) {
+    const ids = orphans.map((o) => o.id);
+    await sb.from("listing_agent_run_steps").delete().in("run_id", ids);
+    await sb.from("agent_approvals").delete().in("run_id", ids);
+    await sb.from("listing_agent_runs").delete().in("id", ids);
+    console.log(`Nettoyage préalable : ${ids.length} runs QA orphelins supprimés.\n`);
+  }
+
   const results: QaResult[] = [];
   const ownRunIds = new Set<string>();
   let spentEstimate = 0;
