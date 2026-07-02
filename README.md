@@ -108,7 +108,7 @@ update profiles set is_admin = true, unrestricted_usage = true where username = 
 
 ### Dépannage Google (403 « autorisation manquante »)
 
-Un 403 sur `sheets.read`/Drive vient quasi toujours des **scopes OAuth** de l'auth config Composio. Les scopes requis sont désormais fixés à la création **et** réalignés sur les configs existantes (`lib/composio/connect.ts`, `TOOLKIT_SCOPES`). Après ce correctif, **reconnectez Google** une fois pour que le nouveau jeton porte le scope `spreadsheets`. Causes restantes possibles : la feuille n'est pas partagée avec le compte connecté, ou l'app OAuth managed Composio n'autorise pas le scope (fallback automatique sans scope).
+Un 403 « autorisation manquante » sur Gmail/Sheets/Drive = le jeton de la connexion n'a pas la permission requise. Solution : **Connexions → l'app → « Reconnecter »** (force la ré-autorisation OAuth). ⚠️ Ne JAMAIS forcer de scopes personnalisés sur l'auth « managed » de Composio (`lib/composio/connect.ts`) : leur app OAuth est vérifiée par Google pour un jeu de scopes précis — une demande modifiée fait BLOQUER tout le consentement (« Cette application est bloquée »). La reconnexion forcée réinitialise l'auth config aux défauts managed. Autres causes possibles : la feuille n'est pas partagée avec le compte connecté.
 
 ### Worker
 

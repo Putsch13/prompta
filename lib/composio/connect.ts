@@ -3,88 +3,46 @@ import { getComposioClient, toComposioToolkitSlug } from "./client";
 import { profileFromComposioAccount } from "@/lib/connectors/fetch-account-profile";
 
 /**
- * Scopes OAuth requis par toolkit (auth Composio « managed »).
+ * ⚠️ NE PAS forcer de scopes personnalisés sur l'auth « managed » de Composio.
  *
- * Sans ces scopes, Composio crée l'auth config avec un accès minimal (souvent
- * `drive.file` côté Google = uniquement les fichiers créés par l'app), ce qui
- * provoque un 403 « autorisation manquante » à la lecture d'une feuille
- * existante. On les fixe explicitement pour que la connexion demande le bon
- * niveau d'accès dès le consentement OAuth.
+ * L'app OAuth de Composio est VÉRIFIÉE par Google pour un jeu de scopes
+ * précis. Quand on injectait nos propres scopes (gmail.modify, drive
+ * complet…), Google voyait une demande qui ne correspond pas à l'app
+ * vérifiée et BLOQUAIT tout le consentement (« Cette application est
+ * bloquée »). Les défauts managed de Composio couvrent leurs outils
+ * (envoi Gmail, écriture Sheets…).
  */
-const TOOLKIT_SCOPES: Record<string, string[]> = {
-  // spreadsheets : lecture/écriture des cellules. drive (complet) : nécessaire
-  // pour créer/déplacer une feuille existante et la retrouver dans le Drive.
-  googlesheets: [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-  ],
-  gmail: [
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.modify",
-  ],
-  // drive (complet) : lecture ET écriture de fichiers (create_file_from_text…).
-  googledrive: ["https://www.googleapis.com/auth/drive"],
-  // documents : créer/éditer un Doc. drive : créer le fichier dans le Drive.
-  googledocs: [
-    "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/drive",
-  ],
-  googlecalendar: ["https://www.googleapis.com/auth/calendar"],
-};
-
-function scopesFor(toolkitSlug: string): string[] | undefined {
-  return TOOLKIT_SCOPES[toolkitSlug];
-}
-
-async function getAuthConfigId(toolkitSlug: string): Promise<string> {
+async function getAuthConfigId(
+  toolkitSlug: string,
+  opts?: { reset?: boolean },
+): Promise<string> {
   const composio = getComposioClient();
-  const scopes = scopesFor(toolkitSlug);
 
   const listed = await composio.authConfigs.list({ toolkit: toolkitSlug });
   const existing = listed.items?.[0]?.id;
-  if (existing) {
-    // Best-effort : aligne les scopes d'une config existante (créée avant ce
-    // correctif) pour qu'une reconnexion obtienne le bon niveau d'accès.
-    if (scopes) {
-      try {
-        await composio.authConfigs.update(existing, {
-          type: "default",
-          scopes: scopes.join(" "),
-        });
-      } catch (err) {
-        console.warn(
-          `[composio] maj scopes auth config ${toolkitSlug} échouée (non bloquant):`,
-          err instanceof Error ? err.message : err,
-        );
-      }
+
+  if (existing && opts?.reset) {
+    // Reconnexion forcée : la config peut avoir été « empoisonnée » par
+    // l'ancien forçage de scopes → on repart d'une config managed propre.
+    try {
+      await composio.authConfigs.delete(existing);
+      console.info(`[composio] auth config ${toolkitSlug} réinitialisée (reset)`);
+    } catch (err) {
+      console.warn(
+        `[composio] reset auth config ${toolkitSlug} impossible, réutilisation:`,
+        err instanceof Error ? err.message : err,
+      );
+      return existing;
     }
+  } else if (existing) {
     return existing;
   }
 
-  try {
-    const created = await composio.authConfigs.create(toolkitSlug, {
-      type: "use_composio_managed_auth",
-      name: `Prompta — ${toolkitSlug}`,
-      ...(scopes ? { credentials: { scopes } } : {}),
-    });
-    return created.id;
-  } catch (err) {
-    // Si les scopes ne sont pas acceptés par l'app managed, on retombe sur une
-    // création sans scope plutôt que de bloquer toute connexion.
-    if (scopes) {
-      console.warn(
-        `[composio] création auth config ${toolkitSlug} avec scopes échouée, retry sans scopes:`,
-        err instanceof Error ? err.message : err,
-      );
-      const created = await composio.authConfigs.create(toolkitSlug, {
-        type: "use_composio_managed_auth",
-        name: `Prompta — ${toolkitSlug}`,
-      });
-      return created.id;
-    }
-    throw err;
-  }
+  const created = await composio.authConfigs.create(toolkitSlug, {
+    type: "use_composio_managed_auth",
+    name: `Prompta — ${toolkitSlug}`,
+  });
+  return created.id;
 }
 
 export type ComposioAuthStart =
@@ -95,13 +53,14 @@ export type ComposioAuthStart =
 export async function startComposioAuth(
   userId: string,
   connectorId: string,
-  callbackUrl: string
+  callbackUrl: string,
+  opts?: { reset?: boolean },
 ): Promise<ComposioAuthStart> {
   const toolkitSlug = toComposioToolkitSlug(connectorId);
   const composio = getComposioClient();
 
   try {
-    const authConfigId = await getAuthConfigId(toolkitSlug);
+    const authConfigId = await getAuthConfigId(toolkitSlug, opts);
 
     const connectionRequest = await composio.connectedAccounts.link(userId, authConfigId, {
       callbackUrl,

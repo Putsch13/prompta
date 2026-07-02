@@ -89,7 +89,11 @@ export async function GET(req: NextRequest, props: Params) {
       const callbackParams = new URLSearchParams({ toolkit: toolkitSlug });
       if (returnUrl) callbackParams.set("returnUrl", returnUrl);
       const callbackUrl = `${appUrl}/api/connectors/composio/callback?${callbackParams.toString()}`;
-      const start = await startComposioAuth(user.id, toolkitSlug, callbackUrl);
+      const start = await startComposioAuth(user.id, toolkitSlug, callbackUrl, {
+        // Reconnexion forcée = réinitialise l'auth config (répare les configs
+        // aux scopes personnalisés que Google bloque).
+        reset: forceReconnect,
+      });
       if (start.kind === "no_auth_required") {
         // Rien à autoriser : connecté directement.
         const dest =
