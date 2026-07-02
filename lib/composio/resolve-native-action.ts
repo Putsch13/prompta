@@ -145,6 +145,12 @@ export function pickToolSlug(
 
     if (score <= 0) continue;
 
+    // Le verbe EXACT demandé prime sur un synonyme : pour « create_… »,
+    // CREATE_GOOGLE_SHEET doit battre ADD_SHEET (sinon, à score égal, le
+    // slug le plus court gagnait et on ajoutait un onglet au lieu de créer
+    // la feuille).
+    if (tailToks.has(primary)) score += 100;
+
     if (wantsTextWrite) {
       const writesText =
         /from[_ ]?text|create[_ ]?document|append[_ ]?text|write[_ ]?file|create[_ ]?doc/.test(tail);

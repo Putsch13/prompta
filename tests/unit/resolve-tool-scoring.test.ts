@@ -36,3 +36,12 @@ test("mapping — read_sheet matche toujours la lecture", () => {
   const m = composioMappingFor("google_sheets.read_sheet");
   assert.equal(m?.toolSlug, "GOOGLESHEETS_VALUES_GET");
 });
+
+test("scoring — le verbe exact (create) bat un synonyme plus court (add)", () => {
+  const tools = [
+    tool("GOOGLESHEETS_ADD_SHEET", "Add Sheet"),
+    tool("GOOGLESHEETS_CREATE_GOOGLE_SHEET1", "Create Google Sheet"),
+  ];
+  const slug = pickToolSlug(tools, "googlesheets", "google_sheets.create_spreadsheet");
+  assert.equal(slug, "GOOGLESHEETS_CREATE_GOOGLE_SHEET1");
+});
