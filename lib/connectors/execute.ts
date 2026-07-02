@@ -194,13 +194,17 @@ export async function executeConnectorAction(
         );
       }
 
-      // a) Mapping statique connu → traduction propre des paramètres.
+      // a) Mapping statique connu → traduction propre des paramètres, PUIS
+      //    alignement sur le schéma réel de l'outil (spreadsheet_id →
+      //    spreadsheetId…) comme le fait le chemin dynamique.
       const mapping = composioMappingFor(actionId);
       if (mapping) {
+        const mapped = mapping.mapParams(params);
+        const expectedKeys = await getComposioToolInputKeys(mapping.toolkitSlug, mapping.toolSlug);
         return runComposio(
           mapping.toolSlug,
           ctx.userId,
-          mapping.mapParams(params),
+          alignArgKeysToSchema(mapped, expectedKeys),
           mapping.toolkitSlug,
         );
       }

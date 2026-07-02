@@ -100,6 +100,9 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
         spreadsheet_id: sheetId(p),
         range: composeRange(p),
         values: pick(p, "values", "rows", "data") ?? "",
+        // Requis par l'outil : interprète les valeurs comme une saisie
+        // utilisateur (formules/formats), le choix sûr par défaut.
+        value_input_option: "USER_ENTERED",
       }),
   },
   // Création d'une FEUILLE (le document) — curaté : la résolution dynamique
