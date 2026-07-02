@@ -145,3 +145,8 @@ services:
           type: web
           name: prompta
           envVarKey: CRON_SECRET
+      # Emails (notification de validation humaine envoyée par le worker)
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: RESEND_API_KEY
