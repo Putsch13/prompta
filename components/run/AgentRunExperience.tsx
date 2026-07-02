@@ -43,6 +43,8 @@ interface Props {
   runId?: string | null;
   stepsCompleted?: number;
   totalSteps?: number;
+  /** Libellés des étapes du manifeste (affichés avant les logs). */
+  plannedLabels?: string[];
   stepTrace?: StepTraceEntry[];
   errorMessage?: string | null;
   pollWhileRunning?: boolean;
@@ -96,6 +98,7 @@ export function AgentRunExperience({
   runId,
   stepsCompleted = 0,
   totalSteps = 0,
+  plannedLabels = [],
   stepTrace = [],
   errorMessage,
   pollWhileRunning = false,
@@ -284,6 +287,7 @@ export function AgentRunExperience({
               status={status}
               stepsCompleted={stepsCompleted}
               totalSteps={totalSteps}
+              plannedLabels={plannedLabels}
               stepTrace={stepTrace}
               pollWhileRunning={pollWhileRunning}
               title="Exécution en direct"

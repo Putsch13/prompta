@@ -26,6 +26,7 @@ import { deriveGraphEnv } from "@/lib/builder/derive-graph-env";
 import { deriveClientRequirements } from "@/lib/builder/client-requirements";
 import { ClientRequirementsPanel } from "@/components/builder/canvas/ClientRequirementsPanel";
 import { AgentRunExperience } from "@/components/run/AgentRunExperience";
+import { plannedStepLabels } from "@/lib/agent/step-label";
 import type { ApprovalDetails } from "@/components/run/HumanApprovalModal";
 import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
 import { AgentCanvas } from "@/components/builder/canvas/AgentCanvas";
@@ -1024,6 +1025,7 @@ export function CreateWizard({ categories }: Props) {
               runId={testResult?.runId}
               stepsCompleted={testResult?.stepsCompleted ?? 0}
               totalSteps={previewSteps.length}
+              plannedLabels={plannedStepLabels(previewSteps)}
               stepTrace={testResult?.stepTrace}
               pollWhileRunning={testRunning}
               errorMessage={testResult?.error ?? null}

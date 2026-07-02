@@ -129,7 +129,9 @@ export async function POST(request: NextRequest) {
       }
 
       void import("@/lib/worker/process-pending-runs")
-        .then(({ processPendingAgentRuns }) => processPendingAgentRuns(1))
+        .then(({ processPendingAgentRuns }) =>
+          processPendingAgentRuns(1, { runId: previewRun.id }),
+        )
         .catch((err) =>
           console.error("[run/agent] preview queue failed:", err instanceof Error ? err.message : err),
         );
@@ -353,9 +355,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Traite la file en arrière-plan (web dyno Render si worker dédié absent)
+    // Traite CE run en arrière-plan (web dyno Render si worker dédié absent).
     void import("@/lib/worker/process-pending-runs")
-      .then(({ processPendingAgentRuns }) => processPendingAgentRuns(1))
+      .then(({ processPendingAgentRuns }) =>
+        processPendingAgentRuns(1, { runId: agentRun.id }),
+      )
       .catch((err) =>
         console.error("[run/agent] process queue failed:", err instanceof Error ? err.message : err)
       );

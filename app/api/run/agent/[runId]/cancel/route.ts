@@ -22,7 +22,7 @@ export async function POST(_request: NextRequest, props: { params: Promise<{ run
 
   const { data: run } = await admin
     .from("listing_agent_runs")
-    .select("id, user_id, status")
+    .select("id, user_id, status, used_credits, credit_hold_estimate_cents")
     .eq("id", runId)
     .single();
 
@@ -47,20 +47,43 @@ export async function POST(_request: NextRequest, props: { params: Promise<{ run
     return NextResponse.json({ status: run.status, message: "Run déjà terminé." });
   }
 
-  // Si pas encore démarré → annulation immédiate ; sinon annulation coopérative.
-  const notStarted = run.status === "pending" || run.status === "queued";
+  // Pas encore démarré OU en pause d'approbation (rien ne s'exécute) →
+  // annulation immédiate. Seul un run réellement en cours passe par
+  // l'annulation coopérative (arrêt à la prochaine étape).
+  const immediate =
+    run.status === "pending" || run.status === "queued" || run.status === "awaiting_approval";
   const update: { cancel_requested: boolean; status?: string; cancelled_at?: string } = {
     cancel_requested: true,
   };
-  if (notStarted) {
+  if (immediate) {
     update.status = "cancelled";
     update.cancelled_at = new Date().toISOString();
   }
 
   await admin.from("listing_agent_runs").update(update).eq("id", runId);
 
+  if (immediate) {
+    // Libère le hold de crédits (sinon il reste posé à vie — le reaper ne
+    // repasse pas sur un run cancelled).
+    if (run.used_credits && run.credit_hold_estimate_cents != null) {
+      const { releaseAgentRunCredits } = await import("@/lib/billing/agent-run-billing");
+      await releaseAgentRunCredits(
+        run.user_id,
+        run.id,
+        Number(run.credit_hold_estimate_cents),
+      ).catch((e) => console.error("[cancel] release hold failed", e));
+    }
+    // Clôt les approbations en attente du run (sinon elles restent dans la
+    // file Validations pour un run déjà annulé).
+    await admin
+      .from("agent_approvals")
+      .update({ status: "rejected", decided_at: new Date().toISOString() })
+      .eq("run_id", runId)
+      .eq("status", "pending");
+  }
+
   return NextResponse.json({
-    status: notStarted ? "cancelled" : "cancelling",
-    message: notStarted ? "Run annulé." : "Arrêt demandé — l'agent s'arrêtera à la prochaine étape.",
+    status: immediate ? "cancelled" : "cancelling",
+    message: immediate ? "Run annulé." : "Arrêt demandé — l'agent s'arrêtera à la prochaine étape.",
   });
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { plannedStepLabels } from "@/lib/agent/step-label";
+import { parseListingEnv } from "@/lib/agent/env";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +25,36 @@ export async function GET(request: NextRequest, props: Params) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: run } = await supabase
     .from("listing_agent_runs")
-    .select("id, status, output, error_message, steps_completed, created_at, started_at, heartbeat_at, claimed_by")
+    .select("id, status, output, error_message, steps_completed, created_at, started_at, heartbeat_at, claimed_by, version_id, inputs")
     .eq("id", params.runId)
     .eq("user_id", user.id)
-    .single() as { data: { id: string; status: string; output: unknown; error_message: string | null; steps_completed: number | null; created_at: string; started_at: string | null; heartbeat_at: string | null; claimed_by: string | null } | null };
+    .single() as { data: { id: string; status: string; output: unknown; error_message: string | null; steps_completed: number | null; created_at: string; started_at: string | null; heartbeat_at: string | null; claimed_by: string | null; version_id: string | null; inputs: Record<string, string> | null } | null };
 
   if (!run) {
     return NextResponse.json({ error: "Run non trouvé" }, { status: 404 });
+  }
+
+  // Étapes prévues (libellés lisibles pour la console live, avant les logs) —
+  // depuis la version publiée, ou le manifeste embarqué d'un run de test.
+  let planned_steps: string[] = [];
+  try {
+    if (run.version_id) {
+      const admin = createAdminClient();
+      const { data: version } = await admin
+        .from("listing_versions")
+        .select("env, prompt_body")
+        .eq("id", run.version_id)
+        .single();
+      const parsed = parseListingEnv(version?.env, version?.prompt_body);
+      if (parsed?.manifest?.steps) planned_steps = plannedStepLabels(parsed.manifest.steps);
+    } else if (typeof run.inputs?.__manifest === "string") {
+      const manifest = JSON.parse(run.inputs.__manifest) as { steps?: unknown[] };
+      if (Array.isArray(manifest.steps)) {
+        planned_steps = plannedStepLabels(manifest.steps as Parameters<typeof plannedStepLabels>[0]);
+      }
+    }
+  } catch {
+    // best-effort — la console retombe sur « Étape N »
   }
 
   let approval_id: string | null = null;
@@ -73,5 +98,6 @@ export async function GET(request: NextRequest, props: Params) {
     heartbeat_at: run.heartbeat_at ?? null,
     approval_id,
     approval,
+    planned_steps,
   });
 }

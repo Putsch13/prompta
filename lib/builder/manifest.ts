@@ -4,6 +4,7 @@ import { connectorsForSteps } from "@/lib/connectors/registry";
 import { dedupeConnectors } from "@/lib/connectors/resolve-id";
 import { enrichEnvField } from "@/lib/builder/env-field-hints";
 import { askedInputs, buildContract, type NeededInput } from "@/lib/agent/contract";
+import { collectUndeclaredVariables } from "@/lib/builder/validate-agent";
 import { managedDeliverables } from "@/lib/builder/provisioning";
 
 export interface EnvFieldInput {
@@ -88,10 +89,24 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
   const contract = buildContract(steps);
   const asked = askedInputs(contract);
 
+  // Auto-déclaration : toute variable {{x}} utilisée dans un prompt/param mais
+  // ni produite par une étape ni déjà déclarée devient une entrée demandée au
+  // lancement — au lieu de bloquer la publication (« variable non déclarée »).
+  const declaredKeys = asked.map((n) => n.key);
+  const autoInputs = collectUndeclaredVariables(steps, declaredKeys).map((key) => ({
+    key,
+    label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    type: "text" as const,
+    required: true,
+    help: undefined as string | undefined,
+    connectorId: undefined as string | undefined,
+    paramKey: undefined as string | undefined,
+  }));
+
   return {
     kind: inferredKind,
     executionMode: inferredMode,
-    inputs: asked.map((needed) => toManifestInput(needed)),
+    inputs: [...asked.map((needed) => toManifestInput(needed)), ...autoInputs],
     secrets: [...params.requiredSecrets],
     connectors: dedupeConnectors([
       ...connectorsForSteps(steps),

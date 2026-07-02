@@ -30,6 +30,8 @@ interface Props {
   status?: RunStatus | string | null;
   stepsCompleted?: number;
   totalSteps?: number;
+  /** Libellés des étapes prévues (manifeste) — remplace « Étape N » avant les logs. */
+  plannedLabels?: string[];
   stepTrace?: StepTraceEntry[];
   pollWhileRunning?: boolean;
   title?: string;
@@ -167,6 +169,7 @@ export function AgentRunConsole({
   status,
   stepsCompleted = 0,
   totalSteps = 0,
+  plannedLabels = [],
   stepTrace = [],
   pollWhileRunning = false,
   title = "Console d'exécution",
@@ -387,7 +390,7 @@ export function AgentRunConsole({
     const byIndex = new Map<number, DisplayStep>();
     for (const s of base) byIndex.set(s.index, s);
 
-    const planned = totalSteps > 0 ? totalSteps : base.length;
+    const planned = Math.max(totalSteps, plannedLabels.length) || base.length;
     if (planned === 0) return base;
 
     const merged: DisplayStep[] = [];
@@ -406,7 +409,7 @@ export function AgentRunConsole({
         id: `planned-${i}`,
         index: i,
         type: "pending",
-        label: `Étape ${i + 1}`,
+        label: plannedLabels[i] ?? `Étape ${i + 1}`,
         status: stepStatus,
         output: null,
         input: null,
@@ -417,7 +420,7 @@ export function AgentRunConsole({
       });
     }
     return merged;
-  }, [dbSteps, stepTrace, totalSteps, liveCompleted, isActive]);
+  }, [dbSteps, stepTrace, totalSteps, plannedLabels, liveCompleted, isActive]);
 
   useEffect(() => {
     const running = displaySteps.find((s) => s.status === "running");

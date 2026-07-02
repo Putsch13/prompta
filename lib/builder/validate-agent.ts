@@ -25,6 +25,45 @@ function isFakeVar(key: string): boolean {
   return FAKE_VARS.has(key) || key === "step_N_output";
 }
 
+/**
+ * Variables texte {{x}} référencées par les étapes mais ni produites par un
+ * outputKey ni présentes dans `declaredKeys`. Utilisé par buildManifest pour
+ * AUTO-DÉCLARER ces variables comme entrées de l'agent (plutôt que de bloquer
+ * la publication avec « variable non déclarée »).
+ */
+export function collectUndeclaredVariables(
+  steps: AgentStep[],
+  declaredKeys: Iterable<string>,
+): string[] {
+  const produced = new Set<string>(["file_content", "document", "input"]);
+  for (const k of declaredKeys) produced.add(k);
+  const collectOutputKeys = (list: AgentStep[]) => {
+    for (const step of list) {
+      if (step.type === "parallel") {
+        for (const branch of step.branches) collectOutputKeys(branch.steps as AgentStep[]);
+      }
+      const key = step.outputKey?.trim();
+      if (key) produced.add(key);
+    }
+  };
+  collectOutputKeys(steps);
+
+  const missing = new Set<string>();
+  for (const step of steps) {
+    for (const text of getStepTextFields(step)) {
+      let match: RegExpExecArray | null;
+      ALL_VARS_RE.lastIndex = 0;
+      while ((match = ALL_VARS_RE.exec(text)) !== null) {
+        const varName = match[1];
+        if (isFakeVar(varName) || isStepRef(varName)) continue;
+        const baseKey = varName.split(".")[0];
+        if (!produced.has(varName) && !produced.has(baseKey)) missing.add(baseKey);
+      }
+    }
+  }
+  return Array.from(missing);
+}
+
 export function validateAgentManifest(
   steps: AgentStep[],
   options?: { connectors?: string[]; inputKeys?: string[] },

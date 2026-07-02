@@ -18,6 +18,7 @@ interface RunDetail {
   heartbeat_at: string | null;
   approval_id?: string | null;
   approval?: { id: string; label?: string | null; preview?: string | null } | null;
+  planned_steps?: string[];
 }
 
 const ACTIVE = new Set(["pending", "queued", "running", "awaiting_approval"]);
@@ -167,6 +168,8 @@ export default function RunDetailPage() {
           runId={runId}
           status={run.status}
           pollWhileRunning={ACTIVE.has(run.status)}
+          totalSteps={run.planned_steps?.length ?? 0}
+          plannedLabels={run.planned_steps ?? []}
           title="Exécution"
           errorMessage={run.error_message}
         />

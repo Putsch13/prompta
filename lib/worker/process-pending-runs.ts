@@ -28,19 +28,26 @@ function parseResumeOutputs(raw: unknown): Record<string, string> {
   return out;
 }
 
-export async function processPendingAgentRuns(limit = 3): Promise<number> {
+export async function processPendingAgentRuns(
+  limit = 3,
+  opts?: { runId?: string },
+): Promise<number> {
   const admin = createAdminClient();
   const wid = workerId();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: jobs } = await admin
+  // Les runs d'aperçu (builder, version_id null) embarquent leur manifeste
+  // dans inputs.__manifest : le worker les traite comme les autres (console
+  // live, reprise après approbation depuis /dashboard/validations…).
+  // `opts.runId` = kick CIBLÉ après création/approbation : on traite CE run,
+  // pas le plus ancien de la file (sinon un zombie passait devant).
+  let query = admin
     .from("listing_agent_runs")
     .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents, resume_from_step, output, steps_completed")
     .eq("status", "pending")
-    .eq("cancel_requested", false)
-    // Les runs d'aperçu (builder, version_id null) embarquent leur manifeste
-    // dans inputs.__manifest : le worker les traite comme les autres (console
-    // live, reprise après approbation depuis /dashboard/validations…).
+    .eq("cancel_requested", false);
+  if (opts?.runId) query = query.eq("id", opts.runId);
+
+  const { data: jobs } = await query
     .order("created_at", { ascending: true })
     .limit(limit);
 
