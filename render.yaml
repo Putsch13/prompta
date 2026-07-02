@@ -6,11 +6,18 @@ services:
     name: prompta
     runtime: node
     plan: starter
-    buildCommand: npm install && npm run build
+    # npm ci = installation propre reproductible (le cache node_modules de
+    # Render + un lockfile qui a beaucoup bougé produit des arbres incohérents).
+    buildCommand: npm ci && npm run build
     startCommand: npm run start
     envVars:
       - key: NODE_ENV
         value: production
+      # Next 16 exige Node >= 20.9 — sans pin, Render garde le défaut figé à
+      # la création du service (Render ne lit PAS engines de package.json).
+      # Doublé par .node-version à la racine.
+      - key: NODE_VERSION
+        value: 22.14.0
       - key: NEXT_PUBLIC_APP_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_URL
@@ -62,11 +69,13 @@ services:
     name: prompta-worker
     runtime: node
     plan: starter
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm run worker
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 22.14.0
       # Supabase
       - fromService:
           type: web
