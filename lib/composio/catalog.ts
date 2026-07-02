@@ -34,6 +34,8 @@ export interface ComposioToolEntry {
     defaultValue?: string;
     /** Valeurs possibles (enum) déclarées par le schéma. */
     enumValues?: string[];
+    /** Longueur max déclarée par le schéma (troncature côté garde). */
+    maxLength?: number;
   }[];
 }
 
@@ -111,15 +113,17 @@ function parseToolInputs(
 ): ComposioToolEntry["inputs"] {
   const props = (parameters?.properties ?? {}) as Record<
     string,
-    { title?: string; description?: string; type?: string; default?: unknown; enum?: unknown[] }
+    { title?: string; description?: string; type?: string; default?: unknown; enum?: unknown[]; maxLength?: number }
   >;
   const required = new Set((parameters?.required as string[] | undefined) ?? []);
   return Object.entries(props).map(([key, meta]) => {
-    // default/enum du schéma : servent au garde d'exécution (auto-remplissage
-    // des champs requis triviaux, ex. design_type d'un outil Canva).
+    // default/enum/maxLength du schéma : servent au garde d'exécution
+    // (auto-remplissage des requis triviaux, troncature des valeurs trop
+    // longues — ex. un titre aiFill > 255 chars rejeté par Canva).
     const defaultValue =
       meta.default !== undefined && meta.default !== null ? String(meta.default) : undefined;
     const enumValues = Array.isArray(meta.enum) ? meta.enum.map((v) => String(v)) : undefined;
+    const maxLength = typeof meta.maxLength === "number" && meta.maxLength > 0 ? meta.maxLength : undefined;
     // Curaté (mapping connu) prioritaire, sinon tout `*_id` devient une ressource
     // listable dynamiquement (picker universel sur les 300+ toolkits).
     const resourceType =
@@ -138,6 +142,7 @@ function parseToolInputs(
         help: meta.description,
         defaultValue,
         enumValues,
+        maxLength,
       };
     }
     return {
@@ -151,6 +156,7 @@ function parseToolInputs(
       help: meta.description,
       defaultValue,
       enumValues,
+      maxLength,
     };
   });
 }

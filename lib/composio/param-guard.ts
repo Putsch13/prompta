@@ -28,6 +28,17 @@ export function applyComposioSchemaDefaults(
 ): Record<string, string> {
   const out = { ...args };
   for (const input of inputs) {
+    // Troncature selon le maxLength du schéma : une valeur trop longue (ex.
+    // titre généré par IA > 255 chars) ferait rejeter TOUTE l'action par le
+    // provider — mieux vaut couper proprement que planter le run.
+    const current = out[input.key];
+    if (
+      input.maxLength &&
+      typeof current === "string" &&
+      current.length > input.maxLength
+    ) {
+      out[input.key] = current.slice(0, Math.max(1, input.maxLength - 1)).trimEnd() + "…";
+    }
     if (!isBlank(out[input.key])) continue;
     if (input.defaultValue !== undefined) {
       out[input.key] = input.defaultValue;

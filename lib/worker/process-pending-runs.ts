@@ -235,7 +235,7 @@ export async function processPendingAgentRuns(
         }
       }
 
-      await admin
+      const { error: finalErr } = await admin
         .from("listing_agent_runs")
         .update({
           status: result.status,
@@ -247,6 +247,25 @@ export async function processPendingAgentRuns(
           heartbeat_at: new Date().toISOString(),
         })
         .eq("id", claimed.id);
+
+      if (finalErr) {
+        // Drift de contrainte statut (migration 0045 non appliquée) : on
+        // sauvegarde au moins la progression avec un statut accepté — la
+        // pause d'approbation reste dérivable de la ligne agent_approvals.
+        console.error("[worker] update final refusé, fallback:", finalErr.message);
+        await admin
+          .from("listing_agent_runs")
+          .update({
+            status: result.status === "awaiting_approval" || result.status === "cancelled"
+              ? "running"
+              : result.status,
+            steps_completed: result.stepsCompleted,
+            output: result.output,
+            error_message: result.error ?? null,
+            heartbeat_at: new Date().toISOString(),
+          })
+          .eq("id", claimed.id);
+      }
 
       const durationMs = Date.now() - startMs;
       console.info("[worker] completed run", {

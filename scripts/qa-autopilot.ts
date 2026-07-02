@@ -515,7 +515,9 @@ async function main() {
         .single();
       if (row) final = row;
       if (["completed", "failed", "suspended", "cancelled"].includes(final.status)) break;
-      if (final.status === "awaiting_approval") {
+      // La pause de validation peut rester « running » en base (drift 0045) :
+      // on vérifie les approbations pendantes à CHAQUE itération.
+      if (["awaiting_approval", "running", "pending"].includes(final.status)) {
         const did = await autoApproveOwn(ownRunIds, user.id);
         if (did) await tick();
       }

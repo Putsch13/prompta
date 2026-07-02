@@ -123,6 +123,11 @@ export function pickToolSlug(
 
     // Garde-fou : verbe demandé en lecture seule mais outil mutant/destructif → on écarte.
     if (requestedReadOnly && hasMutating && !hasReadToken) continue;
+    // Symétrique : verbe d'ÉCRITURE demandé mais outil purement lecture → on
+    // écarte (sinon « create_spreadsheet » choisissait VALUES_GET parce que
+    // son nom contenait « spreadsheet » — le score objet dominait le verbe).
+    const requestedMutating = MUTATING.has(primary);
+    if (requestedMutating && hasReadToken && !hasMutating) continue;
 
     const objectMatch =
       objectToks.length === 0 || objectToks.every((t) => tailToks.has(t));

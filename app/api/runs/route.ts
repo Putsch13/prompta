@@ -61,6 +61,20 @@ export async function GET() {
       .limit(50),
   ]);
 
+  // Dérive « en attente de validation » depuis agent_approvals (source de
+  // vérité) — le statut du run peut être resté « running » si la contrainte
+  // de statut de la prod est en retard (drift 0045).
+  const agentRunIds = (agentRuns ?? []).map((r) => r.id);
+  const awaitingIds = new Set<string>();
+  if (agentRunIds.length > 0) {
+    const { data: pendingApprovals } = await admin
+      .from("agent_approvals")
+      .select("run_id")
+      .in("run_id", agentRunIds)
+      .eq("status", "pending");
+    for (const a of pendingApprovals ?? []) awaitingIds.add(a.run_id);
+  }
+
   const merged = [
     ...((promptRuns ?? []) as PromptRun[]).map((r) => ({
       ...r,
@@ -68,7 +82,9 @@ export async function GET() {
     })),
     ...((agentRuns ?? []) as AgentRun[]).map((r) => ({
       id: r.id,
-      status: r.status,
+      status: awaitingIds.has(r.id) && ["running", "pending", "awaiting_approval"].includes(r.status)
+        ? "awaiting_approval"
+        : r.status,
       model: `agent (${r.steps_completed ?? 0} étapes)`,
       output: r.output?.result ?? (r.output ? JSON.stringify(r.output, null, 2) : null),
       error_message: r.error_message,

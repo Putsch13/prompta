@@ -29,10 +29,24 @@ export async function createPendingApproval(params: {
     .select("id")
     .single();
 
-  await db()
+  // La ligne agent_approvals est la SOURCE DE VÉRITÉ de la pause. Le statut
+  // « awaiting_approval » du run est cosmétique : si la contrainte de statut
+  // de la prod est en retard (drift 0029/0045), on continue sans lui — les
+  // API dérivent l'état d'attente depuis l'approbation pendante.
+  const { error: pauseErr } = await db()
     .from("listing_agent_runs")
     .update({ status: "awaiting_approval", paused_at_step: params.stepIndex })
     .eq("id", params.runId);
+  if (pauseErr) {
+    console.error(
+      "[approvals] statut awaiting_approval refusé (appliquer la migration 0045) :",
+      pauseErr.message,
+    );
+    await db()
+      .from("listing_agent_runs")
+      .update({ paused_at_step: params.stepIndex })
+      .eq("id", params.runId);
+  }
 
   if (!data) throw new Error("Création de l'approbation échouée");
 

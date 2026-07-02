@@ -73,7 +73,20 @@ export async function reapStaleRunningRuns(): Promise<number> {
     .is("heartbeat_at", null)
     .lt("created_at", createdCutoff);
 
-  const stale = [...(staleHeartbeat ?? []), ...(staleLegacy ?? [])];
+  const staleAll = [...(staleHeartbeat ?? []), ...(staleLegacy ?? [])];
+  if (staleAll.length === 0) return 0;
+
+  // Un run en PAUSE de validation humaine peut être resté « running » en base
+  // (drift de contrainte statut, migration 0045) : son heartbeat est gelé par
+  // nature — le tuer détruirait une pause légitime. La ligne agent_approvals
+  // pendante fait foi.
+  const { data: pausedApprovals } = await db
+    .from("agent_approvals")
+    .select("run_id")
+    .in("run_id", staleAll.map((r) => r.id))
+    .eq("status", "pending");
+  const pausedIds = new Set((pausedApprovals ?? []).map((a) => a.run_id));
+  const stale = staleAll.filter((r) => !pausedIds.has(r.id));
   if (stale.length === 0) return 0;
 
   for (const run of stale) {

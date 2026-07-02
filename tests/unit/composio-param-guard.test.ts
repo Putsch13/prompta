@@ -59,3 +59,17 @@ test("guard — une valeur fournie n'est jamais écrasée par le default", () =>
   const args = applyComposioSchemaDefaults(inputs, { design_type: "whiteboard" });
   assert.equal(args.design_type, "whiteboard");
 });
+
+test("guard — troncature au maxLength du schéma (titre aiFill > 255 chars)", () => {
+  const inputs = [input({ key: "title", required: true, maxLength: 255 })];
+  const long = "x".repeat(400);
+  const args = applyComposioSchemaDefaults(inputs, { title: long });
+  assert.ok(args.title.length <= 255, `longueur ${args.title.length}`);
+  assert.ok(args.title.endsWith("…"));
+});
+
+test("guard — pas de troncature sous le maxLength", () => {
+  const inputs = [input({ key: "title", maxLength: 255 })];
+  const args = applyComposioSchemaDefaults(inputs, { title: "Titre court" });
+  assert.equal(args.title, "Titre court");
+});

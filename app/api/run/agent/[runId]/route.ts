@@ -57,6 +57,10 @@ export async function GET(request: NextRequest, props: Params) {
     // best-effort — la console retombe sur « Étape N »
   }
 
+  // La pause d'approbation est dérivée de la ligne agent_approvals (source de
+  // vérité) — pas seulement du statut du run : si la contrainte de statut de
+  // la prod est en retard (drift 0045), le run reste « running » en base mais
+  // il EST en attente de validation.
   let approval_id: string | null = null;
   let approval: {
     id: string;
@@ -64,7 +68,8 @@ export async function GET(request: NextRequest, props: Params) {
     preview?: string;
     step_index: number;
   } | null = null;
-  if (run.status === "awaiting_approval") {
+  let effectiveStatus = run.status;
+  if (["awaiting_approval", "running", "pending"].includes(run.status)) {
     const admin = createAdminClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: pending } = await admin
@@ -84,12 +89,13 @@ export async function GET(request: NextRequest, props: Params) {
         preview: payload.preview,
         step_index: pending.step_index ?? 0,
       };
+      effectiveStatus = "awaiting_approval";
     }
   }
 
   return NextResponse.json({
     id: run.id,
-    status: run.status,
+    status: effectiveStatus,
     output: run.output,
     error_message: run.error_message,
     steps_completed: run.steps_completed,
