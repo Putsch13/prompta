@@ -9,7 +9,7 @@
  * maintenant (jour + heure), déclenche un run.
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { startAgentRun } from "@/lib/agents/runner";
 import type { AgentSlug } from "@/lib/agents/types";
@@ -31,15 +31,22 @@ export async function GET(req: NextRequest) {
   // dédié est down). Le coupe-circuit budget ne concerne QUE les agents ops
   // admin ci-dessous — avant, il court-circuitait toute la route et les runs
   // utilisateurs restaient « Démarrage… » pour toujours.
-  const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
-  const pendingProcessed = await processPendingAgentRuns(5).catch((e) => {
-    console.error("[cron:tick] pending runs failed:", e);
-    return 0;
+  //
+  // ⚠️ Exécution via after() : si on traite les runs DANS la requête, le
+  // proxy coupe à ~3 min sans réponse et Next 16 avorte le handler → agents
+  // tués en plein vol (constaté : morts à exactement 180 s). after() détache
+  // le travail de la durée de vie de la requête.
+  const pendingProcessed = "queued (after)";
+  const reaped = "queued (after)";
+  after(async () => {
+    const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
+    await processPendingAgentRuns(5).catch((e) =>
+      console.error("[cron:tick] pending runs failed:", e),
+    );
+    const { reapStalePendingRuns, reapStaleRunningRuns } = await import("@/lib/worker/reap-stale-runs");
+    await reapStalePendingRuns().catch(() => 0);
+    await reapStaleRunningRuns().catch(() => 0);
   });
-  const { reapStalePendingRuns, reapStaleRunningRuns } = await import("@/lib/worker/reap-stale-runs");
-  const reaped =
-    (await reapStalePendingRuns().catch(() => 0)) +
-    (await reapStaleRunningRuns().catch(() => 0));
 
   // ── Coupe-circuit des agents OPS ADMIN uniquement ──
   const { data: budget } = await sb.from("agent_budget").select("is_paused").eq("id", 1).single();

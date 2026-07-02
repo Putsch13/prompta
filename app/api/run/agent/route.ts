@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AgentManifestSchema } from "@/lib/agent/schema";
@@ -128,13 +128,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      void import("@/lib/worker/process-pending-runs")
-        .then(({ processPendingAgentRuns }) =>
-          processPendingAgentRuns(1, { runId: previewRun.id }),
-        )
-        .catch((err) =>
+      // after() : détaché de la requête (sinon l'abort du proxy tue le run).
+      after(async () => {
+        const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
+        await processPendingAgentRuns(1, { runId: previewRun.id }).catch((err) =>
           console.error("[run/agent] preview queue failed:", err instanceof Error ? err.message : err),
         );
+      });
 
       return NextResponse.json({
         preview: true,
@@ -355,14 +355,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Traite CE run en arrière-plan (web dyno Render si worker dédié absent).
-    void import("@/lib/worker/process-pending-runs")
-      .then(({ processPendingAgentRuns }) =>
-        processPendingAgentRuns(1, { runId: agentRun.id }),
-      )
-      .catch((err) =>
-        console.error("[run/agent] process queue failed:", err instanceof Error ? err.message : err)
+    // Traite CE run en arrière-plan, détaché de la requête via after()
+    // (web dyno Render si worker dédié absent).
+    after(async () => {
+      const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
+      await processPendingAgentRuns(1, { runId: agentRun.id }).catch((err) =>
+        console.error("[run/agent] process queue failed:", err instanceof Error ? err.message : err),
       );
+    });
 
     return NextResponse.json({
       runId: agentRun.id,

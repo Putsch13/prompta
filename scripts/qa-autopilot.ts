@@ -144,6 +144,7 @@ const TESTS: QaTest[] = [
           connector: "gmail",
           action: "gmail.send",
           params: {
+            from: SELF_EMAIL,
             to: SELF_EMAIL,
             subject: "QA Prompta — test automatique",
             body: "Email envoyé par le QA autopilot Prompta. Aucun destinataire tiers.",
@@ -225,7 +226,10 @@ const TESTS: QaTest[] = [
         llm("Une ligne : {{step_0_output}}"),
       ],
     },
-    expect: ["completed"],
+    // PLATFORM_SERPER_KEY optionnelle : un échec est acceptable si le message
+    // dit clairement qu'il manque la clé (config, pas bug).
+    expect: ["completed", "failed"],
+    errorPattern: /Clé Serper requise/i,
   },
 ];
 

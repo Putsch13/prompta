@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decideApproval } from "@/lib/agent/approvals";
@@ -49,10 +49,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
   }
 
   if (decision === "approved") {
-    const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
-    void processPendingAgentRuns(1).catch((e) =>
-      console.error("[approve] worker kick failed", e)
-    );
+    // Kick ciblé, détaché de la requête via after() (sinon l'abort du proxy
+    // peut tuer la reprise en plein vol).
+    const resumedRunId = result.runId;
+    after(async () => {
+      const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
+      await processPendingAgentRuns(1, { runId: resumedRunId }).catch((e) =>
+        console.error("[approve] worker kick failed", e)
+      );
+    });
   }
 
   return NextResponse.json({ ok: true, runId: result.runId, resumeFromStep: result.stepIndex + 1 });
