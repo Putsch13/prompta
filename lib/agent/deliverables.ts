@@ -7,7 +7,8 @@ export const DELIVERABLE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB plafond global
 
 export interface SaveDeliverableParams {
   runId: string;
-  listingId: string;
+  /** Null pour un run de test builder (pas de listing publié). */
+  listingId: string | null;
   userId: string;
   kind: string;
   filename: string;
@@ -66,7 +67,9 @@ export async function saveDeliverable(params: SaveDeliverableParams): Promise<st
     .from("agent_deliverables")
     .insert({
       run_id: params.runId,
-      listing_id: params.listingId,
+      // "" (run de test worker, listing absent) → null, sinon uuid invalide et
+      // le livrable disparaissait en silence.
+      listing_id: params.listingId || null,
       user_id: params.userId,
       kind: params.kind,
       filename,

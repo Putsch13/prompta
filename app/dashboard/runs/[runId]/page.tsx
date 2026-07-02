@@ -3,9 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, ClipboardCopy, Check, Loader2, RotateCcw } from "lucide-react";
+import { ArrowLeft, ClipboardCopy, Check, Loader2, RotateCcw, Download, FileText, Package } from "lucide-react";
 import { AgentRunConsole } from "@/components/run/AgentRunConsole";
 import type { RunStepLog } from "@/components/run/RunStepTimeline";
+
+interface Deliverable {
+  id: string;
+  kind: string;
+  filename: string;
+  mime_type: string | null;
+  preview_text: string | null;
+  size_bytes: number | null;
+  created_at: string;
+}
 
 interface RunDetail {
   id: string;
@@ -28,18 +38,25 @@ export default function RunDetailPage() {
   const runId = String(params.runId);
   const [run, setRun] = useState<RunDetail | null>(null);
   const [steps, setSteps] = useState<(RunStepLog & { errorDetail?: unknown })[]>([]);
+  const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [resultCopied, setResultCopied] = useState(false);
 
   const load = useCallback(async () => {
-    const [runRes, stepsRes] = await Promise.all([
+    const [runRes, stepsRes, delivRes] = await Promise.all([
       fetch(`/api/run/agent/${runId}`),
       fetch(`/api/run/agent/${runId}/steps`),
+      fetch(`/api/run/agent/${runId}/deliverables`),
     ]);
     if (runRes.ok) setRun(await runRes.json());
     if (stepsRes.ok) {
       const d = await stepsRes.json();
       setSteps(d.steps ?? []);
+    }
+    if (delivRes.ok) {
+      const d = await delivRes.json();
+      setDeliverables(d.deliverables ?? []);
     }
     setLoading(false);
   }, [runId]);
@@ -174,6 +191,64 @@ export default function RunDetailPage() {
           errorMessage={run.error_message}
         />
       </div>
+
+      {/* ── Dossier de mission : résultat final + livrables ─────────────── */}
+      {(typeof (run.output as Record<string, unknown> | null)?.result === "string" &&
+        ((run.output as Record<string, string>).result ?? "").trim() !== "") && (
+        <div className="mt-6 rounded-xl border border-line bg-card p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+              <FileText className="h-4 w-4 text-accent" /> Résultat final
+            </h2>
+            <button
+              type="button"
+              onClick={async () => {
+                await navigator.clipboard.writeText((run.output as Record<string, string>).result);
+                setResultCopied(true);
+                setTimeout(() => setResultCopied(false), 2000);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs font-medium hover:bg-card2"
+            >
+              {resultCopied ? <Check className="h-3 w-3 text-green-600" /> : <ClipboardCopy className="h-3 w-3" />}
+              {resultCopied ? "Copié" : "Copier"}
+            </button>
+          </div>
+          <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-card2/60 p-3 text-xs text-ink">
+            {(run.output as Record<string, string>).result}
+          </pre>
+          <p className="mt-2 text-[11px] text-ink-faint">
+            Chaque étape ci-dessus est dépliable (entrée envoyée + sortie produite) — y compris le
+            contenu des emails/messages envoyés. Copiez le résultat pour le réutiliser comme base.
+          </p>
+        </div>
+      )}
+
+      {deliverables.length > 0 && (
+        <div className="mt-6 rounded-xl border border-line bg-card p-4">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <Package className="h-4 w-4 text-accent" /> Livrables ({deliverables.length})
+          </h2>
+          <ul className="mt-3 divide-y divide-line">
+            {deliverables.map((d) => (
+              <li key={d.id} className="flex items-center gap-3 py-2.5">
+                <FileText className="h-4 w-4 shrink-0 text-ink-faint" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-ink">{d.filename}</p>
+                  {d.preview_text && (
+                    <p className="truncate text-xs text-ink-faint">{d.preview_text.slice(0, 120)}</p>
+                  )}
+                </div>
+                <a
+                  href={`/api/run/agent/${runId}/deliverables/${d.id}/download`}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-accent hover:bg-accent/5"
+                >
+                  <Download className="h-3.5 w-3.5" /> Télécharger
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {failedSteps.length > 0 && (
         <div className="mt-6 space-y-3">

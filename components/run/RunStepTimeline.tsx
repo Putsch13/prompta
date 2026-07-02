@@ -128,8 +128,8 @@ export function RunStepTimeline({ runId, pollWhileRunning = false, isRunning = f
         {/* rail vertical */}
         <span className="absolute bottom-3 left-[14px] top-3 w-px bg-line" aria-hidden />
         {steps.map((step) => {
-          const output = previewText(step.outputPreview, 600);
-          const input = previewText(step.inputPreview, 600);
+          const output = previewText(step.outputPreview, 2000);
+          const input = previewText(step.inputPreview, 2000);
           const isOpen = expanded === step.id;
           const hasDetails = Boolean(input || output || step.errorMessage);
 

@@ -47,6 +47,8 @@ interface QaTest {
   expect: string[];
   /** Si failed : le message doit matcher (sinon on signale un message flou). */
   errorPattern?: RegExp;
+  /** Vérifie qu'au moins un livrable a été persisté (dossier de mission). */
+  expectDeliverable?: boolean;
 }
 
 function llm(prompt: string, outputKey?: string) {
@@ -216,6 +218,161 @@ const TESTS: QaTest[] = [
     expect: ["failed"],
     errorPattern: /introuvable|choisissez une action existante|requiert des champs/i,
   },
+  // ───────────────────────────── Scénarios COMPLEXES ─────────────────────
+  {
+    name: "mission_complete_drive_llm_validation_gmail",
+    goal: "Mission réelle : Drive → synthèse LLM → validation humaine → email à soi-même",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "retrieve", source: "google_drive", query: "mes 3 fichiers les plus récents", maxResults: 3 },
+        llm("Fais une synthèse en 3 lignes de : {{step_0_output}}", "synthese"),
+        { type: "approval", label: "QA — valider la synthèse avant envoi", payloadTemplate: "{{synthese}}", outputKey: "synthese_validee" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: {
+            from: SELF_EMAIL,
+            to: SELF_EMAIL,
+            subject: "QA Prompta — mission complète",
+            body: "Synthèse validée par validation humaine :\n\n{{synthese_validee}}",
+          },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "json_path_chaining",
+    goal: "Sortie JSON d'une étape lue via {{data.champ}}",
+    manifest: {
+      kind: "agent",
+      steps: [
+        llm('Réponds UNIQUEMENT ce JSON sans autre texte : {"ville":"Paris","pays":"France"}', "data"),
+        llm("Réponds uniquement le nom de la ville : {{data.ville}}"),
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "double_validation",
+    goal: "Deux validations humaines dans le même run",
+    manifest: {
+      kind: "agent",
+      steps: [
+        llm("Écris le brouillon A (une phrase).", "brouillon_a"),
+        { type: "approval", label: "QA — valider A", payloadTemplate: "{{brouillon_a}}", outputKey: "a_ok" },
+        llm("Écris le brouillon B basé sur : {{a_ok}}", "brouillon_b"),
+        { type: "approval", label: "QA — valider B", payloadTemplate: "{{brouillon_b}}", outputKey: "b_ok" },
+        llm("Fusionne : {{a_ok}} + {{b_ok}} en une phrase."),
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "ai_fill_parametre",
+    goal: "Paramètre d'action rempli par IA (aiFills)",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "action",
+          connector: "canva",
+          action: "canva.create_design",
+          params: { design_type: "presentation", title: "" },
+          aiFills: {
+            title: { model: MODEL, prompt: "Invente un titre court (4 mots max) pour une présentation QA." },
+          },
+        },
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "sheets_creation",
+    goal: "Création d'une feuille Google Sheets (résolution dynamique)",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "QA Prompta — feuille de test" },
+        },
+      ],
+    },
+    expect: ["completed", "failed"],
+    errorPattern: /requiert des champs|introuvable|choisissez/i,
+  },
+  {
+    name: "calendar_evenement_sans_invites",
+    goal: "Événement Google Calendar sur MON calendrier (aucun invité)",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "action",
+          connector: "google_calendar",
+          action: "google_calendar.create_event",
+          params: {
+            summary: "QA Prompta — événement de test",
+            description: "Créé par le QA autopilot. Aucun invité.",
+            start_datetime: "2026-07-03T09:00:00",
+            event_duration_hour: "1",
+          },
+        },
+      ],
+    },
+    expect: ["completed", "failed"],
+    errorPattern: /requiert des champs|introuvable|choisissez|invalid/i,
+  },
+  {
+    name: "retrieve_url",
+    goal: "Lecture d'une page web (retrieve url)",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "retrieve", source: "url", query: "https://example.com" },
+        llm("Titre de cette page, une ligne : {{step_0_output}}"),
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "memoire_agent",
+    goal: "Agent avec mémoire activée (sauvegarde du résultat)",
+    manifest: {
+      kind: "agent",
+      memory: { enabled: true },
+      steps: [llm("Réponds : mémoire ok")],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "mega_mix",
+    goal: "Parallèle (retrieve url + LLM) → fusion → validation → LLM final",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "retrieve", source: "url", query: "https://example.com" }], outputKey: "page" },
+            { steps: [llm("Donne 2 critères de qualité d'une page web, bref.")], outputKey: "criteres" },
+          ],
+          outputKey: "matiere",
+        },
+        llm("Évalue la page {{page}} selon {{criteres}} en 2 lignes.", "evaluation"),
+        { type: "approval", label: "QA — valider l'évaluation", payloadTemplate: "{{evaluation}}", outputKey: "eval_ok" },
+        llm("Conclusion en une ligne : {{eval_ok}}"),
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
   {
     name: "recherche_web",
     goal: "Outil web_search (clé Serper plateforme)",
@@ -374,6 +531,15 @@ async function main() {
     } else if (final.status === "failed" && test.errorPattern && !test.errorPattern.test(final.error_message ?? "")) {
       verdict = "MESSAGE_FLOU";
       note = "Échec attendu mais message non actionnable";
+    } else if (test.expectDeliverable && final.status === "completed") {
+      const { count } = await sb
+        .from("agent_deliverables")
+        .select("*", { count: "exact", head: true })
+        .eq("run_id", run.id);
+      if (!count) {
+        verdict = "ERREUR";
+        note = "Aucun livrable persisté (dossier de mission vide)";
+      }
     }
 
     results.push({
