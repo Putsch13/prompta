@@ -89,11 +89,21 @@ export async function GET(req: NextRequest, props: Params) {
       const callbackParams = new URLSearchParams({ toolkit: toolkitSlug });
       if (returnUrl) callbackParams.set("returnUrl", returnUrl);
       const callbackUrl = `${appUrl}/api/connectors/composio/callback?${callbackParams.toString()}`;
-      const redirectUrl = await startComposioAuth(user.id, toolkitSlug, callbackUrl);
-      return NextResponse.redirect(redirectUrl);
+      const start = await startComposioAuth(user.id, toolkitSlug, callbackUrl);
+      if (start.kind === "no_auth_required") {
+        // Rien à autoriser : connecté directement.
+        const dest =
+          returnUrl ??
+          `${appUrl}/dashboard/connexions?connected=${encodeURIComponent(toolkitSlug)}`;
+        return NextResponse.redirect(dest);
+      }
+      return NextResponse.redirect(start.url);
     } catch (err) {
+      // Retour UI avec un message lisible (avant : JSON brut plein écran).
       const message = err instanceof Error ? err.message : "Erreur Composio";
-      return NextResponse.json({ error: message }, { status: 503 });
+      const dest = new URL("/dashboard/connexions", appUrl);
+      dest.searchParams.set("error", message.slice(0, 300));
+      return NextResponse.redirect(dest);
     }
   }
 

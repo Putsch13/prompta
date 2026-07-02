@@ -69,7 +69,9 @@ function ConnexionsContent() {
     const connected = searchParams.get("connected");
     const error = searchParams.get("error");
     if (connected) showToast(`${connected} connecté`);
-    if (error) showToast("Échec de connexion");
+    // Message d'erreur réel (ex. app sans credentials gérés) plutôt qu'un
+    // générique « Échec de connexion ».
+    if (error) showToast(error.length > 12 ? error : "Échec de connexion");
     if (searchParams.get("connect") === "telegram") {
       showToast("Ajoutez votre token bot Telegram ci-dessous");
     }
@@ -77,7 +79,8 @@ function ConnexionsContent() {
 
   function showToast(msg: string) {
     setToast(msg);
-    setTimeout(() => setToast(null), 4000);
+    // Les messages longs (erreurs de connexion détaillées) restent lisibles.
+    setTimeout(() => setToast(null), msg.length > 60 ? 10000 : 4000);
   }
 
   async function handleDelete(provider: string) {

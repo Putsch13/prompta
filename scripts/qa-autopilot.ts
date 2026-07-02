@@ -218,6 +218,113 @@ const TESTS: QaTest[] = [
     expect: ["failed"],
     errorPattern: /introuvable|choisissez une action existante|requiert des champs/i,
   },
+  // ─────────────────────── Scénarios MULTI-COUCHES (v3) ──────────────────
+  {
+    name: "pipeline_sheets_bout_en_bout",
+    goal: "Créer une feuille → extraire son id → y écrire des valeurs (3 couches)",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "QA Prompta — pipeline bout en bout" },
+          outputKey: "creation",
+        },
+        llm(
+          "Voici la réponse d'une API de création de spreadsheet : {{creation}}\nRéponds UNIQUEMENT l'identifiant (spreadsheetId) sans rien d'autre.",
+          "sheet_id",
+        ),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.append_row",
+          params: {
+            spreadsheet_id: "{{sheet_id}}",
+            values: "QA;Prompta;ok",
+          },
+        },
+      ],
+    },
+    expect: ["completed", "failed"],
+    errorPattern: /requiert des champs|introuvable|choisissez|invalid/i,
+  },
+  {
+    name: "mission_multi_apps",
+    goal: "Drive → analyse → Sheets → Calendar → validation → Gmail récap (5 apps)",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "retrieve", source: "google_drive", query: "mes 3 fichiers les plus récents", maxResults: 3 },
+        llm("Analyse ces fichiers et fais un plan d'action en 3 points : {{step_0_output}}", "plan"),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "QA Prompta — plan d'action" },
+        },
+        {
+          type: "action",
+          connector: "google_calendar",
+          action: "google_calendar.create_event",
+          params: {
+            summary: "QA Prompta — revue du plan",
+            description: "{{plan}}",
+            start_datetime: "2026-07-04T10:00:00",
+            event_duration_hour: "1",
+          },
+        },
+        { type: "approval", label: "QA — valider le récap avant email", payloadTemplate: "{{plan}}", outputKey: "plan_ok" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: {
+            from: SELF_EMAIL,
+            to: SELF_EMAIL,
+            subject: "QA Prompta — mission multi-apps",
+            body: "Plan validé :\n\n{{plan_ok}}",
+          },
+        },
+      ],
+    },
+    // gmail peut échouer en 403 tant que la connexion n'a pas le scope d'envoi.
+    expect: ["completed", "failed"],
+    errorPattern: /autorisation manquante|reconnectez gmail/i,
+    expectDeliverable: true,
+  },
+  {
+    name: "json_extraction_profonde",
+    goal: "Chemin JSON à 2 niveaux {{data.client.ville}}",
+    manifest: {
+      kind: "agent",
+      steps: [
+        llm('Réponds UNIQUEMENT ce JSON : {"client":{"nom":"Dupont","ville":"Lyon"},"score":42}', "data"),
+        llm("Ville du client (un mot) : {{data.client.ville}} — score : {{data.score}}"),
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "code_sandbox",
+    goal: "Étape code Python (sandbox E2B)",
+    manifest: {
+      kind: "agent",
+      steps: [{ type: "code", source: "print('qa-sandbox-ok')" }],
+    },
+    expect: ["completed", "failed"],
+    errorPattern: /E2B|sandbox|clé/i,
+  },
+  {
+    name: "stress_25_etapes",
+    goal: "25 étapes LLM (plafonds redimensionnés + timeout 5 min)",
+    manifest: {
+      kind: "agent",
+      steps: Array.from({ length: 25 }, (_, i) => llm(`Réponds uniquement : ${i + 1}`)),
+    },
+    expect: ["completed"],
+  },
   // ───────────────────────────── Scénarios COMPLEXES ─────────────────────
   {
     name: "mission_complete_drive_llm_validation_gmail",
@@ -454,7 +561,12 @@ async function main() {
   const ownRunIds = new Set<string>();
   let spentEstimate = 0;
 
-  for (const test of TESTS) {
+  // QA_ONLY="nom1,nom2" : rejoue uniquement ces scénarios (économise le budget).
+  const only = process.env.QA_ONLY?.split(",").map((s) => s.trim()).filter(Boolean);
+  const selected = only?.length ? TESTS.filter((t) => only.includes(t.name)) : TESTS;
+  if (only?.length) console.log(`Sélection : ${selected.map((t) => t.name).join(", ")}\n`);
+
+  for (const test of selected) {
     const parsed = AgentManifestSchema.safeParse(test.manifest);
     if (!parsed.success) {
       results.push({

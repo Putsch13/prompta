@@ -87,25 +87,50 @@ async function getAuthConfigId(toolkitSlug: string): Promise<string> {
   }
 }
 
+export type ComposioAuthStart =
+  | { kind: "redirect"; url: string }
+  /** Toolkit sans authentification : rien à connecter, utilisable direct. */
+  | { kind: "no_auth_required" };
+
 export async function startComposioAuth(
   userId: string,
   connectorId: string,
   callbackUrl: string
-): Promise<string> {
+): Promise<ComposioAuthStart> {
   const toolkitSlug = toComposioToolkitSlug(connectorId);
   const composio = getComposioClient();
-  const authConfigId = await getAuthConfigId(toolkitSlug);
 
-  const connectionRequest = await composio.connectedAccounts.link(userId, authConfigId, {
-    callbackUrl,
-    allowMultiple: true,
-  });
+  try {
+    const authConfigId = await getAuthConfigId(toolkitSlug);
 
-  const redirectUrl = connectionRequest.redirectUrl;
-  if (!redirectUrl) {
-    throw new Error(`Composio : pas de redirect URL pour ${toolkitSlug}`);
+    const connectionRequest = await composio.connectedAccounts.link(userId, authConfigId, {
+      callbackUrl,
+      allowMultiple: true,
+    });
+
+    const redirectUrl = connectionRequest.redirectUrl;
+    if (!redirectUrl) {
+      throw new Error(`Composio : pas de redirect URL pour ${toolkitSlug}`);
+    }
+    return { kind: "redirect", url: redirectUrl };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Toolkit SANS auth (ex. « composio », outils utilitaires) : Composio
+    // refuse la création d'auth config car il n'y a rien à autoriser. On
+    // marque le connecteur utilisable directement.
+    if (/Auth_Config_NoAuthApp|does not require authentication/i.test(msg)) {
+      await saveComposioConnection(userId, toolkitSlug, "no_auth");
+      return { kind: "no_auth_required" };
+    }
+    // Toolkit sans credentials gérés par Composio (ex. « canvas ») : il
+    // faudrait fournir ses propres client_id/secret — pas supporté à ce jour.
+    if (/Auth_Config_DefaultAuthConfigNotFound|does not have managed credentials/i.test(msg)) {
+      throw new Error(
+        `« ${toolkitSlug} » n'a pas d'authentification gérée par Composio — il faudrait vos propres identifiants OAuth développeur. Cette app n'est pas connectable pour l'instant, cherchez une alternative dans le catalogue.`,
+      );
+    }
+    throw err;
   }
-  return redirectUrl;
 }
 
 export async function handleComposioCallback(
