@@ -98,7 +98,11 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
     mapParams: (p) =>
       clean({
         spreadsheet_id: sheetId(p),
-        range: composeRange(p),
+        // range OMIS si non fourni : « A:Z » sans nom d'onglet est rejeté
+        // (« sheet name does not exist ») — sans range, l'outil vise la
+        // première feuille, ce qui marche quel que soit son nom (Sheet1,
+        // Feuille 1…).
+        range: pick(p, "range", "tab") ? composeRange(p) : undefined,
         values: toSheetValues(pick(p, "values", "rows", "data") ?? ""),
         // Requis par l'outil : interprète les valeurs comme une saisie
         // utilisateur (formules/formats), le choix sûr par défaut.
