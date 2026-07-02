@@ -16,7 +16,14 @@ export async function webSearch(query: string, apiKey?: string): Promise<string>
     body: JSON.stringify({ q: query, num: 5 }),
   });
 
-  if (!res.ok) throw new Error("Erreur recherche web");
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    const hint =
+      res.status === 401 || res.status === 403
+        ? " — clé Serper invalide ou quota épuisé (vérifiez PLATFORM_SERPER_KEY)"
+        : "";
+    throw new Error(`Recherche web refusée (${res.status})${hint}${detail ? ` : ${detail.slice(0, 120)}` : ""}`);
+  }
   const data = await res.json();
   const snippets = (data.organic ?? [])
     .slice(0, 5)

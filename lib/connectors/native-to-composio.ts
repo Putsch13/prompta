@@ -126,9 +126,14 @@ const CONNECTOR_ALIAS: Record<string, string> = {
 /** Verbe (forme variée) → verbe canonique du mapping. */
 function canonicalVerb(verb: string): string {
   const v = verb.toLowerCase();
-  if (/(read|get|fetch|list|values_get|load)/.test(v)) return "read";
-  if (/(append|add|write|insert|values_append|create_row)/.test(v)) return "append";
-  if (/(send|email|message|notify)/.test(v)) return "send";
+  // Matching par TOKENS entiers — la version sous-chaîne faisait matcher
+  // « read » dans « spREADsheet » : create_spreadsheet était mappé sur
+  // l'outil de LECTURE (VALUES_GET) au lieu de la résolution dynamique.
+  const tokens = new Set(v.split(/[^a-z0-9]+/));
+  const has = (...ws: string[]) => ws.some((w) => tokens.has(w));
+  if (has("read", "get", "fetch", "list", "load")) return "read";
+  if (has("append", "add", "write", "insert")) return "append";
+  if (has("send", "email", "message", "notify")) return "send";
   return v;
 }
 

@@ -24,3 +24,15 @@ test("scoring — read_values ne choisit jamais un outil destructif", () => {
   const slug = pickToolSlug(SHEETS_TOOLS, "googlesheets", "google_sheets.read_values");
   assert.notEqual(slug, "GOOGLESHEETS_DELETE_SHEET");
 });
+
+import { composioMappingFor } from "../../lib/connectors/native-to-composio";
+
+test("mapping — create_spreadsheet ne matche PAS « read » dans spREADsheet", () => {
+  const m = composioMappingFor("google_sheets.create_spreadsheet");
+  assert.notEqual(m?.toolSlug, "GOOGLESHEETS_VALUES_GET");
+});
+
+test("mapping — read_sheet matche toujours la lecture", () => {
+  const m = composioMappingFor("google_sheets.read_sheet");
+  assert.equal(m?.toolSlug, "GOOGLESHEETS_VALUES_GET");
+});

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ExternalLink, Loader2, Search, Zap } from "lucide-react";
+import { Check, ExternalLink, Loader2, RefreshCw, Search, Zap } from "lucide-react";
 import type { ComposioToolkitEntry } from "@/lib/composio/catalog";
 
 const CATEGORIES = [
@@ -161,6 +161,13 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
                       className="rounded-lg border border-line px-2 py-1 text-xs text-accent hover:bg-accent-light"
                     >
                       Voir actions
+                    </a>
+                    <a
+                      href={`/api/connectors/${tk.id}/connect?force=true`}
+                      title="Refait l'OAuth pour obtenir les permissions à jour (ex. envoi d'email) — à utiliser si un run échoue en « autorisation manquante » alors que l'app est connectée."
+                      className="flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-xs text-ink-soft hover:bg-card2"
+                    >
+                      <RefreshCw className="h-3 w-3" /> Reconnecter
                     </a>
                   </>
                 ) : (
