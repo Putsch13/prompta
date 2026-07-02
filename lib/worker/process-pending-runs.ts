@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runAgent } from "@/lib/agent/orchestrator";
 import { parseListingEnv } from "@/lib/agent/env";
+import { AgentManifestSchema } from "@/lib/agent/schema";
 import {
   resolveAgentRunKeys,
   settleAgentRunCredits,
@@ -37,10 +38,9 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
     .select("id, user_id, listing_id, version_id, inputs, dry_run, used_credits, credit_hold_estimate_cents, resume_from_step, output, steps_completed")
     .eq("status", "pending")
     .eq("cancel_requested", false)
-    // Les runs d'aperçu (builder) n'ont pas de version persistée → non reprenables
-    // par le worker (il ne peut pas charger le manifeste). Le builder les reprend
-    // en direct. On les ignore ici pour ne pas les marquer « failed » à tort.
-    .not("version_id", "is", null)
+    // Les runs d'aperçu (builder, version_id null) embarquent leur manifeste
+    // dans inputs.__manifest : le worker les traite comme les autres (console
+    // live, reprise après approbation depuis /dashboard/validations…).
     .order("created_at", { ascending: true })
     .limit(limit);
 
@@ -83,30 +83,53 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
     console.info("[worker] started run", { runId: claimed.id, listingId: claimed.listing_id, worker: wid });
 
     try {
-      const { data: listing } = await admin
-        .from("listings")
-        .select("price_cents, creator_id")
-        .eq("id", claimed.listing_id ?? "")
-        .single();
+      const isPreview = !claimed.version_id;
 
-      const { data: version } = await admin
-        .from("listing_versions")
-        .select("env, prompt_body, contract")
-        .eq("id", claimed.version_id ?? "")
-        .single();
+      const { data: listing } = claimed.listing_id
+        ? await admin
+            .from("listings")
+            .select("price_cents, creator_id")
+            .eq("id", claimed.listing_id)
+            .single()
+        : { data: null };
 
-      const parsed = parseListingEnv(version?.env, version?.prompt_body);
-      if (!parsed) throw new Error("Manifeste agent manquant");
+      let manifestRaw: unknown;
+      let frozenContract: import("@/lib/agent/contract").AgentContract | null = null;
 
-      // P1.6 + P3.3 : si la version a un contrat figé, on le réutilise tel quel
-      // pour garantir qu'une reprise (worker) lit la même interface que le run initial.
-      const frozenContract = (version?.contract ?? null) as
-        | import("@/lib/agent/contract").AgentContract
-        | null;
+      if (isPreview) {
+        // Run de test du builder : le manifeste voyage dans le run lui-même.
+        const embedded = (claimed.inputs as Record<string, unknown> | null)?.__manifest;
+        if (typeof embedded !== "string") {
+          throw new Error(
+            "Run de test sans manifeste embarqué — relancez le test depuis le builder.",
+          );
+        }
+        manifestRaw = JSON.parse(embedded);
+      } else {
+        const { data: version } = await admin
+          .from("listing_versions")
+          .select("env, prompt_body, contract")
+          .eq("id", claimed.version_id ?? "")
+          .single();
+
+        const parsed = parseListingEnv(version?.env, version?.prompt_body);
+        if (!parsed) throw new Error("Manifeste agent manquant");
+        manifestRaw = parsed.manifest;
+
+        // P1.6 + P3.3 : si la version a un contrat figé, on le réutilise tel quel
+        // pour garantir qu'une reprise (worker) lit la même interface que le run initial.
+        frozenContract = (version?.contract ?? null) as
+          | import("@/lib/agent/contract").AgentContract
+          | null;
+      }
+
+      const manifestParsed = AgentManifestSchema.safeParse(manifestRaw);
+      if (!manifestParsed.success) throw new Error("Manifeste agent invalide");
+      const manifest = manifestParsed.data;
 
       // Source de vérité unique : mêmes connecteurs requis que la route de run
       // (exclut les étapes sharedEnv du créateur pour un run d'abonné).
-      const requiredConnectors = runnerRequiredConnectors(parsed.manifest, {
+      const requiredConnectors = runnerRequiredConnectors(manifest, {
         userId: claimed.user_id,
         creatorId: listing?.creator_id ?? undefined,
       });
@@ -125,19 +148,26 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
         }
       }
 
-      const isFree = (listing?.price_cents ?? 0) === 0;
-      const isOwner = listing?.creator_id === claimed.user_id;
+      // Un run de test builder est traité comme un run du créateur (mêmes
+      // paramètres billing que la route preview : owner + free).
+      const isFree = isPreview || (listing?.price_cents ?? 0) === 0;
+      const isOwner = isPreview || listing?.creator_id === claimed.user_id;
       const billing = await resolveAgentRunKeys(
         claimed.user_id,
-        parsed.manifest,
+        manifest,
         isOwner,
         isFree,
         { consumeFreeQuota: false }
       );
 
-      const inputs = (claimed.inputs as Record<string, string>) ?? {};
+      // Les clés techniques (__manifest…) ne sont pas des entrées d'agent.
+      const inputs = Object.fromEntries(
+        Object.entries((claimed.inputs as Record<string, string>) ?? {}).filter(
+          ([k]) => !k.startsWith("__"),
+        ),
+      );
       const { buildRunResourcesFromInputs } = await import("@/lib/agent/build-run-resources");
-      const { cleanInputs, resources } = buildRunResourcesFromInputs(parsed.manifest, inputs);
+      const { cleanInputs, resources } = buildRunResourcesFromInputs(manifest, inputs);
 
       const heartbeatTimer = setInterval(async () => {
         try {
@@ -153,7 +183,7 @@ export async function processPendingAgentRuns(limit = 3): Promise<number> {
 
       let result;
       try {
-        result = await runAgent(parsed.manifest, {
+        result = await runAgent(manifest, {
           userId: claimed.user_id,
           listingId: claimed.listing_id ?? "",
           creatorId: listing?.creator_id,

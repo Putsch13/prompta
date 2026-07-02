@@ -9,6 +9,9 @@ interface ApprovalItem {
   id: string;
   runId: string;
   agentTitle: string;
+  /** Libellé de l'étape (ex. « Envoi de l'email au client ») + aperçu du contenu. */
+  stepLabel?: string;
+  preview?: string;
 }
 
 const POLL_MS = 15_000;
@@ -30,11 +33,15 @@ export function ApprovalNotifier() {
     try {
       const res = await fetch("/api/approvals");
       if (!res.ok) return;
-      const data = (await res.json()) as { items?: ApprovalItem[] };
-      const next = (data.items ?? []).map((i) => ({
+      const data = (await res.json()) as {
+        items?: (ApprovalItem & { payload?: { label?: string; preview?: string } })[];
+      };
+      const next: ApprovalItem[] = (data.items ?? []).map((i) => ({
         id: i.id,
         runId: i.runId,
         agentTitle: i.agentTitle,
+        stepLabel: i.payload?.label,
+        preview: i.payload?.preview,
       }));
       setItems(next);
 
@@ -43,8 +50,10 @@ export function ApprovalNotifier() {
       if (fresh.length > 0 && typeof window !== "undefined" && "Notification" in window) {
         if (Notification.permission === "granted") {
           for (const f of fresh) {
-            new Notification("Validation requise", {
-              body: `${f.agentTitle} attend votre validation pour continuer.`,
+            const what = f.stepLabel ? ` — ${f.stepLabel}` : "";
+            const snippet = f.preview ? `\n« ${f.preview.slice(0, 120)}… »` : "";
+            new Notification(`Validation requise : ${f.agentTitle}`, {
+              body: `${f.agentTitle}${what} attend votre feu vert.${snippet}`,
               tag: f.id,
             });
           }
@@ -81,7 +90,14 @@ export function ApprovalNotifier() {
         <ul className="max-h-56 divide-y divide-white/5 overflow-auto">
           {visible.slice(0, 4).map((i) => (
             <li key={i.id} className="flex items-center gap-2 px-4 py-2.5">
-              <span className="min-w-0 flex-1 truncate text-sm text-white/85">{i.agentTitle}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-white/85">{i.agentTitle}</span>
+                {(i.stepLabel || i.preview) && (
+                  <span className="block truncate text-[11px] text-white/50">
+                    {i.stepLabel ?? i.preview?.slice(0, 80)}
+                  </span>
+                )}
+              </span>
               <Link
                 href={`/dashboard/validations?focus=${i.id}`}
                 className="shrink-0 rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-medium text-amber-950 hover:bg-amber-400"

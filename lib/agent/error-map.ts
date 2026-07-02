@@ -30,6 +30,7 @@ export type AgentErrorCode =
   | "approval_expired"
   | "idempotency_conflict"
   | "missing_file_content"
+  | "missing_required_params"
   | "code_runtime"
   | "unknown";
 
@@ -79,6 +80,17 @@ export function mapAgentError(
   }
   if (/approval[\s_-]*expired|validation humaine.*expir|approbation.*expir/i.test(raw)) {
     return { code: "approval_expired", message: "Validation humaine expirée.", hint: "Relancez l'agent.", raw };
+  }
+
+  // ─── Champs requis manquants (garde Composio générique) ─────────────────
+  if (/missing_required_params/i.test(raw)) {
+    return {
+      code: "missing_required_params",
+      // Le message du garde liste déjà les champs et leurs libellés.
+      message: raw.replace(/^.*missing_required_params:\s*/, ""),
+      hint: "Ouvrez l'étape dans le builder et renseignez ces champs (valeur fixe, « Demander à l'abonné » ou « Générer par IA »).",
+      raw, connector, action,
+    };
   }
 
   // ─── Écriture de fichier sans contenu (P0-1) ────────────────────────────

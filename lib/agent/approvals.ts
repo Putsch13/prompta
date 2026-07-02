@@ -12,7 +12,10 @@ export async function createPendingApproval(params: {
   payload: Record<string, unknown>;
   expiresInMinutes?: number;
 }): Promise<string> {
-  const expiresAt = new Date(Date.now() + (params.expiresInMinutes ?? 60) * 60 * 1000);
+  // 24 h par défaut : une validation humaine doit pouvoir attendre le retour
+  // de l'utilisateur (l'ancien défaut 60 min donnait l'impression que la
+  // demande disparaissait si on ne répondait pas tout de suite).
+  const expiresAt = new Date(Date.now() + (params.expiresInMinutes ?? 24 * 60) * 60 * 1000);
   const { data } = await db()
     .from("agent_approvals")
     .insert({

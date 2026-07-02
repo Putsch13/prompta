@@ -30,6 +30,10 @@ export interface ComposioToolEntry {
     defaultScope?: "builder_test" | "end_user" | "dynamic";
     dependsOn?: string;
     help?: string;
+    /** Valeur par défaut déclarée par le JSON-schema de l'outil. */
+    defaultValue?: string;
+    /** Valeurs possibles (enum) déclarées par le schéma. */
+    enumValues?: string[];
   }[];
 }
 
@@ -107,10 +111,15 @@ function parseToolInputs(
 ): ComposioToolEntry["inputs"] {
   const props = (parameters?.properties ?? {}) as Record<
     string,
-    { title?: string; description?: string; type?: string }
+    { title?: string; description?: string; type?: string; default?: unknown; enum?: unknown[] }
   >;
   const required = new Set((parameters?.required as string[] | undefined) ?? []);
   return Object.entries(props).map(([key, meta]) => {
+    // default/enum du schéma : servent au garde d'exécution (auto-remplissage
+    // des champs requis triviaux, ex. design_type d'un outil Canva).
+    const defaultValue =
+      meta.default !== undefined && meta.default !== null ? String(meta.default) : undefined;
+    const enumValues = Array.isArray(meta.enum) ? meta.enum.map((v) => String(v)) : undefined;
     // Curaté (mapping connu) prioritaire, sinon tout `*_id` devient une ressource
     // listable dynamiquement (picker universel sur les 300+ toolkits).
     const resourceType =
@@ -127,6 +136,8 @@ function parseToolInputs(
         resourceType,
         defaultScope: "end_user" as const,
         help: meta.description,
+        defaultValue,
+        enumValues,
       };
     }
     return {
@@ -138,6 +149,8 @@ function parseToolInputs(
       kind: "input" as const,
       defaultScope: "dynamic" as const,
       help: meta.description,
+      defaultValue,
+      enumValues,
     };
   });
 }

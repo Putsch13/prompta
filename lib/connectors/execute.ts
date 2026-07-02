@@ -7,6 +7,7 @@ import { toComposioToolkitSlug, isSameConnector } from "./resolve-id";
 import { CONNECTORS } from "./registry";
 import { resolveComposioToolSlug, actionVerb } from "@/lib/composio/resolve-native-action";
 import { getComposioToolInputKeys, alignArgKeysToSchema } from "@/lib/composio/catalog";
+import { guardComposioParams } from "@/lib/composio/param-guard";
 
 /** Le connecteur existe-t-il dans le registre natif maison ? */
 function hasNativeConnector(connectorId?: string): boolean {
@@ -34,8 +35,16 @@ async function runComposio(
   args: Record<string, string>,
   toolkitSlug?: string,
 ): Promise<ExecuteResult> {
+  // Garde générique (300+ toolkits) : défauts du schéma + validation des
+  // champs requis AVANT l'appel — erreur actionnable plutôt que le
+  // « Following fields are missing » brut du provider.
+  let finalArgs = args;
+  if (toolkitSlug) {
+    const guarded = await guardComposioParams(toolkitSlug, toolSlug, args);
+    finalArgs = guarded.args;
+  }
   try {
-    return await executeComposioTool(toolSlug, userId, args, { toolkitSlug });
+    return await executeComposioTool(toolSlug, userId, finalArgs, { toolkitSlug });
   } catch (err) {
     if (err instanceof ComposioExecutionError) {
       throw new Error(`[${err.details.code}] ${err.details.message}`);

@@ -443,8 +443,10 @@ export function CreateWizard({ categories }: Props) {
   }, [testResult?.status, testResult?.runId]);
 
   async function pollTestRun(runId: string) {
-    for (let i = 0; i < 120; i++) {
-      await new Promise((r) => setTimeout(r, 800));
+    // ~10 min max — les tests réels passent par le worker (limites runtime
+    // jusqu'à 5 min) ; la console SSE affiche les étapes en direct pendant ce temps.
+    for (let i = 0; i < 240; i++) {
+      await new Promise((r) => setTimeout(r, 2500));
       const res = await fetch(`/api/run/agent/${runId}`);
       if (!res.ok) continue;
       const data = await res.json();
@@ -458,7 +460,7 @@ export function CreateWizard({ categories }: Props) {
         }));
         return;
       }
-      if (data.status === "completed" || data.status === "failed") {
+      if (["completed", "failed", "suspended", "cancelled"].includes(data.status)) {
         setTestResult({
           status: data.status,
           runId,
@@ -468,7 +470,20 @@ export function CreateWizard({ categories }: Props) {
         });
         return;
       }
+      // Progression visible dans le wizard pendant que la console streame.
+      setTestResult((prev) => ({
+        ...(prev ?? { status: "running" }),
+        status: "running",
+        runId,
+        stepsCompleted: data.steps_completed ?? prev?.stepsCompleted,
+      }));
     }
+    setTestResult((prev) => ({
+      ...(prev ?? { status: "failed" }),
+      status: "failed",
+      runId,
+      error: "Le test dépasse le délai de suivi — consultez Runs & logs pour la suite.",
+    }));
   }
 
   async function handleTestApprove(approvalId: string, modifiedContent?: string) {
@@ -487,50 +502,18 @@ export function CreateWizard({ categories }: Props) {
         return;
       }
       setTestApprovalDetails(null);
+      void decideData;
 
-      // 2) Reprise EN DIRECT du run d'aperçu (le worker ne reprend pas les
-      //    aperçus — pas de version persistée). On relit l'output fusionné puis
-      //    on relance le manifeste depuis l'étape suivante.
-      const runData = await fetch(`/api/run/agent/${testResult.runId}`).then((r) => r.json()).catch(() => ({}));
-      const resumeOutputs =
-        runData.output && typeof runData.output === "object" ? runData.output : {};
-      const resumeFromStep =
-        typeof decideData.resumeFromStep === "number"
-          ? decideData.resumeFromStep
-          : (testApprovalDetails?.stepIndex ?? 0) + 1;
-
-      const res = await fetch("/api/run/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          preview: true,
-          manifest: buildCurrentManifest(),
-          inputs: testInputs,
-          async: false,
-          dryRun: false,
-          fullDemo: true,
-          resumeFromStep,
-          resumeOutputs,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setTestResult((prev) => ({ ...prev, status: "failed", error: data.error || data.message || "Reprise échouée" }));
-        return;
-      }
-      setTestResult({
-        status: data.status,
-        output: data.output,
-        error: data.error,
-        stepsCompleted: data.stepsCompleted,
-        stepTrace: data.stepTrace,
-        runId: data.runId ?? testResult.runId,
-        approvalId: data.approvalId,
-      });
-      // Enchaîne une éventuelle approbation suivante.
-      if (data.status === "awaiting_approval" && data.runId) {
-        await pollTestRun(data.runId);
-      }
+      // 2) La reprise est faite par le WORKER (le run de test embarque son
+      //    manifeste ; la route approve a déjà remis le run en pending et
+      //    kické le worker). On suit simplement la reprise en direct — même
+      //    chemin que /dashboard/validations, plus de double exécution.
+      setTestResult((prev) => ({
+        ...(prev ?? { status: "running" }),
+        status: "running",
+        runId: testResult.runId,
+      }));
+      await pollTestRun(testResult.runId);
     } finally {
       setTestRunning(false);
     }
@@ -578,15 +561,22 @@ export function CreateWizard({ categories }: Props) {
       });
       const data = await res.json();
       if (res.ok) {
-        setTestResult({
-          status: data.status,
-          output: data.output,
-          error: data.error,
-          stepsCompleted: data.stepsCompleted,
-          stepTrace: data.stepTrace,
-          runId: data.runId,
-          approvalId: data.approvalId,
-        });
+        if (data.runId && ["queued", "pending", "running"].includes(data.status)) {
+          // Test réel : traité par le worker — la console SSE montre les
+          // étapes en direct, on suit jusqu'au statut final.
+          setTestResult({ status: "running", runId: data.runId });
+          await pollTestRun(data.runId);
+        } else {
+          setTestResult({
+            status: data.status,
+            output: data.output,
+            error: data.error,
+            stepsCompleted: data.stepsCompleted,
+            stepTrace: data.stepTrace,
+            runId: data.runId,
+            approvalId: data.approvalId,
+          });
+        }
       } else {
         setTestResult({ status: "failed", error: data.error || data.message });
       }

@@ -98,55 +98,65 @@ export async function POST(request: NextRequest) {
     }
     const { inputs: previewInputs, resources: previewResources } = prepareRunContext(parsed.data, inputs);
 
-    let previewRunId: string | undefined;
-    // Persiste le run dès qu'on exécute vraiment (fullDemo ou simplement dryRun=false depuis le builder)
+    // Exécution RÉELLE depuis le builder : le run est persisté avec son
+    // manifeste embarqué et traité par le worker comme n'importe quel run
+    // (console live SSE, reprise après approbation via /dashboard/validations,
+    // protection reaper). Avant : exécution synchrone in-process → aucune
+    // étape visible pendant le test, et approbation orpheline si on quittait.
     const shouldPersistPreview = fullDemo || !previewDryRun;
-    if (shouldPersistPreview) {
-      const { data: previewRun } = await admin
+    if (shouldPersistPreview && !previewDryRun) {
+      const { data: previewRun, error: insertError } = await admin
         .from("listing_agent_runs")
         .insert({
           user_id: user.id,
           listing_id: listingId ?? null,
-          inputs: { ...previewInputs, ...previewResources },
-          status: "running",
-          dry_run: previewDryRun,
-          started_at: new Date().toISOString(),
-          heartbeat_at: new Date().toISOString(),
-          claimed_by: "preview",
+          inputs: {
+            ...previewInputs,
+            ...previewResources,
+            __manifest: JSON.stringify(parsed.data),
+          },
+          status: "pending",
+          dry_run: false,
         })
         .select("id")
         .single();
-      previewRunId = previewRun?.id;
+
+      if (insertError || !previewRun?.id) {
+        return NextResponse.json(
+          { error: insertError?.message ?? "Impossible de créer le run de test" },
+          { status: 500 },
+        );
+      }
+
+      void import("@/lib/worker/process-pending-runs")
+        .then(({ processPendingAgentRuns }) => processPendingAgentRuns(1))
+        .catch((err) =>
+          console.error("[run/agent] preview queue failed:", err instanceof Error ? err.message : err),
+        );
+
+      return NextResponse.json({
+        preview: true,
+        runId: previewRun.id,
+        status: "queued",
+        message: "Test en file d'attente — suivez les étapes en direct",
+      });
     }
 
+    // Aperçu simulé (dry-run) : rapide et sans effet de bord → synchrone.
     const result = await runAgent(parsed.data, {
       userId: user.id,
       listingId: listingId ?? "preview",
       inputs: previewInputs,
       resources: previewResources,
       apiKeys,
-      runId: previewRunId,
       dryRun: previewDryRun,
       demoMode: previewDryRun,
-      // Reprise après validation humaine dans le builder (run d'aperçu).
+      // Compat : reprise live legacy (plus utilisée par le builder).
       ...(typeof resumeFromStep === "number" ? { resumeFromStep } : {}),
       ...(resumeOutputs ? { resumeOutputs } : {}),
     });
 
-    if (previewRunId) {
-      await admin
-        .from("listing_agent_runs")
-        .update({
-          status: result.status,
-          steps_completed: result.stepsCompleted,
-          output: result.output,
-          // Pause d'approbation ≠ échec : ne pas afficher d'erreur dans l'UI.
-          error_message: result.status === "awaiting_approval" ? null : (result.error ?? null),
-        })
-        .eq("id", previewRunId);
-    }
-
-    return NextResponse.json({ preview: true, runId: previewRunId, ...result });
+    return NextResponse.json({ preview: true, ...result });
   }
 
   if (!listingId || !versionId) {
