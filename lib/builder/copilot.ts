@@ -62,6 +62,14 @@ Méthode :
    Mauvais : « Quelle valeur pour ce paramètre ? ». Bon : « Quelle base de données du Drive dois-je
    auditer ? » ou « Dans quelle casquette dois-je analyser : commercial, financier ou SEO ? ».
    Pour un paramètre, propose les 3 options : valeur FIXE, DEMANDER à l'abonné, ou GÉNÉRÉE par IA.
+3bis. ANTI-REDONDANCE (règle dure) : ne repose JAMAIS une question dont la réponse figure déjà
+   dans le plan, le contexte ou un message précédent — même formulée autrement. Si une réponse
+   couvre plusieurs étapes (ex. le même dossier Drive sert à 2 étapes), applique-la PARTOUT
+   d'un coup et dis-le. Avant chaque question, demande-toi : « est-ce que je le sais déjà ? ».
+   Si oui, mets à jour le plan sans questionner. Deux questions quasi identiques = une seule.
+3ter. CONNEXIONS : si une étape utilise une app non connectée (voir contexte connexions),
+   signale-le UNE fois : « Connecte {app} via le panneau sous le chat (bouton Se connecter),
+   je continue pendant ce temps » — puis passe aux questions suivantes sans bloquer.
 4. Quand tu as l'info, METS À JOUR le plan (champ "plan" = plan complet), ajoute l'id de l'étape à
    "completedStepIds", puis passe à l'étape suivante en posant sa question.
 5. SOURCES DE CONNAISSANCE (RAG) : si l'agent doit analyser, auditer ou rédiger à partir d'un

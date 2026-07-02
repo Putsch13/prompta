@@ -26,6 +26,7 @@ import { deriveGraphEnv } from "@/lib/builder/derive-graph-env";
 import { deriveClientRequirements } from "@/lib/builder/client-requirements";
 import { ClientRequirementsPanel } from "@/components/builder/canvas/ClientRequirementsPanel";
 import { AgentRunExperience } from "@/components/run/AgentRunExperience";
+import { ConnectionsMasque } from "@/components/run/ConnectionsMasque";
 import { plannedStepLabels } from "@/lib/agent/step-label";
 import type { ApprovalDetails } from "@/components/run/HumanApprovalModal";
 import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
@@ -1036,6 +1037,17 @@ export function CreateWizard({ categories }: Props) {
               onReject={handleTestReject}
               onClose={() => setShowTestImmersive(false)}
             />
+          )}
+
+          {(form.requiredConnectors.length > 0 || form.requiredSecrets.length > 0) && (
+            <div className="mt-4">
+              {/* Connexion des apps DANS le wizard : plus besoin d'aller sur
+                  Connexions pour découvrir qu'une app n'est pas authentifiée. */}
+              <ConnectionsMasque
+                requiredSecrets={form.requiredSecrets}
+                requiredConnectors={dedupeConnectors(form.requiredConnectors)}
+              />
+            </div>
           )}
 
           <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">

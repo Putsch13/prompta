@@ -97,7 +97,10 @@ export function buildManifest(params: BuildManifestParams): AgentManifest {
     key,
     label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
     type: "text" as const,
-    required: true,
+    // OPTIONNELLES : le masque de test du wizard ne connaît pas ces champs
+    // (dérivés au buildManifest) — required:true bloquait le lancement en
+    // « configuration incomplète » sans aucun champ à remplir à l'écran.
+    required: false,
     help: undefined as string | undefined,
     connectorId: undefined as string | undefined,
     paramKey: undefined as string | undefined,

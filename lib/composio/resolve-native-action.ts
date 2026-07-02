@@ -13,13 +13,21 @@
 import { listComposioTools, type ComposioToolEntry } from "./catalog";
 import { toComposioToolkitSlug } from "@/lib/connectors/resolve-id";
 
+/** Minuscule + suppression des accents (« créer » → « creer », sinon la
+ *  tokenisation a-z fragmentait les verbes français en « cr », « er »). */
+function fold(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
 function norm(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return fold(s).replace(/[^a-z0-9]/g, "");
 }
 
 function tokens(s: string): string[] {
-  return s
-    .toLowerCase()
+  return fold(s)
     .split(/[^a-z0-9]+/)
     .filter((t) => t.length > 1);
 }
@@ -39,6 +47,8 @@ function toolTail(slug: string, toolkit: string): string {
 }
 
 // Familles de verbes : un verbe demandé matche n'importe quel synonyme.
+// Inclut les « tics de langage » FRANÇAIS que le builder/copilote génère
+// (créer, envoyer, rédiger… — accents déjà retirés par fold()).
 const VERB_SYNONYMS: Record<string, string[]> = {
   read: ["read", "get", "download", "export", "fetch", "parse", "retrieve", "view", "show", "find"],
   get: ["get", "read", "download", "export", "fetch", "retrieve", "find"],
@@ -54,6 +64,29 @@ const VERB_SYNONYMS: Record<string, string[]> = {
   send: ["send", "post", "share", "create", "deliver"],
   update: ["update", "edit", "modify", "patch", "change", "rename", "move", "set"],
   delete: ["delete", "remove", "trash", "destroy", "drop"],
+  // ── Verbes français → mêmes familles ──
+  creer: ["create", "add", "insert", "new", "make", "post"],
+  generer: ["create", "make", "generate", "new"],
+  ecrire: ["write", "create", "save", "append", "add", "insert"],
+  rediger: ["write", "create", "save", "compose"],
+  ajouter: ["add", "create", "insert", "append", "upload"],
+  envoyer: ["send", "post", "share", "deliver"],
+  publier: ["post", "publish", "send", "share", "create"],
+  lire: ["read", "get", "fetch", "retrieve", "view"],
+  recuperer: ["get", "read", "fetch", "retrieve", "download"],
+  extraire: ["get", "read", "export", "extract", "parse"],
+  chercher: ["search", "find", "list", "query", "lookup"],
+  rechercher: ["search", "find", "list", "query", "lookup"],
+  lister: ["list", "search", "getall", "fetch", "all"],
+  telecharger: ["download", "export", "get", "upload"],
+  modifier: ["update", "edit", "modify", "patch", "change"],
+  supprimer: ["delete", "remove", "trash"],
+  planifier: ["create", "schedule", "add", "insert"],
+  partager: ["share", "send", "post"],
+  // Formes nominales fréquentes (« nouvelle_feuille », « nouveau_doc »)
+  nouvelle: ["create", "new", "add", "make"],
+  nouveau: ["create", "new", "add", "make"],
+  faire: ["create", "make", "add"],
 };
 
 const MUTATING = new Set([
@@ -62,15 +95,23 @@ const MUTATING = new Set([
   "update", "edit", "modify", "patch", "change", "rename", "move", "set",
   "delete", "remove", "trash", "destroy", "drop",
   "send", "post", "share", "deliver",
+  // français (accents retirés par fold)
+  "creer", "generer", "ecrire", "ajouter", "envoyer", "publier",
+  "modifier", "supprimer", "planifier", "partager", "nouvelle", "nouveau", "faire",
 ]);
 
 // Verbes d'écriture de DOCUMENT : on doit produire un fichier AVEC du contenu,
 // jamais une métadonnée vide.
-const WRITE_DOC_VERBS = new Set(["write", "create", "save", "redact", "rediger", "upload", "add"]);
+const WRITE_DOC_VERBS = new Set([
+  "write", "create", "save", "redact", "rediger", "upload", "add",
+  "creer", "ecrire", "generer",
+]);
 
 const READ_ONLY_VERBS = new Set([
   "read", "get", "download", "export", "fetch", "parse", "retrieve",
   "list", "search", "find", "view", "show", "lookup", "query",
+  // français
+  "lire", "recuperer", "extraire", "chercher", "rechercher", "lister", "telecharger",
 ]);
 
 function verbMatchers(primary: string): Set<string> {
@@ -145,11 +186,11 @@ export function pickToolSlug(
 
     if (score <= 0) continue;
 
-    // Le verbe EXACT demandé prime sur un synonyme : pour « create_… »,
-    // CREATE_GOOGLE_SHEET doit battre ADD_SHEET (sinon, à score égal, le
-    // slug le plus court gagnait et on ajoutait un onglet au lieu de créer
-    // la feuille).
-    if (tailToks.has(primary)) score += 100;
+    // Le verbe EXACT demandé prime sur un synonyme ET sur un simple match
+    // d'objet : pour « create_spreadsheet », CREATE_GOOGLE_SHEET doit battre
+    // ADD_SHEET (synonyme court) et VALUES_APPEND (qui matche « spreadsheet »
+    // sans porter le verbe).
+    if (tailToks.has(primary)) score += 200;
 
     if (wantsTextWrite) {
       const writesText =

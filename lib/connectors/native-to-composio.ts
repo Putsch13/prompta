@@ -129,12 +129,13 @@ function canonicalVerb(verb: string): string {
   // Matching par TOKENS entiers — la version sous-chaîne faisait matcher
   // « read » dans « spREADsheet » : create_spreadsheet était mappé sur
   // l'outil de LECTURE (VALUES_GET) au lieu de la résolution dynamique.
-  const tokens = new Set(v.split(/[^a-z0-9]+/));
+  const folded = v.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const tokens = new Set(folded.split(/[^a-z0-9]+/));
   const has = (...ws: string[]) => ws.some((w) => tokens.has(w));
-  if (has("read", "get", "fetch", "list", "load")) return "read";
-  if (has("append", "add", "write", "insert")) return "append";
-  if (has("send", "email", "message", "notify")) return "send";
-  return v;
+  if (has("read", "get", "fetch", "list", "load", "lire", "lis", "recuperer")) return "read";
+  if (has("append", "add", "write", "insert", "ajouter", "ecrire", "ecris")) return "append";
+  if (has("send", "email", "message", "notify", "envoyer", "envoie")) return "send";
+  return folded;
 }
 
 /**
