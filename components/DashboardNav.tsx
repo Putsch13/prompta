@@ -58,12 +58,22 @@ const SECONDARY_ITEMS: NavItem[] = [
 export function DashboardNav() {
   const pathname = usePathname();
   const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [activeRuns, setActiveRuns] = useState(0);
 
+  // Poll léger : les badges vivent même si on reste sur la même page
+  // (avant : rafraîchi uniquement au changement de route → notifs invisibles).
   useEffect(() => {
-    fetch("/api/approvals")
-      .then((r) => (r.ok ? r.json() : { count: 0 }))
-      .then((d) => setPendingApprovals(d.count ?? 0))
-      .catch(() => undefined);
+    const load = () =>
+      fetch("/api/activity/summary")
+        .then((r) => (r.ok ? r.json() : {}))
+        .then((d: { pendingApprovals?: number; activeRuns?: number }) => {
+          setPendingApprovals(d.pendingApprovals ?? 0);
+          setActiveRuns(d.activeRuns ?? 0);
+        })
+        .catch(() => undefined);
+    load();
+    const t = setInterval(load, 20_000);
+    return () => clearInterval(t);
   }, [pathname]);
 
   const renderItem = (item: NavItem) => {
@@ -73,6 +83,7 @@ export function DashboardNav() {
 
     const Icon = ICONS[item.iconKey];
     const badge = item.iconKey === "validations" && pendingApprovals > 0 ? pendingApprovals : 0;
+    const runningBadge = item.iconKey === "runs" && activeRuns > 0 ? activeRuns : 0;
 
     return (
       <Link
@@ -90,6 +101,12 @@ export function DashboardNav() {
         {badge > 0 && (
           <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
             {badge}
+          </span>
+        )}
+        {runningBadge > 0 && (
+          <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+            {runningBadge}
           </span>
         )}
       </Link>

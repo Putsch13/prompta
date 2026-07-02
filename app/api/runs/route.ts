@@ -76,7 +76,11 @@ export async function GET() {
       created_at: r.created_at,
       listing_id: r.listing_id,
       version_id: r.version_id,
-      inputs: r.inputs ?? null,
+      // Les clés techniques (__manifest…) ne sortent pas de l'API (poids +
+      // elles ne sont pas des entrées d'agent à réutiliser au retry).
+      inputs: r.inputs
+        ? Object.fromEntries(Object.entries(r.inputs).filter(([k]) => !k.startsWith("__")))
+        : null,
       listing: r.listing,
       kind: "agent" as const,
     })),

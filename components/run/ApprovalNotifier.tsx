@@ -115,13 +115,24 @@ export function ApprovalNotifier() {
             </li>
           ))}
         </ul>
-        <div className="border-t border-white/10 px-4 py-2">
+        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-4 py-2">
           <Link
             href="/dashboard/validations"
             className="text-xs font-medium text-amber-300 hover:underline"
           >
             Voir toutes les validations →
           </Link>
+          {typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "default" && (
+              <button
+                type="button"
+                onClick={() => Notification.requestPermission().catch(() => undefined)}
+                className="shrink-0 text-[11px] text-white/50 hover:text-white hover:underline"
+              >
+                Activer les notifs navigateur
+              </button>
+            )}
         </div>
       </div>
     </div>

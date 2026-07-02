@@ -35,7 +35,53 @@ export async function createPendingApproval(params: {
     .eq("id", params.runId);
 
   if (!data) throw new Error("Création de l'approbation échouée");
+
+  // Notification email best-effort (fire-and-forget) : l'utilisateur est
+  // prévenu même s'il n'a pas l'app ouverte, avec le contenu à valider.
+  void notifyApprovalByEmail(params.runId, data.id, params.payload).catch((e) =>
+    console.warn("[approvals] email notification failed:", e),
+  );
+
   return data.id;
+}
+
+async function notifyApprovalByEmail(
+  runId: string,
+  approvalId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (!process.env.RESEND_API_KEY) return;
+
+  const { data: run } = await db()
+    .from("listing_agent_runs")
+    .select("user_id, listing_id")
+    .eq("id", runId)
+    .single();
+  if (!run) return;
+
+  const { data: userData } = await db().auth.admin.getUserById(run.user_id);
+  const email = userData?.user?.email;
+  if (!email) return;
+
+  let agentTitle = "Votre agent";
+  if (run.listing_id) {
+    const { data: listing } = await db()
+      .from("listings")
+      .select("title")
+      .eq("id", run.listing_id)
+      .single();
+    if (listing?.title) agentTitle = listing.title;
+  }
+
+  const { sendApprovalRequestEmail } = await import("@/lib/email");
+  await sendApprovalRequestEmail({
+    to: email,
+    agentTitle,
+    stepLabel: typeof payload.label === "string" ? payload.label : undefined,
+    preview: typeof payload.preview === "string" ? payload.preview : undefined,
+    approvalId,
+    runId,
+  });
 }
 
 /** outputKey de l'étape d'approbation (pour câbler le contenu validé aux étapes aval). */

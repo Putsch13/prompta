@@ -244,3 +244,61 @@ export async function sendSubscriptionConfirmation(params: SubscriptionConfirmat
     console.error("Erreur envoi confirmation abonnement:", error);
   }
 }
+
+interface ApprovalRequestParams {
+  to: string;
+  agentTitle: string;
+  stepLabel?: string;
+  preview?: string;
+  approvalId: string;
+  runId: string;
+}
+
+/** Notifie par email qu'un agent attend une validation humaine. */
+export async function sendApprovalRequestEmail(params: ApprovalRequestParams) {
+  const { to, agentTitle, stepLabel, preview, approvalId } = params;
+  const link = `${APP_URL}/dashboard/validations?focus=${approvalId}`;
+
+  const escape = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <h1 style="color: #0A66C2; font-size: 22px;">Validation requise</h1>
+  <p>
+    Votre agent <strong>${escape(agentTitle)}</strong> est en pause${
+      stepLabel ? ` sur l'étape « ${escape(stepLabel)} »` : ""
+    } et attend votre feu vert pour continuer.
+  </p>
+  ${
+    preview
+      ? `<div style="background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 8px; padding: 16px; margin: 16px 0; white-space: pre-wrap; font-size: 13px;">${escape(
+          preview.slice(0, 1200),
+        )}${preview.length > 1200 ? "…" : ""}</div>`
+      : ""
+  }
+  <p style="margin: 24px 0;">
+    <a href="${link}" style="background: #0A66C2; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+      Relire et valider →
+    </a>
+  </p>
+  <p style="color: #888; font-size: 12px;">
+    Vous pouvez modifier le contenu avant de valider, demander une correction à l'IA, ou refuser.
+    L'agent reste en pause en attendant (24 h max).
+  </p>
+</body>
+</html>`.trim();
+
+  try {
+    await getResend().emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject: `⏸ ${agentTitle} attend votre validation`,
+      html,
+    });
+  } catch (error) {
+    console.error("Erreur envoi email approbation:", error);
+  }
+}

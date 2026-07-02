@@ -16,6 +16,8 @@ interface RunDetail {
   created_at: string;
   started_at: string | null;
   heartbeat_at: string | null;
+  approval_id?: string | null;
+  approval?: { id: string; label?: string | null; preview?: string | null } | null;
 }
 
 const ACTIVE = new Set(["pending", "queued", "running", "awaiting_approval"]);
@@ -139,6 +141,26 @@ export default function RunDetailPage() {
           )}
         </p>
       </div>
+
+      {run.status === "awaiting_approval" && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-amber-900">
+              ⏸ Cet agent attend votre validation
+              {run.approval?.label ? ` — ${run.approval.label}` : ""}
+            </p>
+            <p className="mt-0.5 text-xs text-amber-800">
+              Il reste en pause tant que vous n&apos;avez pas validé ou refusé (24 h max).
+            </p>
+          </div>
+          <Link
+            href={run.approval_id ? `/dashboard/validations?focus=${run.approval_id}` : "/dashboard/validations"}
+            className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-400"
+          >
+            Relire et valider →
+          </Link>
+        </div>
+      )}
 
       <div className="mt-6">
         <AgentRunConsole
