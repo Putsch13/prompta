@@ -159,3 +159,17 @@ test("variantes — un verbe destructif reste possible quand demandé explicitem
   const slug = pickToolSlug(CATALOGS.googledrive, "googledrive", "google_drive.supprimer_fichier");
   assert.equal(slug, "GOOGLEDRIVE_DELETE_FILE");
 });
+
+test("mapping curaté — create_spreadsheet → CREATE_GOOGLE_SHEET1 (pas ROW, pas ADD_SHEET)", () => {
+  const m = composioMappingFor("google_sheets.create_spreadsheet");
+  assert.equal(m?.toolSlug, "GOOGLESHEETS_CREATE_GOOGLE_SHEET1");
+});
+
+test("mapping curaté — creer_tableau / nouvelle_feuille → création de feuille", () => {
+  assert.equal(composioMappingFor("google_sheets.creer_tableau")?.toolSlug, "GOOGLESHEETS_CREATE_GOOGLE_SHEET1");
+  assert.equal(composioMappingFor("google_sheets.nouvelle_feuille")?.toolSlug, "GOOGLESHEETS_CREATE_GOOGLE_SHEET1");
+});
+
+test("mapping curaté — create_row reste un APPEND (pas une création de feuille)", () => {
+  assert.equal(composioMappingFor("google_sheets.create_row")?.toolSlug, "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND");
+});

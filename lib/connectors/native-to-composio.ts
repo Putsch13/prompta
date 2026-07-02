@@ -102,6 +102,16 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
         values: pick(p, "values", "rows", "data") ?? "",
       }),
   },
+  // Création d'une FEUILLE (le document) — curaté : la résolution dynamique
+  // hésitait entre CREATE_SPREADSHEET_ROW (une ligne) et ADD_SHEET (un onglet).
+  "sheets.create": {
+    toolSlug: "GOOGLESHEETS_CREATE_GOOGLE_SHEET1",
+    toolkitSlug: "googlesheets",
+    mapParams: (p) =>
+      clean({
+        title: pick(p, "title", "name", "titre", "nom") ?? "Nouvelle feuille",
+      }),
+  },
   "slack.send": {
     toolSlug: "SLACK_SEND_MESSAGE",
     toolkitSlug: "slack",
@@ -133,8 +143,10 @@ function canonicalVerb(verb: string): string {
   const tokens = new Set(folded.split(/[^a-z0-9]+/));
   const has = (...ws: string[]) => ws.some((w) => tokens.has(w));
   if (has("read", "get", "fetch", "list", "load", "lire", "lis", "recuperer")) return "read";
-  if (has("append", "add", "write", "insert", "ajouter", "ecrire", "ecris")) return "append";
+  // « row »/« ligne » AVANT create : create_row = ajouter une ligne, pas créer la feuille.
+  if (has("append", "add", "write", "insert", "ajouter", "ecrire", "ecris", "row", "ligne")) return "append";
   if (has("send", "email", "message", "notify", "envoyer", "envoie")) return "send";
+  if (has("create", "creer", "new", "nouvelle", "nouveau", "make", "faire", "generer")) return "create";
   return folded;
 }
 
