@@ -178,6 +178,15 @@ function canonicalVerb(verb: string): string {
  * générées par le builder (ex. `google_sheets.read_sheet` → `sheets.read`).
  * Évite le faux « action pas disponible via Composio » sur des actions valides.
  */
+// Objets plausibles pour la famille « create » de Sheets : sans ce garde,
+// « faire_le_cafe » créait une feuille (le verbe matchait, l'objet était
+// ignoré). Une action au verbe créateur mais à l'objet inconnu retombe sur
+// la résolution dynamique → « action introuvable » clair.
+const SHEETS_CREATE_OBJECTS = new Set([
+  "spreadsheet", "sheet", "sheets", "feuille", "tableau", "classeur",
+  "fichier", "document", "doc", "nouvelle", "nouveau", "new",
+]);
+
 export function composioMappingFor(actionId: string): ComposioActionMapping | undefined {
   const exact = NATIVE_TO_COMPOSIO[actionId];
   if (exact) return exact;
@@ -187,6 +196,19 @@ export function composioMappingFor(actionId: string): ComposioActionMapping | un
   if (rest.length === 0) return undefined;
   const conn = CONNECTOR_ALIAS[rawConn.toLowerCase()];
   if (!conn) return undefined;
-  const verb = canonicalVerb(rest.join("_"));
+  const verbPhrase = rest.join("_");
+  const verb = canonicalVerb(verbPhrase);
+
+  if (conn === "sheets" && verb === "create") {
+    const toks = verbPhrase
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean);
+    const objectOk = toks.length <= 1 || toks.some((t) => SHEETS_CREATE_OBJECTS.has(t));
+    if (!objectOk) return undefined;
+  }
+
   return NATIVE_TO_COMPOSIO[`${conn}.${verb}`];
 }

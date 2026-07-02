@@ -184,3 +184,7 @@ test("sheets.append — valeurs libres converties en tableau 2D JSON", () => {
   const mapped = m!.mapParams({ spreadsheet_id: "abc", values: "1;2" });
   assert.equal(mapped.values, '[["1","2"]]');
 });
+
+test("mapping — verbe créateur + objet inconnu ne crée PAS de feuille (faire_le_cafe)", () => {
+  assert.equal(composioMappingFor("google_sheets.faire_le_cafe"), undefined);
+});

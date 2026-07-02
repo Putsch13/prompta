@@ -491,9 +491,9 @@ const TESTS: QaTest[] = [
       ],
     },
     // PLATFORM_SERPER_KEY optionnelle : un échec est acceptable si le message
-    // dit clairement qu'il manque la clé (config, pas bug).
+    // dit clairement le problème de clé (absente/invalide/quota).
     expect: ["completed", "failed"],
-    errorPattern: /Clé Serper requise/i,
+    errorPattern: /Clé Serper|Recherche web refusée/i,
   },
 ];
 
