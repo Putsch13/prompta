@@ -639,8 +639,9 @@ async function main() {
   const user = users.users.find((u) => u.email?.toLowerCase() === SELF_EMAIL);
   if (!user) throw new Error(`Compte ${SELF_EMAIL} introuvable`);
 
-  // Nettoyage des runs QA orphelins d'une exécution précédente interrompue.
-  const { data: orphans } = await sb
+  // Nettoyage des runs QA orphelins d'une exécution précédente interrompue —
+  // sauf en mode conservation (KEEP_QA_RUNS=1 garde TOUT pour inspection).
+  const { data: orphans } = process.env.KEEP_QA_RUNS === "1" ? { data: [] } : await sb
     .from("listing_agent_runs")
     .select("id")
     .eq("user_id", user.id)
