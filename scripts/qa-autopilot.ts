@@ -55,6 +55,102 @@ function llm(prompt: string, outputKey?: string) {
   return { type: "llm", model: MODEL, prompt, ...(outputKey ? { outputKey } : {}) };
 }
 
+// Scénarios ULTRA-COMPLEXES conservés pour inspection manuelle
+// (KEEP_QA_RUNS=1 les garde en base ; QA_ONLY="ultra_*" pour ne lancer qu'eux).
+const ULTRA_TESTS: QaTest[] = [
+  {
+    name: "ultra_veille_multi_sources",
+    goal: "Veille : Drive + web → synthèse structurée → Sheets → validation → email récap",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "retrieve", source: "google_drive", query: "mes documents récents", maxResults: 5, outputKey: "docs" },
+        { type: "tool", tool: "web_search", params: { query: "tendances IA agents 2026" } },
+        llm(
+          "À partir des documents {{docs}} et de la recherche web {{step_1_output}}, rédige une note de veille structurée en 5 points avec titres.",
+          "note",
+        ),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "QA Ultra — note de veille" },
+        },
+        { type: "approval", label: "QA Ultra — valider la note avant diffusion", payloadTemplate: "{{note}}", outputKey: "note_ok" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "QA Ultra — note de veille", body: "{{note_ok}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "ultra_branches_paralleles_conditionnelles",
+    goal: "Parallèle (3 analyses) → fusion → condition → LLM final",
+    manifest: {
+      kind: "agent",
+      inputs: [{ key: "sujet", label: "Sujet", required: true, type: "text" }],
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [llm("Angle commercial de : {{sujet}}, 2 lignes.")], outputKey: "commercial" },
+            { steps: [llm("Angle technique de : {{sujet}}, 2 lignes.")], outputKey: "technique" },
+            { steps: [llm("Angle risques de : {{sujet}}, 2 lignes.")], outputKey: "risques" },
+          ],
+          outputKey: "analyses",
+        },
+        llm("Synthétise commercial={{commercial}} technique={{technique}} risques={{risques}}. Termine par: VERDICT: GO ou VERDICT: NOGO.", "verdict"),
+        { type: "condition", expression: "{{verdict}} contains GO" },
+        llm("Rédige une recommandation finale d'une ligne basée sur : {{verdict}}"),
+      ],
+    },
+    inputs: { sujet: "lancer un agent IA de support client" },
+    expect: ["completed"],
+  },
+  {
+    name: "ultra_calendar_drive_notion_chain",
+    goal: "Multi-apps : événement Calendar + lecture Drive + note structurée (4 apps, 6 étapes)",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "retrieve", source: "google_drive", query: "mes fichiers récents", maxResults: 3, outputKey: "src" },
+        llm("Résume ces éléments en un ordre du jour de réunion (3 points) : {{src}}", "odj"),
+        {
+          type: "action",
+          connector: "google_calendar",
+          action: "google_calendar.create_event",
+          params: {
+            summary: "QA Ultra — revue",
+            description: "{{odj}}",
+            start_datetime: "2026-07-10T14:00:00",
+            event_duration_hour: "1",
+          },
+        },
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "QA Ultra — ordre du jour" },
+        },
+        { type: "approval", label: "QA Ultra — valider l'ordre du jour", payloadTemplate: "{{odj}}", outputKey: "odj_ok" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "QA Ultra — ordre du jour validé", body: "{{odj_ok}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+];
+
 const TESTS: QaTest[] = [
   {
     name: "llm_simple",
@@ -563,7 +659,9 @@ async function main() {
 
   // QA_ONLY="nom1,nom2" : rejoue uniquement ces scénarios (économise le budget).
   const only = process.env.QA_ONLY?.split(",").map((s) => s.trim()).filter(Boolean);
-  const selected = only?.length ? TESTS.filter((t) => only.includes(t.name)) : TESTS;
+  // QA_ULTRA=1 : inclut les scénarios ultra-complexes (conservés en base).
+  const pool = process.env.QA_ULTRA === "1" ? [...TESTS, ...ULTRA_TESTS] : TESTS;
+  const selected = only?.length ? pool.filter((t) => only.includes(t.name)) : pool;
   if (only?.length) console.log(`Sélection : ${selected.map((t) => t.name).join(", ")}\n`);
 
   for (const test of selected) {
