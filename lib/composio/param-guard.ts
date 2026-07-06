@@ -41,12 +41,47 @@ function isBlank(v: string | undefined): boolean {
   return v === undefined || v === null || String(v).trim() === "";
 }
 
+/**
+ * Choisit la valeur d'enum la plus plausible d'après le contexte (autres
+ * paramètres, id d'action). Fonction pure, testable. Fallback : 1ʳᵉ valeur.
+ *
+ * Un enum est un choix BORNÉ : mieux vaut choisir la valeur la plus proche du
+ * contexte (ex. titre « présentation Canva » → "presentation") que planter le
+ * run — c'était la cause récurrente du « design_type manquant ».
+ */
+export function pickEnumValue(enumValues: string[], contextText: string): string {
+  const ctx = contextText
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  let best = enumValues[0];
+  let bestScore = 0;
+  for (const value of enumValues) {
+    const v = value.toLowerCase().replace(/[_-]/g, " ");
+    const tokens = v.split(/\s+/).filter((t) => t.length > 2);
+    let score = 0;
+    if (ctx.includes(v)) score += 10;
+    for (const t of tokens) if (ctx.includes(t)) score += 5;
+    // Racines FR/EN proches (presentation/présentation, document/doc…)
+    for (const t of tokens) {
+      const root = t.slice(0, Math.max(4, t.length - 3));
+      if (root.length >= 4 && ctx.includes(root)) score += 3;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = value;
+    }
+  }
+  return best;
+}
+
 /** Complète `args` avec les défauts du schéma (fonction pure, testable). */
 export function applyComposioSchemaDefaults(
   inputs: ToolInput[],
   args: Record<string, string>,
 ): Record<string, string> {
   const out = { ...args };
+  const contextText = Object.values(args).join(" ");
   for (const input of inputs) {
     // Troncature selon le maxLength du schéma : une valeur trop longue (ex.
     // titre généré par IA > 255 chars) ferait rejeter TOUTE l'action par le
@@ -64,9 +99,10 @@ export function applyComposioSchemaDefaults(
       out[input.key] = input.defaultValue;
       continue;
     }
-    // Enum à choix unique : il n'y a rien à décider.
-    if (input.required && input.enumValues?.length === 1) {
-      out[input.key] = input.enumValues[0];
+    // Enum requis : choix BORNÉ → on choisit la valeur la plus plausible au
+    // lieu d'échouer (choix unique = trivial ; multi = heuristique contexte).
+    if (input.required && input.enumValues && input.enumValues.length > 0) {
+      out[input.key] = pickEnumValue(input.enumValues, contextText);
     }
   }
   return out;

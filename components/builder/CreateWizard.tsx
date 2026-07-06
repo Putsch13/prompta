@@ -1,25 +1,20 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   Loader2,
-  AlertTriangle,
   Check,
   Wand2,
   PenLine,
   Boxes,
-  SlidersHorizontal,
   Play,
   Rocket,
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
 import { EnvFieldInputs } from "@/components/builder/EnvFieldInputs";
-import { CatalogMultiSelect } from "@/components/builder/CatalogMultiSelect";
 import { CatalogSingleSelect } from "@/components/builder/CatalogSingleSelect";
-import { CommissionNote } from "@/components/CommissionNote";
 import { buildManifest } from "@/lib/builder/manifest";
 import type { ProvisioningMode } from "@/lib/builder/provisioning";
 import { deriveGraphEnv } from "@/lib/builder/derive-graph-env";
@@ -27,6 +22,7 @@ import { deriveClientRequirements } from "@/lib/builder/client-requirements";
 import { ClientRequirementsPanel } from "@/components/builder/canvas/ClientRequirementsPanel";
 import { AgentRunExperience } from "@/components/run/AgentRunExperience";
 import { ConnectionsMasque } from "@/components/run/ConnectionsMasque";
+import { PlanQuotaCard } from "@/components/builder/PlanQuotaCard";
 import { plannedStepLabels } from "@/lib/agent/step-label";
 import type { ApprovalDetails } from "@/components/run/HumanApprovalModal";
 import { AgentFlowPreview } from "@/components/builder/AgentFlowPreview";
@@ -48,10 +44,7 @@ import {
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 import { injectHumanApprovals } from "@/lib/connectors/approvals-inject";
 import { dedupeConnectors } from "@/lib/connectors/resolve-id";
-import {
-  getGatewayModels,
-  getBuilderModels,
-} from "@/lib/catalogs";
+import { getBuilderModels } from "@/lib/catalogs";
 import {
   validateAgentSteps,
 } from "@/lib/builder/variables";
@@ -63,9 +56,8 @@ import type { KeyProvider } from "@/lib/keys";
 const STEP_META = [
   { label: "Décrire", icon: PenLine, hint: "Ton objectif en une phrase" },
   { label: "Co-construire", icon: Boxes, hint: "Guidé par l'IA, étape par étape" },
-  { label: "Détails", icon: SlidersHorizontal, hint: "Titre, catégorie, modèles" },
   { label: "Tester", icon: Play, hint: "Lance et vérifie en réel" },
-  { label: "Publier", icon: Rocket, hint: "Mets ton agent en ligne" },
+  { label: "Produire", icon: Rocket, hint: "Héberge ton agent en production" },
 ] as const;
 
 const STEPS = STEP_META.map((s) => s.label);
@@ -84,15 +76,10 @@ interface EnvField {
   paramKey?: string;
 }
 
-export function CreateWizard({ categories }: Props) {
+export function CreateWizard({ categories: _categories }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [stripeStatus, setStripeStatus] = useState<{
-    canSell: boolean;
-    chargesEnabled: boolean;
-    payoutsEnabled: boolean;
-  } | null>(null);
   const [testRunning, setTestRunning] = useState(false);
   // Aperçu opt-in : false = exécution réelle (défaut), true = simulation sans appel
   const [testDryRun, setTestDryRun] = useState(false);
@@ -112,7 +99,6 @@ export function CreateWizard({ categories }: Props) {
   const [testInputs, setTestInputs] = useState<Record<string, string>>({});
   const [stepError, setStepError] = useState<string | null>(null);
   const [disconnectedConnectors, setDisconnectedConnectors] = useState<string[]>([]);
-  const [sharedPublishAck, setSharedPublishAck] = useState(false);
 
   const [objectiveText, setObjectiveText] = useState("");
   const [builderModel, setBuilderModel] = useState("gpt-5.4-mini");
@@ -275,21 +261,8 @@ export function CreateWizard({ categories }: Props) {
     }
   }
 
-  const loadStripeStatus = useCallback(async () => {
-    const res = await fetch("/api/stripe/connect");
-    if (res.ok) {
-      const data = await res.json();
-      setStripeStatus({
-        canSell: !!data.charges_enabled && !!data.payouts_enabled,
-        chargesEnabled: !!data.charges_enabled,
-        payoutsEnabled: !!data.payouts_enabled,
-      });
-    }
-  }, []);
-
   useEffect(() => {
-    if (step === 4) loadStripeStatus();
-  }, [step, loadStripeStatus]);
+  }, [step]);
 
   function updateField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -322,10 +295,6 @@ export function CreateWizard({ categories }: Props) {
         setStepError(err);
         return false;
       }
-    }
-    if (current === 2 && !form.title.trim()) {
-      setStepError("Indiquez un titre.");
-      return false;
     }
     return true;
   }
@@ -369,11 +338,6 @@ export function CreateWizard({ categories }: Props) {
       setSaving(false);
       return;
     }
-    if (publish && hasSharedNodes && !sharedPublishAck) {
-      setStepError("Confirmez que vous acceptez de partager vos accès avec les abonnés.");
-      setSaving(false);
-      return;
-    }
     if (publish && hasBlockingIssues(validateAgentManifest(manifest.steps, { connectors: manifest.connectors }))) {
       setStepError("Corrigez les erreurs du manifeste avant publication.");
       setSaving(false);
@@ -392,10 +356,10 @@ export function CreateWizard({ categories }: Props) {
         techStack: form.techStack,
         integrations: form.integrations,
         tags: form.tags,
-        priceCents: form.pricingMode === "free" ? 0 : form.priceCents,
-        pricingMode: form.pricingMode,
-        subscriptionPriceCents: form.subscriptionPriceCents,
-        hostingFeeCents: form.hostingEnabled ? form.hostingFeeCents : 0,
+        priceCents: 0,
+        pricingMode: "free",
+        subscriptionPriceCents: 0,
+        hostingFeeCents: 0,
         provisioningMode: form.provisioningMode,
         promptBody: form.promptBody,
         manifest,
@@ -751,196 +715,41 @@ export function CreateWizard({ categories }: Props) {
         </div>
       )}
 
-      {step === 2 && (
+      {step === 3 && (
         <div className="space-y-4">
-          <h2 className="font-display text-xl font-bold text-ink">Détails</h2>
-          <p className="text-sm text-ink-soft">Pré-rempli par l&apos;IA — ajustez si besoin.</p>
+          <h2 className="font-display text-xl font-bold text-ink">Mettre en production</h2>
+          <p className="text-sm text-ink-soft">
+            Ton agent sera hébergé et exécutable à la demande — logs, validations et dossiers de
+            mission inclus.
+          </p>
+
           <input
             value={form.title}
             onChange={(e) => updateField("title", e.target.value)}
-            placeholder="Titre"
+            placeholder="Nom de l'agent"
             className="h-10 w-full rounded-lg border border-line px-3"
           />
-          <select
-            value={form.categoryId}
-            onChange={(e) => updateField("categoryId", e.target.value)}
-            className="h-10 w-full rounded-lg border border-line px-3"
-          >
-            <option value="">Catégorie</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
           <textarea
             value={form.description}
             onChange={(e) => updateField("description", e.target.value)}
-            placeholder="Description"
+            placeholder="Ce que fait cet agent (pré-rempli par l'IA)"
             rows={3}
             className="w-full rounded-lg border border-line px-3 py-2"
           />
 
-          <CatalogMultiSelect
-            catalog={getGatewayModels()}
-            selected={form.models}
-            onChange={(ids) => updateField("models", ids)}
-            label="Modèles IA compatibles"
-            groupByKey="provider"
-            placeholder="Rechercher un modèle…"
-          />
-        </div>
-      )}
-
-      {step === 4 && (
-        <div className="space-y-4">
-          <h2 className="font-display text-xl font-bold text-ink">Publier</h2>
-          <p className="text-sm text-ink-soft">Tarification et mise en ligne.</p>
-
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <AlertTriangle className="mb-1 inline h-4 w-4" /> Seuls les comptes avec Stripe
-            validé peuvent vendre des prompts, agents et workflows payants.{" "}
-            <Link href="/dashboard/payouts" className="font-medium text-accent hover:underline">
-              Configurer Stripe →
-            </Link>
-            {stripeStatus && (
-              <p className="mt-2">
-                {stripeStatus.canSell ? (
-                  <span className="flex items-center gap-1 text-green-700">
-                    <Check className="h-4 w-4" /> KYC validé — vente payante autorisée
-                  </span>
-                ) : (
-                  <span className="text-amber-800">
-                    KYC incomplet (charges: {stripeStatus.chargesEnabled ? "✓" : "✗"}, payouts:{" "}
-                    {stripeStatus.payoutsEnabled ? "✓" : "✗"})
-                  </span>
-                )}
-              </p>
-            )}
-          </div>
-
-          {(["free", "one_time", "subscription"] as const).map((mode) => (
-            <label key={mode} className="flex items-center gap-2">
-              <input
-                type="radio"
-                checked={form.pricingMode === mode}
-                onChange={() => updateField("pricingMode", mode)}
-              />
-              {mode === "free" && "Gratuit"}
-              {mode === "one_time" && "Achat unique"}
-              {mode === "subscription" && "Abonnement mensuel (recommandé pour agents)"}
-            </label>
-          ))}
-
-          {form.pricingMode === "one_time" && (
-            <>
-              <input
-                type="number"
-                value={form.priceCents / 100}
-                onChange={(e) =>
-                  updateField("priceCents", Math.round(parseFloat(e.target.value || "0") * 100))
-                }
-                placeholder="Prix en €"
-                className="h-10 w-full rounded-lg border border-line px-3"
-              />
-              <CommissionNote priceCents={form.priceCents} />
-            </>
-          )}
-
-          {form.pricingMode === "subscription" && (
-            <>
-              <input
-                type="number"
-                value={form.subscriptionPriceCents / 100}
-                onChange={(e) =>
-                  updateField(
-                    "subscriptionPriceCents",
-                    Math.round(parseFloat(e.target.value || "0") * 100)
-                  )
-                }
-                placeholder="Prix abonnement €/mois"
-                className="h-10 w-full rounded-lg border border-line px-3"
-              />
-              <p className="text-xs text-ink-soft">
-                Abonnement {(form.subscriptionPriceCents / 100).toFixed(2)} €/mois ={" "}
-                {((form.subscriptionPriceCents * 12) / 100).toFixed(0)} €/an récurrent · Achat unique{" "}
-                {(form.priceCents / 100).toFixed(2)} € = une fois
-              </p>
-              <CommissionNote priceCents={form.subscriptionPriceCents} />
-            </>
-          )}
-
-          {(form.type === "agent" || form.type === "workflow") && (
-            <div className="rounded-xl border border-line bg-card2 p-4">
-              <label className="flex cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={form.hostingEnabled}
-                  onChange={(e) => updateField("hostingEnabled", e.target.checked)}
-                  className="mt-1"
-                />
-                <div>
-                  <p className="text-sm font-medium text-ink">Frais d&apos;hébergement Prompta</p>
-                  <p className="mt-1 text-xs text-ink-soft">
-                    Facturation mensuelle pour exécuter, stocker et maintenir l&apos;agent actif
-                    (recommandé en mode clé en main).
-                  </p>
-                </div>
-              </label>
-              {form.hostingEnabled && (
-                <div className="mt-3">
-                  <label className="text-xs text-ink-soft">Montant mensuel (€)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    value={form.hostingFeeCents / 100}
-                    onChange={(e) =>
-                      updateField(
-                        "hostingFeeCents",
-                        Math.round(parseFloat(e.target.value || "0") * 100)
-                      )
-                    }
-                    className="mt-1 h-10 w-full rounded-lg border border-line px-3"
-                  />
-                  <p className="mt-1 text-[11px] text-ink-faint">
-                    Ex. 4,90 €/mois — couvre runtime, logs, connexions et mises à jour de
-                    l&apos;agent publié.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
+          <PlanQuotaCard />
 
           <dl className="space-y-2 rounded-xl border border-line bg-card2 p-4 text-sm">
-            <div><dt className="text-ink-faint">Titre</dt><dd className="font-medium">{form.title}</dd></div>
             <div><dt className="text-ink-faint">Type</dt><dd className="font-medium capitalize">{form.type}</dd></div>
             <div><dt className="text-ink-faint">Étapes</dt><dd className="font-medium">{buildCurrentManifest().steps.length}</dd></div>
+            <div><dt className="text-ink-faint">Applications</dt><dd className="font-medium">{dedupeConnectors(form.requiredConnectors).join(", ") || "—"}</dd></div>
           </dl>
-
-          {hasSharedNodes && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-semibold text-amber-900">Environnements partagés</p>
-              <ul className="mt-2 space-y-1 text-xs text-amber-900">
-                {clientRequirements.sharedProvided.map((item) => (
-                  <li key={item.id}>🌐 {item.label}{item.nodeName ? ` (${item.nodeName})` : ""}</li>
-                ))}
-              </ul>
-              <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={sharedPublishAck}
-                  onChange={(e) => setSharedPublishAck(e.target.checked)}
-                  className="mt-0.5"
-                />
-                Je comprends que mes accès seront utilisés par tous les abonnés.
-              </label>
-            </div>
-          )}
 
           {stepError && <p className="text-sm text-destructive">{stepError}</p>}
         </div>
       )}
 
-      {step === 3 && (
+      {step === 2 && (
         <div>
           <h2 className="font-display text-xl font-bold text-ink">Tester</h2>
           <p className="mt-2 text-sm text-ink-soft">
@@ -1136,7 +945,7 @@ export function CreateWizard({ categories }: Props) {
               className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent/90 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
-              {saving ? "Envoi…" : "Publier l'agent"}
+              {saving ? "Mise en production…" : "Mettre en production"}
             </button>
           </div>
         )}

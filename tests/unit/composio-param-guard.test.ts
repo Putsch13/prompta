@@ -34,14 +34,13 @@ test("guard — un enum à choix unique est auto-rempli", () => {
   assert.equal(args.format, "pdf");
 });
 
-test("guard — un enum à plusieurs choix n'est PAS deviné", () => {
+test("guard — un enum requis multi-choix est TOUJOURS résolu (choix borné, jamais d'échec)", () => {
   const inputs = [
     input({ key: "design_type", required: true, enumValues: ["doc", "presentation", "whiteboard"] }),
   ];
   const args = applyComposioSchemaDefaults(inputs, {});
-  const missing = missingRequiredComposioParams(inputs, args);
-  assert.equal(missing.length, 1);
-  assert.equal(missing[0].key, "design_type");
+  assert.ok(["doc", "presentation", "whiteboard"].includes(args.design_type));
+  assert.deepEqual(missingRequiredComposioParams(inputs, args), []);
 });
 
 test("guard — champ requis vide (espaces) = manquant ; optionnel vide = ok", () => {
@@ -72,4 +71,23 @@ test("guard — pas de troncature sous le maxLength", () => {
   const inputs = [input({ key: "title", maxLength: 255 })];
   const args = applyComposioSchemaDefaults(inputs, { title: "Titre court" });
   assert.equal(args.title, "Titre court");
+});
+
+import { pickEnumValue } from "../../lib/composio/param-guard";
+
+test("guard — enum multi requis : choix contextuel au lieu d'un échec (design_type)", () => {
+  const inputs = [
+    input({ key: "design_type", required: true, enumValues: ["doc", "presentation", "whiteboard"] }),
+    input({ key: "title", required: true }),
+  ];
+  const args = applyComposioSchemaDefaults(inputs, { title: "Présentation commerciale Q3" });
+  assert.equal(args.design_type, "presentation");
+  assert.deepEqual(missingRequiredComposioParams(inputs, args), []);
+});
+
+test("pickEnumValue — contexte FR matche la racine (présentation → presentation)", () => {
+  assert.equal(pickEnumValue(["doc", "presentation", "whiteboard"], "une belle présentation canva"), "presentation");
+  assert.equal(pickEnumValue(["doc", "presentation", "whiteboard"], "rédige un document"), "doc");
+  // Aucun indice → première valeur (jamais d'échec).
+  assert.equal(pickEnumValue(["RAW", "USER_ENTERED"], "xyz"), "RAW");
 });

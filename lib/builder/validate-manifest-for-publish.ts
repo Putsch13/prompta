@@ -149,14 +149,12 @@ export function stripManifestForPublish(manifest: AgentManifest): AgentManifest 
   const stripped = stripBuilderResources(manifest);
   const steps = stripped.steps.map((step) => {
     if (step.type !== "action" && step.type !== "tool") return step;
-    const cleanParams: Record<string, string> = {};
-    for (const [key, value] of Object.entries(step.params ?? {})) {
-      if (isBinding(value) || isResourcePlaceholder(value)) {
-        cleanParams[key] = value;
-      } else {
-        cleanParams[key] = `{{${key}}}`;
-      }
-    }
+    // Les valeurs FIXES sont PRÉSERVÉES : le publieur est aussi l'exécutant
+    // (plateforme d'hébergement, plus de revente). L'ancien remplacement par
+    // {{clé}} — pensé pour re-demander aux abonnés marketplace — créait
+    // lui-même des « Variable non déclarée » au publish et contredisait la
+    // promesse du copilote (« valeur fixe = jamais redemandée »).
+    const cleanParams: Record<string, string> = { ...(step.params ?? {}) };
     if (step.type === "action") {
       if (step.sharedEnv) {
         const { paramMeta: _m, ...rest } = step;

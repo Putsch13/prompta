@@ -330,7 +330,7 @@ test("orchestrator — résout connexions et clés depuis le runner courant", ()
   assert.ok(src.includes("ctx.apiKeys[provider]"));
 });
 
-test("stripManifestForPublish — conserve bindings uniquement", () => {
+test("stripManifestForPublish — bindings ET valeurs fixes préservés (hébergement, pas de revente)", () => {
   const manifest: AgentManifest = {
     kind: "workflow",
     inputs: [{ key: "email", label: "Email", type: "text", required: true }],
@@ -348,5 +348,6 @@ test("stripManifestForPublish — conserve bindings uniquement", () => {
   };
   const stripped = stripManifestForPublish(manifest);
   assert.equal(stripped.steps[0].type === "action" && stripped.steps[0].params.to, "{{email}}");
-  assert.equal(stripped.steps[0].type === "action" && stripped.steps[0].params.subject, "{{subject}}");
+  // Valeur fixe du créateur PRÉSERVÉE (avant : réécrite en {{subject}} → « variable non déclarée »).
+  assert.equal(stripped.steps[0].type === "action" && stripped.steps[0].params.subject, "Hello");
 });

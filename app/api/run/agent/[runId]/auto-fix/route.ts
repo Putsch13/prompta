@@ -57,12 +57,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
-  if (!run.version_id || !run.listing_id) {
-    return NextResponse.json(
-      { error: "Run sans version/agent associé — auto-correction indisponible." },
-      { status: 400 },
-    );
-  }
+  const isTestRun = !run.version_id;
 
   // Étapes en échec (avec aperçus + détail technique).
   const { data: steps } = await admin
@@ -87,14 +82,26 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     errorDetail: s.error_detail,
   }));
 
-  // Manifeste courant du run.
-  const { data: version } = await admin
-    .from("listing_versions")
-    .select("env, prompt_body")
-    .eq("id", run.version_id)
-    .single();
-  const parsedEnv = parseListingEnv(version?.env, version?.prompt_body);
-  const manifest = parsedEnv?.manifest;
+  // Manifeste courant du run : version publiée, ou manifeste embarqué (test).
+  let version: { env: unknown; prompt_body: string | null } | null = null;
+  let manifest: ReturnType<typeof parseListingEnv> extends infer _ ? import("@/lib/agent/schema").AgentManifest | undefined : never = undefined;
+  let parsedEnv: ReturnType<typeof parseListingEnv> = null;
+  if (isTestRun) {
+    const embedded = (run.inputs as Record<string, unknown> | null)?.__manifest;
+    if (typeof embedded === "string") {
+      const parsedManifest = AgentManifestSchema.safeParse(JSON.parse(embedded));
+      if (parsedManifest.success) manifest = parsedManifest.data;
+    }
+  } else {
+    const { data: v } = await admin
+      .from("listing_versions")
+      .select("env, prompt_body")
+      .eq("id", run.version_id ?? "")
+      .single();
+    version = v;
+    parsedEnv = parseListingEnv(v?.env, v?.prompt_body);
+    manifest = parsedEnv?.manifest;
+  }
   if (!manifest) {
     return NextResponse.json(
       { error: "Manifeste introuvable pour ce run." },
@@ -102,12 +109,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     );
   }
 
-  const { data: listing } = await admin
-    .from("listings")
-    .select("id, creator_id, status, current_version_id")
-    .eq("id", run.listing_id)
-    .single();
-  const isCreator = !!listing && listing.creator_id === user.id;
+  const { data: listing } = run.listing_id
+    ? await admin
+        .from("listings")
+        .select("id, creator_id, status, current_version_id")
+        .eq("id", run.listing_id)
+        .single()
+    : { data: null };
+  // Un run de test appartient à son lanceur : pleine liberté de correction.
+  const isCreator = isTestRun ? run.user_id === user.id : !!listing && listing.creator_id === user.id;
 
   const failedInfo: FailedStepInfo[] = failed.map((f: any) => ({
     stepIndex: f.stepIndex,
@@ -125,6 +135,41 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     return NextResponse.json({ error: keyResult.error }, { status: 503 });
   }
 
+  // Schémas RÉELS des outils en échec — l'IA choisit dans les enums au lieu
+  // de deviner (design_type & co).
+  const toolSchemas: import("@/lib/agent/auto-fix-run").ToolSchemaContext[] = [];
+  try {
+    const { listComposioTools } = await import("@/lib/composio/catalog");
+    const { toComposioToolkitSlug } = await import("@/lib/connectors/resolve-id");
+    const seen = new Set<string>();
+    for (const f of failed) {
+      const slug: string | null = f.actionSlug;
+      if (!slug || seen.has(slug)) continue;
+      seen.add(slug);
+      const toolkit = toComposioToolkitSlug(
+        (f.connector as string | null) ?? slug.split(/[._]/)[0]?.toLowerCase() ?? "",
+      );
+      const tools = await listComposioTools(toolkit).catch(() => []);
+      const entry = tools.find(
+        (t) => t.slug === slug || t.slug.toLowerCase().includes(slug.split(".").pop() ?? ""),
+      );
+      if (entry) {
+        toolSchemas.push({
+          action: slug,
+          inputs: entry.inputs.map((i) => ({
+            key: i.key,
+            label: i.label,
+            required: i.required,
+            enumValues: i.enumValues,
+            defaultValue: i.defaultValue,
+          })),
+        });
+      }
+    }
+  } catch {
+    // best-effort — l'IA travaille sans schémas si le catalogue est indisponible
+  }
+
   let ai;
   try {
     ai = await autoFixRun({
@@ -133,6 +178,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
       fixes,
       apiKey: keyResult.apiKey,
       resolved: keyResult.resolved,
+      toolSchemas,
     });
   } catch (err) {
     return NextResponse.json(
@@ -142,6 +188,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
   }
 
   let applied = false;
+  let relaunchedRunId: string | null = null;
   let appliedVersionId: string | null = run.version_id;
   let blockedReason: string | null = null;
 
@@ -178,11 +225,36 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
         };
         const contract = JSON.parse(JSON.stringify(buildContract(rebuilt.steps)));
 
-        if (listing?.status === "published") {
+        if (isTestRun) {
+          // Run de test : on relance directement un nouveau run avec le
+          // manifeste corrigé embarqué (l'IA répare ET relance).
+          const cleanInputs = Object.fromEntries(
+            Object.entries((run.inputs as Record<string, string>) ?? {}).filter(
+              ([k]) => !k.startsWith("__"),
+            ),
+          );
+          const { data: newRun } = await admin
+            .from("listing_agent_runs")
+            .insert({
+              user_id: run.user_id,
+              listing_id: run.listing_id ?? null,
+              status: "pending",
+              dry_run: false,
+              inputs: { ...cleanInputs, __manifest: JSON.stringify(rebuilt), __qa: (run.inputs as Record<string, string> | null)?.__qa },
+            })
+            .select("id")
+            .single();
+          if (newRun?.id) {
+            const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
+            void processPendingAgentRuns(1, { runId: newRun.id }).catch(() => undefined);
+            applied = true;
+            relaunchedRunId = newRun.id;
+          }
+        } else if (listing?.status === "published") {
           const { data: currentVersion } = await admin
             .from("listing_versions")
             .select("semver")
-            .eq("id", listing.current_version_id ?? run.version_id)
+            .eq("id", listing.current_version_id ?? run.version_id ?? "")
             .single();
           const oldSemver = (currentVersion as any)?.semver ?? "1.0.0";
           const parts = String(oldSemver).split(".").map(Number);
@@ -191,7 +263,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
           const { data: newVersion } = await admin
             .from("listing_versions")
             .insert({
-              listing_id: run.listing_id,
+              listing_id: run.listing_id ?? "",
               semver: newSemver,
               changelog: `Auto-correction IA ${newSemver}`,
               prompt_body: version?.prompt_body ?? null,
@@ -205,7 +277,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
             await admin
               .from("listings")
               .update({ current_version_id: newVersion.id })
-              .eq("id", run.listing_id);
+              .eq("id", run.listing_id ?? "");
             appliedVersionId = newVersion.id;
             applied = true;
           }
@@ -213,7 +285,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
           await admin
             .from("listing_versions")
             .update({ env: envPayload, contract })
-            .eq("id", run.version_id);
+            .eq("id", run.version_id ?? "");
           appliedVersionId = run.version_id;
           applied = true;
         }
@@ -228,6 +300,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     autoFixable: ai.autoFixable,
     applied,
     blockedReason,
+    relaunchedRunId,
     relaunch: {
       listingId: run.listing_id,
       versionId: appliedVersionId,

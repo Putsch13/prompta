@@ -50,11 +50,15 @@ const SYSTEM_PROMPT = `Tu es l'ingénieur SRE de Prompta. Tu reçois le plan d'e
 
 Ta mission : diagnostiquer puis CORRIGER toi-même ce qui est réparable par modification du plan.
 
-Tu PEUX corriger (auto-réparable) :
+Tu PEUX corriger (auto-réparable) — sois AUDACIEUX, ta mission est que le prochain run RÉUSSISSE :
 - un mauvais choix d'action/outil/connecteur ;
 - un mapping de paramètres manquant ou erroné (ex. nom de fichier vide, contenu non câblé sur la sortie d'une étape amont via {{outputKey}}) ;
+- un paramètre requis manquant dont le SCHÉMA fourni donne les valeurs possibles : CHOISIS la valeur d'enum la plus adaptée au contexte, ou le default ;
+- un paramètre texte requis manquant : ajoute un "aiFills" sur l'étape ({"cle": {"model": "gpt-5.4-mini", "prompt": "..."}}) pour le générer au run ;
+- la REQUÊTE d'une étape retrieve qui ne trouve rien : reformule-la (mots-clés du vrai nom de fichier visibles dans le plan, ou intention « fichiers récents ») ;
 - un placeholder {{...}} qui ne pointe vers aucune sortie existante ;
 - un en-tête email invalide (from/to) quand la valeur correcte est déductible du plan ;
+- une plage/onglet Sheets invalide (utilise "A1" par défaut) ;
 - l'ordre/branchement des étapes.
 
 Tu NE corriges JAMAIS (→ requiresUser) :
@@ -166,21 +170,38 @@ ${diag || "(aucun)"}
 Diagnostique et corrige le plan comme demandé, puis renvoie le JSON.`;
 }
 
+export interface ToolSchemaContext {
+  action: string;
+  inputs: Array<{
+    key: string;
+    label: string;
+    required: boolean;
+    enumValues?: string[];
+    defaultValue?: string;
+  }>;
+}
+
 export async function autoFixRun(opts: {
   steps: AgentStep[];
   failed: FailedStepContext[];
   fixes: RunFix[];
   apiKey: string;
   resolved: ResolvedModel;
+  /** Schémas RÉELS des outils en échec (enums, requis, défauts). */
+  toolSchemas?: ToolSchemaContext[];
 }): Promise<AutoFixResult> {
-  const { steps, failed, fixes, apiKey, resolved } = opts;
+  const { steps, failed, fixes, apiKey, resolved, toolSchemas } = opts;
+
+  const schemaBlock = toolSchemas?.length
+    ? `\n\nSCHÉMAS RÉELS des outils en échec (utilise CES clés/valeurs, choisis dans les enums) :\n${JSON.stringify(toolSchemas)}`
+    : "";
 
   const result = await callModel({
     provider: resolved.provider,
     model: resolved.apiModel,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt(steps, failed, fixes) },
+      { role: "user", content: buildUserPrompt(steps, failed, fixes) + schemaBlock },
     ],
     apiKey,
     maxTokens: 8000,

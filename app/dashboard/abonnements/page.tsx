@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { CreditCard, Sparkles, Loader2, Bot, Coins } from "lucide-react";
 import { isSubscriptionAccessActive } from "@/lib/subscriptions/active";
+import { PLANS, PLAN_ORDER } from "@/lib/billing/plans";
+import { PlanGrid } from "@/components/pricing/PlanGrid";
 
 interface PlatformSub {
   status: string;
@@ -196,6 +198,25 @@ export default function AbonnementsPage() {
         </div>
       </div>
 
+
+      {/* ── Toutes les formules, changement en un clic ─────────────────── */}
+      <div className="mt-10">
+        <h2 className="font-display text-xl font-bold text-ink">Les formules</h2>
+        <p className="mb-4 mt-1 text-sm text-ink-soft">
+          Change de plan à tout moment — effet immédiat à l&apos;upgrade, fin de période au
+          downgrade.
+        </p>
+        <PlanGrid
+          plans={PLAN_ORDER.map((id) => ({
+            id: PLANS[id].id,
+            label: PLANS[id].label,
+            priceCents: PLANS[id].priceCents,
+            tagline: PLANS[id].tagline,
+            features: PLANS[id].features,
+            highlight: PLANS[id].highlight,
+          }))}
+        />
+      </div>
     </div>
   );
 }
