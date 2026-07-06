@@ -450,6 +450,20 @@ async function executeStep(
       );
 
       const actionDef = getConnectorAction(step.connector, step.action);
+      // Alias snake_case ↔ camelCase : le registre dit « spreadsheetId », les
+      // plans générés disent souvent « spreadsheet_id » — on aligne sur la clé
+      // canonique au lieu d'échouer en « non renseigné ».
+      for (const input of actionDef?.inputs ?? []) {
+        if (params[input.key] !== undefined) continue;
+        const snake = input.key.replace(/([A-Z])/g, (m) => `_${m.toLowerCase()}`);
+        const camel = input.key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+        for (const alias of [snake, camel]) {
+          if (alias !== input.key && params[alias] !== undefined) {
+            params[input.key] = params[alias];
+            break;
+          }
+        }
+      }
       for (const input of actionDef?.inputs ?? []) {
         if (!input.required) continue;
         const val = params[input.key];
@@ -732,19 +746,45 @@ async function persistRunDeliverables(params: {
 
   if (params.outputs.result) {
     await saveOne("result", params.outputs.result, "markdown");
-    // Rapport HTML stylé (téléchargeable, imprimable en PDF) : le livrable
-    // « présentable » du dossier de mission, pas juste un corps de texte.
-    if (params.outputs.result.length > 200) {
-      try {
-        const { markdownToDocumentHtml } = await import("@/lib/email/markdown-to-html");
-        await saveOne(
-          "rapport",
-          markdownToDocumentHtml(params.outputs.result, { title: "Rapport de mission", subtitle: "Dossier de mission Prompta" }),
-          "html",
-        );
-      } catch {
-        // best-effort — le .md reste disponible
-      }
+  }
+
+  // Rapport HTML stylé (téléchargeable, imprimable en PDF) : le livrable
+  // « présentable » du dossier de mission. `result` est souvent la réponse
+  // JSON du dernier envoi (inutilisable) — on prend le contenu TEXTE le plus
+  // substantiel produit par la mission (dossier, mémo, synthèse…).
+  const isJsonLike = (v: string) => /^[[{]/.test(v.trim());
+  const reportSource =
+    Object.entries(params.outputs)
+      .filter(
+        ([k, v]) =>
+          !k.startsWith("step_") &&
+          k !== "result" &&
+          typeof v === "string" &&
+          v.trim().length > 400 &&
+          !isJsonLike(v),
+      )
+      .sort((a, b) => b[1].length - a[1].length)[0] ??
+    (params.outputs.result && params.outputs.result.trim().length > 400 && !isJsonLike(params.outputs.result)
+      ? (["result", params.outputs.result] as [string, string])
+      : null);
+  if (reportSource) {
+    try {
+      const { markdownToDocumentHtml } = await import("@/lib/email/markdown-to-html");
+      await saveDeliverable({
+        runId: params.runId,
+        listingId: params.listingId,
+        userId: params.userId,
+        kind: "html",
+        filename: "rapport.html",
+        mimeType: "text/html",
+        content: markdownToDocumentHtml(reportSource[1], {
+          title: "Rapport de mission",
+          subtitle: "Dossier de mission Prompta",
+        }),
+        previewText: reportSource[1].slice(0, 500),
+      });
+    } catch {
+      // best-effort — le .md reste disponible
     }
   }
 
