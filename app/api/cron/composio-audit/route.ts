@@ -23,6 +23,20 @@ export async function GET(req: NextRequest) {
   const limit = Number(url.searchParams.get("limit") ?? 40);
   const offset = Number(url.searchParams.get("offset") ?? 0);
 
+  // Sonde : ?raw=SLUG_OUTIL renvoie le schéma brut d'un outil (debug).
+  const rawTool = url.searchParams.get("raw");
+  if (rawTool) {
+    const toolkit = rawTool.split("_")[0]?.toLowerCase() ?? "";
+    const { getComposioClient } = await import("@/lib/composio/client");
+    const composio = getComposioClient();
+    const tools = await composio.tools.getRawComposioTools({ toolkits: [toolkit], limit: 500 });
+    const tool = (tools ?? []).find((t) => t.slug === rawTool);
+    return NextResponse.json({
+      slug: rawTool,
+      inputParameters: tool?.inputParameters ?? null,
+    });
+  }
+
   const allToolkits = await listComposioToolkits();
   const targets = only?.length
     ? allToolkits.filter((t) => only.includes(t.id))
