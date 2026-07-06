@@ -25,11 +25,35 @@ interface Props {
   onRefresh: () => void;
 }
 
+/** Logo de l'app (URL Composio) avec repli lettre-avatar si absent/cassé. */
+function AppLogo({ logo, label }: { logo?: string; label: string }) {
+  const [broken, setBroken] = useState(false);
+  if (logo && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logo}
+        alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+        className="h-9 w-9 shrink-0 rounded-lg border border-line bg-white object-contain p-1"
+      />
+    );
+  }
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-sm font-bold text-accent">
+      {label.charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
 export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Toutes");
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, string>>({});
+  const [visibleCount, setVisibleCount] = useState(120);
 
   const connectedSet = useMemo(
     () =>
@@ -125,14 +149,17 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
       </p>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.slice(0, 120).map((tk) => {
+        {filtered.slice(0, visibleCount).map((tk) => {
           const connected = connectedSet.has(tk.id);
           return (
             <div key={tk.id} className="rounded-xl border border-line bg-card p-4">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium text-ink">{tk.label}</p>
-                  <p className="text-[10px] text-ink-faint">{tk.category} · {tk.authType}</p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <AppLogo logo={tk.logo} label={tk.label} />
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">{tk.label}</p>
+                    <p className="text-[10px] text-ink-faint">{tk.category} · {tk.authType}</p>
+                  </div>
                 </div>
                 {connected ? (
                   <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] text-green-700">
@@ -186,6 +213,18 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
           );
         })}
       </div>
+
+      {filtered.length > visibleCount && (
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((c) => c + 120)}
+            className="rounded-lg border border-line px-5 py-2 text-sm text-ink-soft hover:bg-card2"
+          >
+            Afficher plus ({filtered.length - visibleCount} restantes)
+          </button>
+        </div>
+      )}
     </div>
   );
 }

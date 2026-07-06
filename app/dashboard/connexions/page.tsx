@@ -123,7 +123,7 @@ function ConnexionsContent() {
         <div>
           <h1 className="font-display text-3xl font-bold text-ink">Mes connexions</h1>
           <p className="mt-2 text-ink-soft">
-            Catalogue 360° — connectez Gmail, Notion, HubSpot, Slack, Shopify et 800+ apps via Composio.
+            Catalogue 360° — connectez Gmail, Notion, HubSpot, Slack, Shopify et 1000+ apps via Composio.
           </p>
         </div>
         <button
