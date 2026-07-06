@@ -109,13 +109,38 @@ function widgetType(key: string, jsonType?: string): "text" | "textarea" | "emai
   return "text";
 }
 
+/**
+ * Extrait les valeurs d'enum d'un schéma, y compris via composition
+ * anyOf/oneOf (ex. design_type de Canva : anyOf[{enum:[...]}, {...}]) et
+ * items.enum (tableaux d'enums). Export pour tests.
+ */
+export function collectSchemaEnum(meta: Record<string, unknown>): string[] | undefined {
+  if (Array.isArray(meta.enum)) return meta.enum.map((v) => String(v));
+  const branches = (meta.anyOf ?? meta.oneOf) as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(branches)) {
+    const vals: string[] = [];
+    for (const b of branches) {
+      if (!b || typeof b !== "object") continue;
+      if (Array.isArray(b.enum)) vals.push(...b.enum.map((v) => String(v)));
+      else if (b.const != null) vals.push(String(b.const));
+      // objet { properties: { type: { enum } } } — préréglages nommés
+      const props = b.properties as Record<string, { enum?: unknown[] }> | undefined;
+      if (props?.type?.enum) vals.push(...props.type.enum.map((v) => String(v)));
+    }
+    if (vals.length > 0) return Array.from(new Set(vals));
+  }
+  const items = meta.items as Record<string, unknown> | undefined;
+  if (items && Array.isArray(items.enum)) return items.enum.map((v) => String(v));
+  return undefined;
+}
+
 function parseToolInputs(
   parameters: Record<string, unknown> | undefined,
   toolkit: string,
 ): ComposioToolEntry["inputs"] {
   const props = (parameters?.properties ?? {}) as Record<
     string,
-    { title?: string; description?: string; type?: string; default?: unknown; enum?: unknown[]; maxLength?: number }
+    { title?: string; description?: string; type?: string; default?: unknown; enum?: unknown[]; maxLength?: number; anyOf?: unknown[]; oneOf?: unknown[]; items?: unknown }
   >;
   const required = new Set((parameters?.required as string[] | undefined) ?? []);
   return Object.entries(props).map(([key, meta]) => {
@@ -124,7 +149,7 @@ function parseToolInputs(
     // longues — ex. un titre aiFill > 255 chars rejeté par Canva).
     const defaultValue =
       meta.default !== undefined && meta.default !== null ? String(meta.default) : undefined;
-    const enumValues = Array.isArray(meta.enum) ? meta.enum.map((v) => String(v)) : undefined;
+    const enumValues = collectSchemaEnum(meta as Record<string, unknown>);
     const maxLength = typeof meta.maxLength === "number" && meta.maxLength > 0 ? meta.maxLength : undefined;
     const rawType = typeof meta.type === "string" ? meta.type : undefined;
     // Curaté (mapping connu) prioritaire, sinon tout `*_id` devient une ressource

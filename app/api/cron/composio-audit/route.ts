@@ -21,11 +21,12 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const only = url.searchParams.get("toolkits")?.split(",").map((s) => s.trim()).filter(Boolean);
   const limit = Number(url.searchParams.get("limit") ?? 40);
+  const offset = Number(url.searchParams.get("offset") ?? 0);
 
   const allToolkits = await listComposioToolkits();
   const targets = only?.length
     ? allToolkits.filter((t) => only.includes(t.id))
-    : allToolkits.slice(0, limit);
+    : allToolkits.slice(offset, offset + limit);
 
   const report: Array<{
     toolkit: string;

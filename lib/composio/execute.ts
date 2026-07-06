@@ -39,11 +39,24 @@ export function coerceArg(value: string, expected?: ComposioArgType): unknown {
         if (/^(true|false)$/i.test(trimmed)) return /^true$/i.test(trimmed);
         return value;
       case "object":
-      case "array":
         try {
           return JSON.parse(trimmed);
         } catch {
           return value;
+        }
+      case "array":
+        try {
+          const parsed = JSON.parse(trimmed);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          // Texte brut pour un TABLEAU attendu (audit : 228 params requis de ce
+          // type sur 40 toolkits) : découpe en liste de chaînes plutôt que de
+          // laisser le provider renvoyer un 400 « Input should be a valid list ».
+          const parts = trimmed
+            .split(/\r?\n|;|,/)
+            .map((x) => x.trim())
+            .filter(Boolean);
+          return parts.length > 0 ? parts : [trimmed];
         }
     }
   }

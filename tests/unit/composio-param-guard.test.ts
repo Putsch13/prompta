@@ -91,3 +91,19 @@ test("pickEnumValue — contexte FR matche la racine (présentation → presenta
   // Aucun indice → première valeur (jamais d'échec).
   assert.equal(pickEnumValue(["RAW", "USER_ENTERED"], "xyz"), "RAW");
 });
+
+import { collectSchemaEnum } from "../../lib/composio/catalog";
+
+test("collectSchemaEnum — enum plat, anyOf, const, items (schémas composés type Canva)", () => {
+  assert.deepEqual(collectSchemaEnum({ enum: ["a", "b"] }), ["a", "b"]);
+  assert.deepEqual(
+    collectSchemaEnum({ anyOf: [{ enum: ["doc", "presentation", "whiteboard"] }, { type: "object" }] }),
+    ["doc", "presentation", "whiteboard"],
+  );
+  assert.deepEqual(collectSchemaEnum({ oneOf: [{ const: "RAW" }, { const: "USER_ENTERED" }] }), ["RAW", "USER_ENTERED"]);
+  assert.deepEqual(
+    collectSchemaEnum({ anyOf: [{ properties: { type: { enum: ["presentation"] } } }] }),
+    ["presentation"],
+  );
+  assert.equal(collectSchemaEnum({ type: "string" }), undefined);
+});
