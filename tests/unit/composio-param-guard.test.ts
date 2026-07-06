@@ -101,9 +101,22 @@ test("collectSchemaEnum — enum plat, anyOf, const, items (schémas composés t
     ["doc", "presentation", "whiteboard"],
   );
   assert.deepEqual(collectSchemaEnum({ oneOf: [{ const: "RAW" }, { const: "USER_ENTERED" }] }), ["RAW", "USER_ENTERED"]);
+  // Schéma RÉEL de CANVA_POST_DESIGNS : l'enum vit sous properties.name,
+  // properties.type est un const structurel ("preset") à ignorer.
   assert.deepEqual(
-    collectSchemaEnum({ anyOf: [{ properties: { type: { enum: ["presentation"] } } }] }),
-    ["presentation"],
+    collectSchemaEnum({
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            name: { enum: ["doc", "whiteboard", "presentation"] },
+            type: { const: "preset" },
+          },
+        },
+        { type: "object", properties: { type: { const: "custom" }, width: {}, height: {} } },
+      ],
+    }),
+    ["doc", "whiteboard", "presentation"],
   );
   assert.equal(collectSchemaEnum({ type: "string" }), undefined);
 });

@@ -122,10 +122,18 @@ export function collectSchemaEnum(meta: Record<string, unknown>): string[] | und
     for (const b of branches) {
       if (!b || typeof b !== "object") continue;
       if (Array.isArray(b.enum)) vals.push(...b.enum.map((v) => String(v)));
-      else if (b.const != null) vals.push(String(b.const));
-      // objet { properties: { type: { enum } } } — préréglages nommés
+      else if (b.const != null && b.const !== "custom" && b.const !== "preset") {
+        vals.push(String(b.const));
+      }
+      // Branche objet : l'enum peut vivre sous n'importe quelle propriété
+      // (Canva : anyOf[0].properties.NAME.enum = doc/whiteboard/presentation,
+      // properties.type = const "preset" qu'on ignore).
       const props = b.properties as Record<string, { enum?: unknown[] }> | undefined;
-      if (props?.type?.enum) vals.push(...props.type.enum.map((v) => String(v)));
+      if (props) {
+        for (const prop of Object.values(props)) {
+          if (Array.isArray(prop?.enum)) vals.push(...prop.enum.map((v) => String(v)));
+        }
+      }
     }
     if (vals.length > 0) return Array.from(new Set(vals));
   }
