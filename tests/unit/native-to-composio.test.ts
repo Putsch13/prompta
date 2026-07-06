@@ -37,7 +37,11 @@ test("gmail.send → GMAIL_SEND_EMAIL avec recipient_email", () => {
   const m = composioMappingFor("gmail.send")!;
   assert.equal(m.toolSlug, "GMAIL_SEND_EMAIL");
   const args = m.mapParams({ to: "alice@x.com", subject: "Hi", body: "Hello", from: "{{from}}" });
-  assert.deepEqual(args, { recipient_email: "alice@x.com", subject: "Hi", body: "Hello" });
+  assert.equal(args.recipient_email, "alice@x.com");
+  assert.equal(args.subject, "Hi");
+  // Corps converti en HTML email + is_html.
+  assert.ok(args.body.includes(">Hello</p>"));
+  assert.equal(args.is_html, "true");
 });
 
 test("slack.send → SLACK_SEND_MESSAGE avec channel + text", () => {

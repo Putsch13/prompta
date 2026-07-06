@@ -579,7 +579,9 @@ test("native→composio: gmail.send → GMAIL_SEND_EMAIL + recipient_email", () 
   assert.equal(m.toolSlug, "GMAIL_SEND_EMAIL");
   assert.equal(args.recipient_email, "a@x.com");
   assert.equal(args.subject, "Hi");
-  assert.equal(args.body, "Yo");
+  // Le corps markdown est converti en HTML email (is_html).
+  assert.ok(args.body.includes(">Yo</p>"));
+  assert.equal(args.is_html, "true");
 });
 
 test("native→composio: gmail.read → GMAIL_FETCH_EMAILS avec max_results", () => {
