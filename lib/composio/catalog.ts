@@ -199,6 +199,43 @@ function parseToolInputs(
   });
 }
 
+interface RawToolkitItem {
+  slug?: string;
+  name?: string;
+  auth_schemes?: string[];
+  no_auth?: boolean;
+  meta?: {
+    logo?: string;
+    categories?: Array<{ id?: string; slug?: string; name?: string }>;
+  };
+}
+
+/**
+ * Liste COMPLÈTE des toolkits via l'API REST v3 avec suivi de curseur.
+ * Le SDK (`toolkits.get`) ne renvoie que la première page et JETTE le
+ * `next_cursor` — c'est pour ça que Prompta plafonnait à ~300 apps alors que
+ * Composio en expose 1000+.
+ */
+async function fetchAllToolkitsRaw(): Promise<RawToolkitItem[]> {
+  const apiKey = process.env.COMPOSIO_API_KEY?.trim();
+  if (!apiKey) return [];
+  const items: RawToolkitItem[] = [];
+  let cursor: string | null = null;
+  // 40 pages × 100 = marge large ; on s'arrête dès que next_cursor est vide.
+  for (let page = 0; page < 40; page++) {
+    const url = new URL("https://backend.composio.dev/api/v3/toolkits");
+    url.searchParams.set("limit", "100");
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const res = await fetch(url, { headers: { "x-api-key": apiKey } });
+    if (!res.ok) break; // on garde ce qu'on a déjà
+    const data = (await res.json()) as { items?: RawToolkitItem[]; next_cursor?: string | null };
+    items.push(...(data.items ?? []));
+    cursor = data.next_cursor ?? null;
+    if (!cursor) break;
+  }
+  return items;
+}
+
 export async function listComposioToolkits(): Promise<ComposioToolkitEntry[]> {
   if (!isComposioEnabled()) return [];
 
@@ -207,26 +244,77 @@ export async function listComposioToolkits(): Promise<ComposioToolkitEntry[]> {
     return toolkitCache.items;
   }
 
-  const composio = getComposioClient();
-  const raw = await composio.toolkits.get({ limit: 500 });
-  const list = Array.isArray(raw) ? raw : (raw as { items?: typeof raw }).items ?? [];
+  let list: Array<{
+    slug?: string;
+    name?: string;
+    authSchemes?: string[];
+    meta?: { logo?: string; categories?: Array<string | { name?: string; slug?: string }> };
+  }>;
+
+  const rawAll = await fetchAllToolkitsRaw().catch(() => [] as RawToolkitItem[]);
+  if (rawAll.length > 0) {
+    list = rawAll.map((tk) => ({
+      slug: tk.slug,
+      name: tk.name,
+      authSchemes: tk.auth_schemes,
+      meta: { logo: tk.meta?.logo, categories: tk.meta?.categories ?? [] },
+    }));
+  } else {
+    // Repli : SDK (une seule page — mieux que rien si l'API REST évolue).
+    const composio = getComposioClient();
+    const raw = await composio.toolkits.get({ limit: 500 });
+    list = (Array.isArray(raw) ? raw : (raw as { items?: never[] }).items ?? []) as typeof list;
+  }
 
   const items: ComposioToolkitEntry[] = list.map((tk) => {
     const slug = tk.slug ?? tk.name?.toLowerCase().replace(/\s+/g, "") ?? "unknown";
     const authScheme = tk.authSchemes?.[0] ?? "OAUTH2";
-    const categories = (tk.meta as { categories?: string[] } | undefined)?.categories;
+    const firstCategory = tk.meta?.categories?.[0];
+    const categoryName =
+      typeof firstCategory === "string"
+        ? firstCategory
+        : firstCategory?.name ?? firstCategory?.slug;
     return {
       id: slug,
       label: tk.name ?? slug,
-      category: categoryLabel(categories?.[0]),
+      category: categoryLabel(categoryName),
       popular: POPULAR_SLUGS.has(slug),
       authType: authScheme === "API_KEY" ? "api_key" : "oauth",
       connectorId: slug,
-      logo: (tk.meta as { logo?: string } | undefined)?.logo,
+      logo: tk.meta?.logo,
     };
   });
 
   toolkitCache = { at: now, items };
+  return items;
+}
+
+interface RawToolItem {
+  slug?: string;
+  name?: string;
+  description?: string;
+  input_parameters?: Record<string, unknown>;
+}
+
+/** Tous les outils d'un toolkit via l'API REST v3 (curseur suivi — le SDK
+ *  jette next_cursor et tronquait les gros toolkits). */
+async function fetchAllToolsRaw(toolkitSlug: string): Promise<RawToolItem[]> {
+  const apiKey = process.env.COMPOSIO_API_KEY?.trim();
+  if (!apiKey) return [];
+  const items: RawToolItem[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 30; page++) {
+    const url = new URL("https://backend.composio.dev/api/v3/tools");
+    url.searchParams.set("toolkit_slug", toolkitSlug);
+    url.searchParams.set("limit", "100");
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const res = await fetch(url, { headers: { "x-api-key": apiKey } });
+    if (!res.ok) break;
+    const data = (await res.json()) as { items?: RawToolItem[]; next_cursor?: string | null };
+    items.push(...(data.items ?? []));
+    cursor = data.next_cursor ?? null;
+    if (!cursor) break;
+  }
   return items;
 }
 
@@ -237,21 +325,31 @@ export async function listComposioTools(toolkitSlug: string): Promise<ComposioTo
   const cached = toolCache.get(toolkitSlug);
   if (cached && now - cached.at < CACHE_MS) return cached.items;
 
-  const composio = getComposioClient();
-  // limit 100 tronquait les gros toolkits (GitHub, HubSpot… : centaines d'outils)
-  // → actions légitimes déclarées « introuvables ».
-  const tools = await composio.tools.getRawComposioTools({
-    toolkits: [toolkitSlug],
-    limit: 500,
-  });
-
-  const items: ComposioToolEntry[] = (tools ?? []).map((t) => ({
-    slug: t.slug ?? t.name ?? "",
-    name: t.name ?? t.slug ?? "",
-    toolkit: toolkitSlug,
-    description: t.description,
-    inputs: parseToolInputs(t.inputParameters as Record<string, unknown> | undefined, toolkitSlug),
-  }));
+  let items: ComposioToolEntry[];
+  const rawTools = await fetchAllToolsRaw(toolkitSlug).catch(() => [] as RawToolItem[]);
+  if (rawTools.length > 0) {
+    items = rawTools.map((t) => ({
+      slug: t.slug ?? t.name ?? "",
+      name: t.name ?? t.slug ?? "",
+      toolkit: toolkitSlug,
+      description: t.description,
+      inputs: parseToolInputs(t.input_parameters, toolkitSlug),
+    }));
+  } else {
+    // Repli SDK (une page, limit 500) si l'API REST évolue.
+    const composio = getComposioClient();
+    const tools = await composio.tools.getRawComposioTools({
+      toolkits: [toolkitSlug],
+      limit: 500,
+    });
+    items = (tools ?? []).map((t) => ({
+      slug: t.slug ?? t.name ?? "",
+      name: t.name ?? t.slug ?? "",
+      toolkit: toolkitSlug,
+      description: t.description,
+      inputs: parseToolInputs(t.inputParameters as Record<string, unknown> | undefined, toolkitSlug),
+    }));
+  }
 
   toolCache.set(toolkitSlug, { at: now, items });
   return items;
