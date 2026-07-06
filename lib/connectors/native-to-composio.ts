@@ -58,6 +58,8 @@ function pick(p: Record<string, string>, ...keys: string[]): string | undefined 
   return undefined;
 }
 
+import { markdownToEmailHtml, looksLikeHtml } from "@/lib/email/markdown-to-html";
+
 /** ID de feuille tolérant aux noms variés générés par le builder. */
 function sheetId(p: Record<string, string>): string | undefined {
   return pick(p, "spreadsheetId", "spreadsheet_id", "fileId", "file_id", "sheetId", "sheet_id", "id");
@@ -67,12 +69,18 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
   "gmail.send": {
     toolSlug: "GMAIL_SEND_EMAIL",
     toolkitSlug: "gmail",
-    mapParams: (p) =>
-      clean({
+    // Les agents rédigent en markdown : converti en HTML propre (is_html),
+    // sinon l'email arrivait brut (« **titre** », listes plates).
+    mapParams: (p) => {
+      const body = p.body ?? "";
+      const html = looksLikeHtml(body) ? body : markdownToEmailHtml(body);
+      return clean({
         recipient_email: p.to,
         subject: p.subject,
-        body: p.body,
-      }),
+        body: html,
+        is_html: "true",
+      });
+    },
   },
   "gmail.read": {
     toolSlug: "GMAIL_FETCH_EMAILS",

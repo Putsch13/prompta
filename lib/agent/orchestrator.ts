@@ -625,7 +625,14 @@ async function executeStep(
       const approvalId = await createPendingApproval({
         runId,
         stepIndex,
-        payload: { label: step.label, preview: payloadText.slice(0, 2000) },
+        // `preview` (2000 car.) sert à l'affichage/notification ; `full` porte le
+        // contenu INTÉGRAL — c'est lui qui devient la sortie validée, sinon tout
+        // ce qui suit l'approbation (emails, docs) était tronqué à 2000 caractères.
+        payload: {
+          label: step.label,
+          preview: payloadText.slice(0, 2000),
+          full: payloadText.slice(0, 200_000),
+        },
         expiresInMinutes: step.expiresInMinutes,
       });
       if (stepDbId) {

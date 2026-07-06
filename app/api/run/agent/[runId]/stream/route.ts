@@ -89,11 +89,11 @@ export async function GET(_request: NextRequest, props: Params) {
               .maybeSingle();
             if (pending) {
               approval_id = pending.id;
-              const payload = (pending.payload ?? {}) as { label?: string; preview?: string };
+              const payload = (pending.payload ?? {}) as { label?: string; preview?: string; full?: string };
               approval = {
                 id: pending.id,
                 label: payload.label,
-                preview: payload.preview,
+                preview: payload.full ?? payload.preview,
                 step_index: pending.step_index ?? 0,
               };
             }

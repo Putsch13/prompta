@@ -82,11 +82,13 @@ export async function GET(request: NextRequest, props: Params) {
       .maybeSingle();
     if (pending) {
       approval_id = pending.id;
-      const payload = (pending.payload ?? {}) as { label?: string; preview?: string };
+      const payload = (pending.payload ?? {}) as { label?: string; preview?: string; full?: string };
       approval = {
         id: pending.id,
         label: payload.label,
-        preview: payload.preview,
+        // La modale édite le contenu INTÉGRAL (sinon approuver avec
+        // modification re-tronquait à la préview).
+        preview: payload.full ?? payload.preview,
         step_index: pending.step_index ?? 0,
       };
       effectiveStatus = "awaiting_approval";

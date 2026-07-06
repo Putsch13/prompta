@@ -57,8 +57,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
-  const payload = (approval.payload ?? {}) as { preview?: string; label?: string };
-  const current = body.content?.trim() || payload.preview || "";
+  const payload = (approval.payload ?? {}) as { preview?: string; full?: string; label?: string };
+  const current = body.content?.trim() || payload.full || payload.preview || "";
 
   const keyResult = await getBuilderApiKey(user.id, body.modelId ?? "gpt-5.4-mini");
   if (!keyResult.ok) {

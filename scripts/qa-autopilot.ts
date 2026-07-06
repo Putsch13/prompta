@@ -55,6 +55,31 @@ function llm(prompt: string, outputKey?: string) {
   return { type: "llm", model: MODEL, prompt, ...(outputKey ? { outputKey } : {}) };
 }
 
+/**
+ * Pipeline Sheets EXPLOITABLE : crée la feuille, extrait son id, y écrit
+ * en-tête + lignes. Une feuille créée vide n'est pas un livrable.
+ * `rowsTemplate` : lignes `col1;col2;…` (peut référencer {{variables}}).
+ */
+function sheetsWrite(title: string, header: string, rowsTemplate: string, keyPrefix: string) {
+  return [
+    {
+      type: "action",
+      connector: "google_sheets",
+      action: "google_sheets.create_spreadsheet",
+      params: { title },
+      outputKey: `${keyPrefix}_creation`,
+    },
+    llm(`Réponds UNIQUEMENT le spreadsheetId de : {{${keyPrefix}_creation}}`, `${keyPrefix}_id`),
+    {
+      type: "action",
+      connector: "google_sheets",
+      action: "google_sheets.append_row",
+      params: { spreadsheet_id: `{{${keyPrefix}_id}}`, values: `${header}\n${rowsTemplate}` },
+      outputKey: `${keyPrefix}_ecriture`,
+    },
+  ];
+}
+
 // Scénarios ULTRA-COMPLEXES conservés pour inspection manuelle
 // (KEEP_QA_RUNS=1 les garde en base ; QA_ONLY="ultra_*" pour ne lancer qu'eux).
 const ULTRA_TESTS: QaTest[] = [
@@ -683,12 +708,8 @@ const DREAM_TESTS: QaTest[] = [
           "Tu es consultant SEO senior. Audite la page {{page}} selon la checklist {{checklist}}. Produis : 1) Note globale /100 2) Tableau des 6 critères clés (titre, meta, structure Hn, contenu, maillage, performance) avec note /10 et constat 3) Top 3 des actions prioritaires. Markdown.",
           "audit",
         ),
-        {
-          type: "action",
-          connector: "google_sheets",
-          action: "google_sheets.create_spreadsheet",
-          params: { title: "Dream — Audit SEO example.com" },
-        },
+        llm("Convertis cet audit en lignes CSV exactes au format Critère;Note;Constat (6 lignes, AUCUN autre texte) : {{audit}}", "audit_csv"),
+        ...sheetsWrite("Dream — Audit SEO example.com", "Critère;Note;Constat", "{{audit_csv}}", "seo"),
         { type: "approval", label: "Dream — valider l'audit SEO", payloadTemplate: "{{audit}}", outputKey: "audit_ok" },
         {
           type: "action",
@@ -817,12 +838,8 @@ const DREAM_TESTS: QaTest[] = [
         llm("À partir du marché {{marche}} et de la concurrence {{concurrence}}, verdict : réponds 'GO: ' ou 'NOGO: ' suivi de 2 lignes de justification.", "verdict"),
         { type: "condition", expression: "{{verdict}} contains GO" },
         llm("Rédige un plan de lancement en 5 jalons datés (S1 à S12) pour une plateforme de coaching : positionnement déduit de {{marche}} et {{concurrence}}.", "plan"),
-        {
-          type: "action",
-          connector: "google_sheets",
-          action: "google_sheets.create_spreadsheet",
-          params: { title: "Dream — Étude de marché coaching" },
-        },
+        llm("Convertis ce plan en lignes CSV exactes Jalon;Semaine;Description (5 lignes, AUCUN autre texte) : {{plan}}", "plan_csv"),
+        ...sheetsWrite("Dream — Étude de marché coaching", "Jalon;Semaine;Description", "{{plan_csv}}", "etude"),
         {
           type: "action",
           connector: "google_calendar",
@@ -917,12 +934,8 @@ const DREAM_TESTS: QaTest[] = [
           outputKey: "kit",
         },
         llm("Assemble le KIT DE RECRUTEMENT complet : fiche {{fiche}}, grille {{grille}}, questions {{questions}}. Markdown structuré.", "kit_final"),
-        {
-          type: "action",
-          connector: "google_sheets",
-          action: "google_sheets.create_spreadsheet",
-          params: { title: "Dream — Suivi candidats Growth Marketer" },
-        },
+        llm("Convertis cette grille en lignes CSV exactes Critère;Description;Note max (5 lignes, AUCUN autre texte) : {{grille}}", "grille_csv"),
+        ...sheetsWrite("Dream — Suivi candidats Growth Marketer", "Critère;Description;Note max", "{{grille_csv}}", "recrut"),
         {
           type: "action",
           connector: "gmail",
@@ -951,12 +964,8 @@ const DREAM_TESTS: QaTest[] = [
           outputKey: "analyses_avis",
         },
         llm("Plan d'action CX en 5 mesures priorisées à partir de : sentiment {{sentiment}}, thèmes {{themes}}, irritants {{irritants}}. Chaque mesure : action + impact attendu + délai.", "plan_cx"),
-        {
-          type: "action",
-          connector: "google_sheets",
-          action: "google_sheets.create_spreadsheet",
-          params: { title: "Dream — Analyse avis clients" },
-        },
+        llm("Convertis ces avis en lignes CSV exactes Note;Avis (10 lignes, AUCUN autre texte) : {{avis}}", "avis_csv"),
+        ...sheetsWrite("Dream — Analyse avis clients", "Note;Avis", "{{avis_csv}}", "avis"),
         {
           type: "action",
           connector: "gmail",
@@ -1178,12 +1187,8 @@ const DREAM_TESTS: QaTest[] = [
           "Matrice de décision fournisseur LLM : compare OpenAI ({{openai}}), Anthropic ({{anthropic}}), Google ({{google}}) sur prix, qualité, écosystème (notes /5). Format : Fournisseur;Prix;Qualité;Écosystème;Verdict — une ligne chacun + recommandation finale 2 lignes.",
           "matrice",
         ),
-        {
-          type: "action",
-          connector: "google_sheets",
-          action: "google_sheets.create_spreadsheet",
-          params: { title: "Dream — Comparatif fournisseurs LLM" },
-        },
+        llm("Extrais de cette matrice UNIQUEMENT les 3 lignes CSV Fournisseur;Prix;Qualité;Écosystème;Verdict (aucun autre texte) : {{matrice}}", "matrice_csv"),
+        ...sheetsWrite("Dream — Comparatif fournisseurs LLM", "Fournisseur;Prix;Qualité;Écosystème;Verdict", "{{matrice_csv}}", "compa"),
         {
           type: "action",
           connector: "gmail",
@@ -1214,12 +1219,8 @@ const DREAM_TESTS: QaTest[] = [
           "Tu es chef de mission. Synthèse GO-TO-MARKET : contexte interne ({{contexte_docs}}), checklist marché ({{gtm}}), pièges ({{erreurs}}). Produis : 1) Plan GTM en 6 jalons 2) 3 risques majeurs + parades 3) KPI de pilotage. Markdown.",
           "mission",
         ),
-        {
-          type: "action",
-          connector: "google_sheets",
-          action: "google_sheets.create_spreadsheet",
-          params: { title: "Dream — Mission GTM (suivi)" },
-        },
+        llm("Extrais de cette mission les KPI de pilotage en lignes CSV exactes KPI;Cible;Fréquence (4 lignes, AUCUN autre texte) : {{mission}}", "kpi_csv"),
+        ...sheetsWrite("Dream — Mission GTM (suivi)", "KPI;Cible;Fréquence", "{{kpi_csv}}", "gtm"),
         {
           type: "action",
           connector: "google_calendar",

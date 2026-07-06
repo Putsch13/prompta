@@ -174,8 +174,9 @@ export async function decideApproval(
     return null;
   }
 
-  const payload = (approval.payload ?? {}) as { preview?: string; label?: string };
-  const approvedContent = options?.modifiedContent?.trim() || payload.preview || "";
+  const payload = (approval.payload ?? {}) as { preview?: string; full?: string; label?: string };
+  // Priorité : contenu modifié par l'humain > contenu intégral > préview (anciens runs).
+  const approvedContent = options?.modifiedContent?.trim() || payload.full || payload.preview || "";
 
   const { data: runRow } = await db()
     .from("listing_agent_runs")
