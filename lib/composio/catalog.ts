@@ -251,7 +251,11 @@ export async function listComposioToolkits(): Promise<ComposioToolkitEntry[]> {
     meta?: { logo?: string; categories?: Array<string | { name?: string; slug?: string }> };
   }>;
 
-  const rawAll = await fetchAllToolkitsRaw().catch(() => [] as RawToolkitItem[]);
+  // Les pseudo-toolkits « *_mcp » sont des ponts MCP Composio, pas des apps
+  // utilisateur — leur endpoint outils pend côté Composio (timeouts). Exclus.
+  const rawAll = (await fetchAllToolkitsRaw().catch(() => [] as RawToolkitItem[])).filter(
+    (tk) => !(tk.slug ?? "").endsWith("_mcp"),
+  );
   if (rawAll.length > 0) {
     list = rawAll.map((tk) => ({
       slug: tk.slug,
@@ -343,12 +347,13 @@ export async function listComposioTools(toolkitSlug: string): Promise<ComposioTo
       inputs: parseToolInputs(t.input_parameters, toolkitSlug),
     }));
   } else {
-    // Repli SDK (une page, limit 500) si l'API REST évolue.
+    // Repli SDK (une page, limit 500) si l'API REST évolue — borné à 15 s :
+    // certains toolkits (ponts MCP) pendent indéfiniment côté Composio.
     const composio = getComposioClient();
-    const tools = await composio.tools.getRawComposioTools({
-      toolkits: [toolkitSlug],
-      limit: 500,
-    });
+    const tools = await Promise.race([
+      composio.tools.getRawComposioTools({ toolkits: [toolkitSlug], limit: 500 }),
+      new Promise<never[]>((resolve) => setTimeout(() => resolve([]), 15_000)),
+    ]);
     items = (tools ?? []).map((t) => ({
       slug: t.slug ?? t.name ?? "",
       name: t.name ?? t.slug ?? "",
