@@ -102,8 +102,25 @@ async function notifyApprovalByEmail(
 async function approvalStepOutputKey(
   versionId: string | null | undefined,
   stepIndex: number,
+  runInputs?: Record<string, unknown> | null,
 ): Promise<string | undefined> {
-  if (!versionId) return undefined;
+  // Run de test (pas de version publiée) : le manifeste voyage dans le run.
+  // Sans ce fallback, l'outputKey validé restait absent et l'étape aval
+  // échouait en « Paramètre non renseigné » après reprise.
+  if (!versionId) {
+    try {
+      const embedded = runInputs?.__manifest;
+      if (typeof embedded === "string") {
+        const manifest = JSON.parse(embedded) as { steps?: Array<Record<string, unknown>> };
+        const step = manifest.steps?.[stepIndex];
+        const key = step?.outputKey;
+        return typeof key === "string" && key.trim() ? key : undefined;
+      }
+    } catch {
+      // best-effort
+    }
+    return undefined;
+  }
   try {
     const { data: version } = await db()
       .from("listing_versions")
@@ -162,7 +179,7 @@ export async function decideApproval(
 
   const { data: runRow } = await db()
     .from("listing_agent_runs")
-    .select("output, steps_completed, version_id")
+    .select("output, steps_completed, version_id, inputs")
     .eq("id", approval.run_id)
     .single();
 
@@ -182,7 +199,11 @@ export async function decideApproval(
   // Le contenu validé doit aussi être disponible sous l'outputKey de l'étape
   // d'approbation, sinon une étape aval qui référence {{outputKey}} ne le
   // retrouve pas à la reprise.
-  const approvalOutputKey = await approvalStepOutputKey(runRow?.version_id, stepIndex);
+  const approvalOutputKey = await approvalStepOutputKey(
+    runRow?.version_id,
+    stepIndex,
+    runRow?.inputs as Record<string, unknown> | null,
+  );
   if (approvalOutputKey) mergedOutput[approvalOutputKey] = approvedContent;
 
   await db()
