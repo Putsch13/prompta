@@ -220,12 +220,21 @@ export function GuidedBuilder({
       if (data.plan) {
         const newGraph = layoutGraph(normalizeGraph(planToGraph(data.plan, defaultModel)));
         onGraphChange(newGraph);
+        graphRef.current = newGraph;
         const changed = (data.changedIds as string[]) ?? [];
         setHighlightedIds(changed);
         setTimeout(() => setHighlightedIds([]), 3500);
         // Résout les actions Composio-only inventées → vrais outils + schéma réel.
+        // GARDE anti-écrasement : l'enrichissement est lent (fetch Composio) ;
+        // si l'arbo a changé entre-temps (nouveau tour copilote, édition
+        // manuelle), on jette ce résultat périmé au lieu d'écraser — c'était
+        // la cause des nœuds ajoutés qui « disparaissaient ».
         void enrichComposioActions(newGraph).then((enriched) => {
-          if (enriched !== newGraph) onGraphChange(layoutGraph(normalizeGraph(enriched)));
+          if (enriched === newGraph) return;
+          if (graphRef.current !== newGraph) return;
+          const finalGraph = layoutGraph(normalizeGraph(enriched));
+          onGraphChange(finalGraph);
+          graphRef.current = finalGraph;
         });
       }
       if (typeof data.focusStepId === "string") onSelect(data.focusStepId);

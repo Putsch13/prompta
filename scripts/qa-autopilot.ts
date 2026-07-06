@@ -34,7 +34,7 @@ const SELF_EMAIL = "puccini.f13@gmail.com";
 const BASE_URL = process.env.QA_BASE_URL ?? "https://prompta-sjtf.onrender.com";
 const BUDGET_CENTS = Number(process.env.QA_BUDGET_CENTS ?? 400);
 const MODEL = "gpt-5.4-mini";
-const RUN_TIMEOUT_MS = 150_000;
+const RUN_TIMEOUT_MS = Number(process.env.QA_RUN_TIMEOUT_MS ?? 150_000);
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -593,6 +593,661 @@ const TESTS: QaTest[] = [
   },
 ];
 
+// ═══════════════ Scénarios DREAM — missions « vitrines » ultra-complexes ═══════════════
+// QA_DREAM=1 les lance (exclusivement). Toujours KEEP_QA_RUNS=1 avec eux : ce sont
+// des dossiers de mission à inspecter. Emails UNIQUEMENT vers SELF_EMAIL,
+// événements Calendar sans invité, designs Canva sur le compte propriétaire.
+const DREAM_TESTS: QaTest[] = [
+  {
+    name: "dream_recherche_bien_immobilier",
+    goal: "Recherche de bien : 3 recherches parallèles → comparatif → validation → dossier par email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "appartement T3 à vendre Marseille 8e prix 2026" } }], outputKey: "annonces" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "prix m2 immobilier Marseille 8e arrondissement 2026" } }], outputKey: "marche" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "quartiers Marseille 8e avis habitants transports" } }], outputKey: "quartier" },
+          ],
+          outputKey: "veille_immo",
+        },
+        llm(
+          "Tu es chasseur immobilier. À partir des annonces {{annonces}}, des prix du marché {{marche}} et des infos quartier {{quartier}}, rédige un DOSSIER DE RECHERCHE structuré : 1) Synthèse du marché (prix m², tendance) 2) Top 3 des opportunités repérées avec fourchette de prix 3) Points de vigilance 4) Recommandation de négociation. Format markdown avec titres.",
+          "dossier",
+        ),
+        { type: "approval", label: "Dream — valider le dossier immobilier", payloadTemplate: "{{dossier}}", outputKey: "dossier_ok" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🏠 Dossier recherche T3 Marseille 8e", body: "{{dossier_ok}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_restitution_canva_design",
+    goal: "Recherche → brief créa → design Canva créé selon le brief → restitution par email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "tool", tool: "web_search", params: { query: "tendances design présentation startup 2026 minimalisme" } },
+        llm(
+          "Tu es directeur artistique. À partir de ces tendances : {{step_0_output}}, rédige un BRIEF CRÉA en 5 points (palette, typo, ton, structure des slides, do/don't) pour une présentation de startup IA.",
+          "brief",
+        ),
+        {
+          type: "action",
+          connector: "canva",
+          action: "canva.create_design",
+          params: { design_type: "presentation", title: "" },
+          aiFills: {
+            title: { model: MODEL, prompt: "Titre court et percutant (5 mots max) pour une présentation startup IA, déduit de ce brief : {{brief}}" },
+          },
+          outputKey: "design",
+        },
+        llm(
+          "Rédige la restitution client : le brief créa était {{brief}} et le design Canva créé est {{design}}. Explique en 4 lignes ce qui a été livré et le lien design s'il figure dans la réponse.",
+          "restitution",
+        ),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🎨 Livrable : design Canva selon brief", body: "{{restitution}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_audit_seo_complet",
+    goal: "Audit SEO : page + bonnes pratiques en parallèle → audit noté → Sheets → validation → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "retrieve", source: "url", query: "https://example.com" }], outputKey: "page" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "checklist audit SEO on-page 2026" } }], outputKey: "checklist" },
+          ],
+          outputKey: "matiere_seo",
+        },
+        llm(
+          "Tu es consultant SEO senior. Audite la page {{page}} selon la checklist {{checklist}}. Produis : 1) Note globale /100 2) Tableau des 6 critères clés (titre, meta, structure Hn, contenu, maillage, performance) avec note /10 et constat 3) Top 3 des actions prioritaires. Markdown.",
+          "audit",
+        ),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "Dream — Audit SEO example.com" },
+        },
+        { type: "approval", label: "Dream — valider l'audit SEO", payloadTemplate: "{{audit}}", outputKey: "audit_ok" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🔍 Audit SEO complet — example.com", body: "{{audit_ok}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_bdd_prospects_sheets",
+    goal: "Création de BDD : générer 10 prospects fictifs → Sheets créée → lignes insérées → contrôle qualité",
+    manifest: {
+      kind: "agent",
+      steps: [
+        llm(
+          "Génère 10 lignes de prospects FICTIFS (données inventées, aucune vraie personne) au format exact : Nom;Société;Secteur;Ville;Score. Une ligne par prospect, AUCUN autre texte, pas d'en-tête.",
+          "prospects",
+        ),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "Dream — BDD Prospects (fictifs)" },
+          outputKey: "creation",
+        },
+        llm("Voici la réponse d'une API de création de spreadsheet : {{creation}}\nRéponds UNIQUEMENT l'identifiant (spreadsheetId), rien d'autre.", "sheet_id"),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.append_row",
+          params: { spreadsheet_id: "{{sheet_id}}", values: "Nom;Société;Secteur;Ville;Score\n{{prospects}}" },
+        },
+        llm("Contrôle qualité : la BDD contient ces lignes : {{prospects}}. Vérifie qu'il y a bien 10 prospects, 5 colonnes, et résume la répartition par secteur en 3 lignes.", "controle"),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🗄️ BDD prospects créée — contrôle qualité", body: "{{controle}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_dashboard_kpi_alerte",
+    goal: "Dashboard KPI : données → Sheets → analyse seuils → condition → alerte email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        llm(
+          "Génère 12 lignes de KPI mensuels FICTIFS format exact : Mois;CA;Churn%;NPS (ex: 2026-01;42000;3.1;54). Fais varier le churn entre 2 et 9. AUCUN autre texte.",
+          "kpis",
+        ),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "Dream — Dashboard KPI" },
+          outputKey: "creation",
+        },
+        llm("Réponds UNIQUEMENT le spreadsheetId de : {{creation}}", "sheet_id"),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.append_row",
+          params: { spreadsheet_id: "{{sheet_id}}", values: "Mois;CA;Churn%;NPS\n{{kpis}}" },
+        },
+        llm("Analyse ces KPI : {{kpis}}. Si un churn dépasse 5%, réponds 'ALERTE: ' suivi des mois concernés. Sinon réponds 'RAS'.", "verdict"),
+        { type: "condition", expression: "{{verdict}} contains ALERTE" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🚨 Dashboard KPI — alerte churn", body: "{{verdict}}\n\nDonnées complètes :\n{{kpis}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "dream_memo_investissement",
+    goal: "Due diligence : 3 recherches parallèles → mémo d'investissement → validation → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "Anthropic produits Claude entreprise 2026" } }], outputKey: "produit" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "marché agents IA entreprise taille croissance 2026" } }], outputKey: "marche" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "risques réglementation IA Europe AI Act 2026" } }], outputKey: "risques" },
+          ],
+          outputKey: "dd",
+        },
+        llm(
+          "Tu es analyste VC. Rédige un MÉMO D'INVESTISSEMENT sur le secteur des agents IA : 1) Thèse (produit : {{produit}}) 2) Marché ({{marche}}) 3) Risques ({{risques}}) 4) Verdict GO/NOGO argumenté. Markdown, ton professionnel.",
+          "memo",
+        ),
+        { type: "approval", label: "Dream — valider le mémo d'investissement", payloadTemplate: "{{memo}}", outputKey: "memo_ok" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "💼 Mémo d'investissement — agents IA", body: "{{memo_ok}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_etude_marche_complete",
+    goal: "Étude de marché 10 étapes : recherches → analyses → GO/NOGO → plan → Sheets → Calendar → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "tool", tool: "web_search", params: { query: "marché coaching en ligne France taille 2026" } },
+        llm("Synthèse marché en 4 lignes (taille, croissance, acteurs) : {{step_0_output}}", "marche"),
+        { type: "tool", tool: "web_search", params: { query: "concurrents plateformes coaching en ligne France" } },
+        llm("Cartographie concurrentielle en 5 lignes : {{step_2_output}}", "concurrence"),
+        llm("À partir du marché {{marche}} et de la concurrence {{concurrence}}, verdict : réponds 'GO: ' ou 'NOGO: ' suivi de 2 lignes de justification.", "verdict"),
+        { type: "condition", expression: "{{verdict}} contains GO" },
+        llm("Rédige un plan de lancement en 5 jalons datés (S1 à S12) pour une plateforme de coaching : positionnement déduit de {{marche}} et {{concurrence}}.", "plan"),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "Dream — Étude de marché coaching" },
+        },
+        {
+          type: "action",
+          connector: "google_calendar",
+          action: "google_calendar.create_event",
+          params: { summary: "Dream — kick-off étude coaching", description: "{{plan}}", start_datetime: "2026-07-15T09:30:00", event_duration_hour: "1" },
+        },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "📊 Étude de marché complète — coaching en ligne", body: "Verdict : {{verdict}}\n\nPlan :\n{{plan}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_veille_concurrentielle_swot",
+    goal: "Veille concurrentielle : 3 axes parallèles → SWOT → validation → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "Zapier nouveautés fonctionnalités 2026" } }], outputKey: "zapier" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "Make.com automation plateforme avis 2026" } }], outputKey: "make" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "n8n open source automation adoption 2026" } }], outputKey: "n8n" },
+          ],
+          outputKey: "veille",
+        },
+        llm(
+          "Tu es stratège produit d'une plateforme d'agents IA. SWOT complet face à Zapier ({{zapier}}), Make ({{make}}) et n8n ({{n8n}}) : Forces, Faiblesses, Opportunités, Menaces — 3 puces chacun + 1 recommandation stratégique. Markdown.",
+          "swot",
+        ),
+        { type: "approval", label: "Dream — valider le SWOT concurrentiel", payloadTemplate: "{{swot}}", outputKey: "swot_ok" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "⚔️ Veille concurrentielle — SWOT automation", body: "{{swot_ok}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_newsletter_hebdo",
+    goal: "Newsletter : 2 recherches → rédaction éditorialisée → validation → envoi à soi-même",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "actualités intelligence artificielle semaine juillet 2026" } }], outputKey: "actus_ia" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "levées de fonds startups françaises juillet 2026" } }], outputKey: "actus_funding" },
+          ],
+          outputKey: "matiere_news",
+        },
+        llm(
+          "Rédige la newsletter hebdo « Le Récap IA » : édito 3 lignes, puis 3 actus IA ({{actus_ia}}) et 2 actus funding ({{actus_funding}}) — chaque actu : titre accrocheur + 2 lignes + pourquoi c'est important. Ton complice, emojis sobres.",
+          "newsletter",
+        ),
+        { type: "approval", label: "Dream — valider la newsletter avant envoi", payloadTemplate: "{{newsletter}}", outputKey: "news_ok" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "📰 Le Récap IA — édition test", body: "{{news_ok}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_pipeline_recrutement",
+    goal: "Recrutement : fiche de poste → grille + questions en parallèle → kit complet → Sheets → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        llm("Rédige une fiche de poste concise (6 lignes) : Growth Marketer senior pour une plateforme SaaS d'agents IA.", "fiche"),
+        {
+          type: "parallel",
+          branches: [
+            { steps: [llm("Grille d'évaluation candidat (5 critères notés /5 avec descripteurs) pour : {{fiche}}")], outputKey: "grille" },
+            { steps: [llm("8 questions d'entretien structuré (3 techniques, 3 situationnelles, 2 culture) pour : {{fiche}}")], outputKey: "questions" },
+          ],
+          outputKey: "kit",
+        },
+        llm("Assemble le KIT DE RECRUTEMENT complet : fiche {{fiche}}, grille {{grille}}, questions {{questions}}. Markdown structuré.", "kit_final"),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "Dream — Suivi candidats Growth Marketer" },
+        },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🎯 Kit de recrutement Growth Marketer", body: "{{kit_final}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_analyse_avis_clients",
+    goal: "Analyse d'avis : corpus fictif → 3 analyses parallèles → plan d'action → Sheets → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        llm("Génère 10 avis clients FICTIFS variés (positifs, négatifs, neutres) sur une app de livraison de repas. Format : une ligne par avis, note /5 au début.", "avis"),
+        {
+          type: "parallel",
+          branches: [
+            { steps: [llm("Analyse de sentiment des avis {{avis}} : répartition %, ton dominant, 2 verbatims marquants.")], outputKey: "sentiment" },
+            { steps: [llm("Thèmes récurrents dans {{avis}} : top 4 avec fréquence.")], outputKey: "themes" },
+            { steps: [llm("Irritants critiques dans {{avis}} : top 3 classés par gravité.")], outputKey: "irritants" },
+          ],
+          outputKey: "analyses_avis",
+        },
+        llm("Plan d'action CX en 5 mesures priorisées à partir de : sentiment {{sentiment}}, thèmes {{themes}}, irritants {{irritants}}. Chaque mesure : action + impact attendu + délai.", "plan_cx"),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "Dream — Analyse avis clients" },
+        },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "💬 Analyse avis clients + plan d'action CX", body: "{{plan_cx}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_plan_editorial_45j",
+    goal: "Calendrier éditorial : stratégie → 15 contenus datés → BDD Sheets → kick-off Calendar → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "tool", tool: "web_search", params: { query: "formats contenu LinkedIn qui performent B2B 2026" } },
+        llm("Stratégie éditoriale LinkedIn B2B en 4 lignes à partir de : {{step_0_output}}", "strategie"),
+        llm(
+          "Génère 15 contenus datés sur 45 jours format exact : Date;Format;Titre;Angle (ex: 2026-07-10;Carrousel;5 erreurs des agents IA;pédagogique). Stratégie : {{strategie}}. AUCUN autre texte.",
+          "calendrier",
+        ),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "Dream — Calendrier éditorial 45j" },
+          outputKey: "creation",
+        },
+        llm("Réponds UNIQUEMENT le spreadsheetId de : {{creation}}", "sheet_id"),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.append_row",
+          params: { spreadsheet_id: "{{sheet_id}}", values: "Date;Format;Titre;Angle\n{{calendrier}}" },
+        },
+        {
+          type: "action",
+          connector: "google_calendar",
+          action: "google_calendar.create_event",
+          params: { summary: "Dream — kick-off calendrier éditorial", description: "{{strategie}}", start_datetime: "2026-07-12T10:00:00", event_duration_hour: "1" },
+        },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "📅 Calendrier éditorial 45 jours livré", body: "Stratégie : {{strategie}}\n\nCalendrier :\n{{calendrier}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_revue_presse",
+    goal: "Revue de presse : 3 rubriques parallèles → édition du matin → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "actualité tech France aujourd'hui" } }], outputKey: "tech" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "actualité économie France aujourd'hui" } }], outputKey: "eco" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "actualité intelligence artificielle aujourd'hui" } }], outputKey: "ia" },
+          ],
+          outputKey: "presse",
+        },
+        llm(
+          "Rédige « La Revue de Presse du matin » : 3 rubriques (Tech : {{tech}}, Éco : {{eco}}, IA : {{ia}}), 2 brèves par rubrique (titre + 2 lignes + source si visible). En ouverture, « l'info à retenir » du jour.",
+          "revue",
+        ),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "☕ Revue de presse du matin", body: "{{revue}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "dream_audit_contenu_url",
+    goal: "Audit de contenu : lecture page → grille d'analyse → verdict conditionnel → recommandations",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "retrieve", source: "url", query: "https://www.anthropic.com" },
+        llm(
+          "Audite le contenu de cette page {{step_0_output}} : clarté du message (note /10), proposition de valeur (note /10), appels à l'action (note /10). Termine par 'REFONTE' si la moyenne < 7, sinon 'CONFORME'.",
+          "audit_contenu",
+        ),
+        { type: "condition", expression: "{{audit_contenu}} contains CONFORME" },
+        llm("Rédige 3 recommandations d'optimisation malgré la conformité, à partir de : {{audit_contenu}}", "recos"),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "📝 Audit de contenu — anthropic.com", body: "{{audit_contenu}}\n\nRecommandations :\n{{recos}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "dream_brief_puis_deux_designs_canva",
+    goal: "Canva ×2 : un brief → deux designs cohérents (présentation + doc) créés à la suite",
+    manifest: {
+      kind: "agent",
+      steps: [
+        llm("Brief de marque en 4 lignes pour « Prompta » : promesse, ton, univers visuel, tagline.", "brief_marque"),
+        {
+          type: "action",
+          connector: "canva",
+          action: "canva.create_design",
+          params: { design_type: "presentation", title: "" },
+          aiFills: { title: { model: MODEL, prompt: "Titre de présentation (4 mots max) fidèle au brief : {{brief_marque}}" } },
+          outputKey: "design_presentation",
+        },
+        {
+          type: "action",
+          connector: "canva",
+          action: "canva.create_design",
+          params: { design_type: "presentation", title: "" },
+          aiFills: { title: { model: MODEL, prompt: "Titre de one-pager commercial (4 mots max) fidèle au brief : {{brief_marque}}" } },
+          outputKey: "design_doc",
+        },
+        llm("Restitution : brief {{brief_marque}}, design 1 : {{design_presentation}}, design 2 : {{design_doc}}. Résume les 2 livrables en 4 lignes.", "restit"),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🎨 Deux designs Canva livrés", body: "{{restit}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_veille_drive_synthese",
+    goal: "Drive + web croisés : docs récents + actualité → note d'analyse croisée → validation → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "retrieve", source: "google_drive", query: "mes documents récents", maxResults: 4 }], outputKey: "docs" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "meilleures pratiques gestion de projet IA 2026" } }], outputKey: "web" },
+          ],
+          outputKey: "sources",
+        },
+        llm(
+          "Note d'analyse croisée : ce que contiennent mes documents ({{docs}}) vs les meilleures pratiques du marché ({{web}}). 1) Ce qui est aligné 2) Les écarts 3) 3 actions concrètes. Markdown.",
+          "note_croisee",
+        ),
+        { type: "approval", label: "Dream — valider la note croisée", payloadTemplate: "{{note_croisee}}", outputKey: "note_ok" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🔀 Note d'analyse croisée Drive × marché", body: "{{note_ok}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_stress_35_etapes",
+    goal: "Stress : 35 étapes LLM chaînées (« pleins de lignes »)",
+    manifest: {
+      kind: "agent",
+      steps: Array.from({ length: 35 }, (_, i) => llm(`Réponds uniquement : ${i + 1}`)),
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "dream_double_validation_scenario",
+    goal: "Workflow gouverné : brouillon → validation 1 → enrichissement → validation 2 → publication email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "tool", tool: "web_search", params: { query: "chiffres adoption IA générative entreprises 2026" } },
+        llm("Brouillon d'article LinkedIn (10 lignes) sur l'adoption de l'IA en entreprise, appuyé sur : {{step_0_output}}", "brouillon"),
+        { type: "approval", label: "Dream — valider le brouillon", payloadTemplate: "{{brouillon}}", outputKey: "v1" },
+        llm("Enrichis ce brouillon validé avec un hook percutant en ouverture et un CTA final : {{v1}}", "version_finale"),
+        { type: "approval", label: "Dream — bon à publier ?", payloadTemplate: "{{version_finale}}", outputKey: "v2" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "✅ Article validé 2 fois — prêt à publier", body: "{{v2}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_comparatif_fournisseurs",
+    goal: "Comparatif d'achat : 3 recherches → matrice de décision → BDD Sheets → email",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "OpenAI API tarifs GPT 2026" } }], outputKey: "openai" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "Anthropic Claude API tarifs 2026" } }], outputKey: "anthropic" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "Google Gemini API tarifs 2026" } }], outputKey: "google" },
+          ],
+          outputKey: "fournisseurs",
+        },
+        llm(
+          "Matrice de décision fournisseur LLM : compare OpenAI ({{openai}}), Anthropic ({{anthropic}}), Google ({{google}}) sur prix, qualité, écosystème (notes /5). Format : Fournisseur;Prix;Qualité;Écosystème;Verdict — une ligne chacun + recommandation finale 2 lignes.",
+          "matrice",
+        ),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "Dream — Comparatif fournisseurs LLM" },
+        },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "⚖️ Comparatif fournisseurs LLM", body: "{{matrice}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "dream_mission_finale_6_apps",
+    goal: "BOSS FINAL : Drive + 2 recherches parallèles → analyse → Sheets → Calendar → Canva → validation → récap email (6 apps)",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "parallel",
+          branches: [
+            { steps: [{ type: "retrieve", source: "google_drive", query: "mes documents récents", maxResults: 3 }], outputKey: "contexte_docs" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "lancement produit SaaS checklist go-to-market 2026" } }], outputKey: "gtm" },
+            { steps: [{ type: "tool", tool: "web_search", params: { query: "erreurs classiques lancement startup à éviter" } }], outputKey: "erreurs" },
+          ],
+          outputKey: "matiere_mission",
+        },
+        llm(
+          "Tu es chef de mission. Synthèse GO-TO-MARKET : contexte interne ({{contexte_docs}}), checklist marché ({{gtm}}), pièges ({{erreurs}}). Produis : 1) Plan GTM en 6 jalons 2) 3 risques majeurs + parades 3) KPI de pilotage. Markdown.",
+          "mission",
+        ),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "google_sheets.create_spreadsheet",
+          params: { title: "Dream — Mission GTM (suivi)" },
+        },
+        {
+          type: "action",
+          connector: "google_calendar",
+          action: "google_calendar.create_event",
+          params: { summary: "Dream — comité GTM", description: "{{mission}}", start_datetime: "2026-07-16T15:00:00", event_duration_hour: "1" },
+        },
+        {
+          type: "action",
+          connector: "canva",
+          action: "canva.create_design",
+          params: { design_type: "presentation", title: "" },
+          aiFills: { title: { model: MODEL, prompt: "Titre de présentation comité (4 mots max) pour cette mission : {{mission}}" } },
+          outputKey: "support",
+        },
+        { type: "approval", label: "Dream — GO final du chef de mission", payloadTemplate: "{{mission}}", outputKey: "go_final" },
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🚀 Mission GTM complète — 6 apps mobilisées", body: "{{go_final}}\n\nSupport de présentation : {{support}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+];
+
 interface QaResult {
   name: string;
   goal: string;
@@ -661,7 +1316,13 @@ async function main() {
   // QA_ONLY="nom1,nom2" : rejoue uniquement ces scénarios (économise le budget).
   const only = process.env.QA_ONLY?.split(",").map((s) => s.trim()).filter(Boolean);
   // QA_ULTRA=1 : inclut les scénarios ultra-complexes (conservés en base).
-  const pool = process.env.QA_ULTRA === "1" ? [...TESTS, ...ULTRA_TESTS] : TESTS;
+  // QA_DREAM=1 : lance UNIQUEMENT les missions vitrines (20 scénarios).
+  const pool =
+    process.env.QA_DREAM === "1"
+      ? DREAM_TESTS
+      : process.env.QA_ULTRA === "1"
+        ? [...TESTS, ...ULTRA_TESTS]
+        : TESTS;
   const selected = only?.length ? pool.filter((t) => only.includes(t.name)) : pool;
   if (only?.length) console.log(`Sélection : ${selected.map((t) => t.name).join(", ")}\n`);
 

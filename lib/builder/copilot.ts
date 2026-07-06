@@ -88,6 +88,14 @@ Méthode :
    fichier(s) dans « Base de connaissances » sous le chat et de coller l'ID document dans "query".
    Référence ensuite la sortie {{outputKey}} de l'étape retrieve dans les étapes d'analyse.
 6. Quand TOUTES les étapes sont finalisées, mets "done": true et annonce que c'est prêt à tester.
+7. INTÉGRATION DES RÉPONSES (règle dure) : quand l'utilisateur vient de répondre à une question,
+   ce tour DOIT renvoyer "plan" mis à jour intégrant sa réponse (description enrichie, inputMapping,
+   model…). Recevoir une réponse et renvoyer "plan": null est une ERREUR — l'arborescence doit
+   refléter chaque information donnée.
+8. PAS DE COMPLÉTION HÂTIVE (règle dure) : n'ajoute une étape à "completedStepIds" QUE si le plan
+   contient déjà TOUTES ses infos (paramètres requis remplis, consigne LLM enrichie avec rôle +
+   format de sortie, ressource choisie). Ne saute JAMAIS une étape qui a encore un manque listé
+   dans le contexte. Mieux vaut une question de plus qu'un agent mal configuré.
 
 Comment intégrer les réponses au plan — RÈGLE CLÉ :
 - Quand l'utilisateur te donne une valeur CONCRÈTE (un contexte, un texte, une URL, un ID, un choix),
@@ -254,6 +262,7 @@ export async function runCopilotTurn(opts: {
 
   let newPlan: GeneratedAgentPlan | undefined;
   let changedIds: string[] = [];
+  let planParseError: string | null = null;
   if (raw.plan && typeof raw.plan === "object") {
     try {
       newPlan = parseGeneratedAgentPlan(raw.plan);
@@ -262,11 +271,57 @@ export async function runCopilotTurn(opts: {
       // Le copilote a renvoyé un plan mais il n'a pas passé la validation —
       // on le trace (ne plus l'avaler silencieusement : c'était la cause des
       // « il pose des questions mais n'ajoute jamais le nœud »).
-      console.error(
-        "[copilot] plan renvoyé invalide (nœud non ajouté) :",
-        err instanceof Error ? err.message : err,
-      );
+      planParseError = err instanceof Error ? err.message : String(err);
+      console.error("[copilot] plan renvoyé invalide (nœud non ajouté) :", planParseError);
       newPlan = undefined;
+    }
+  }
+
+  // GARDE : l'utilisateur a demandé une modification (ajout/suppression/changement
+  // d'étape) mais le tour ne renvoie pas de plan exploitable → UNE relance
+  // corrective. Sans ça, le copilote « dit » qu'il a ajouté la tâche sans que
+  // l'arborescence ne bouge.
+  const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const asksModification =
+    /\b(ajoute|rajoute|ajouter|insère|insérer|crée|créer|supprime|retire|enlève|remplace|modifie|change|déplace|duplique)\b/i.test(
+      lastUser,
+    ) && /\b(étape|etape|tâche|tache|nœud|noeud|node|step|action|analyse|envoi|branche)\b/i.test(lastUser);
+  if (!newPlan && asksModification) {
+    try {
+      const retry = await callModel({
+        provider: resolved.provider,
+        model: resolved.apiModel,
+        messages: [
+          ...llmMessages,
+          { role: "assistant", content: result.content },
+          {
+            role: "user",
+            content: `${
+              planParseError
+                ? `Ton plan n'a pas passé la validation (${planParseError}). `
+                : "Tu n'as PAS renvoyé le plan mis à jour alors que je t'ai demandé une modification d'étape. "
+            }Renvoie MAINTENANT le JSON strict complet avec "plan" contenant le plan ENTIER mis à jour (nouveaux nœuds inclus, ids existants préservés, "next" câblés). Aucun texte hors JSON.`,
+          },
+        ],
+        apiKey,
+        maxTokens: 4000,
+        tokenParam: resolved.tokenParam,
+      });
+      const retryRaw = parseLlmJson<RawTurn>(retry.content);
+      if (retryRaw?.plan && typeof retryRaw.plan === "object") {
+        try {
+          newPlan = parseGeneratedAgentPlan(retryRaw.plan);
+          changedIds = diffPlanIds(plan, newPlan);
+          raw = { ...retryRaw, assistant: retryRaw.assistant ?? raw.assistant };
+        } catch (err) {
+          console.error(
+            "[copilot] relance corrective : plan encore invalide :",
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+    } catch {
+      // best-effort — on garde le tour d'origine
     }
   }
 

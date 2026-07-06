@@ -255,6 +255,54 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
             applied = true;
             relaunchedRunId = newRun.id;
           }
+
+          // ET on persiste la correction sur l'agent lui-même : sans ça, la
+          // réparation ne survivait pas au run suivant (l'agent restait cassé).
+          if (listing?.current_version_id) {
+            const { data: currentVersion } = await admin
+              .from("listing_versions")
+              .select("semver, prompt_body, env")
+              .eq("id", listing.current_version_id)
+              .single();
+            const mergedEnv = {
+              ...((currentVersion?.env as Record<string, unknown>) ?? {}),
+              manifest: envPayload.manifest,
+              meta: {
+                ...(((currentVersion?.env as Record<string, unknown>) ?? {}).meta as Record<string, unknown> | undefined ?? {}),
+                auto_fixed_at: new Date().toISOString(),
+              },
+            };
+            if (listing.status === "published") {
+              const oldSemver = (currentVersion as any)?.semver ?? "1.0.0";
+              const parts = String(oldSemver).split(".").map(Number);
+              const newSemver = `${parts[0]}.${(parts[1] ?? 0) + 1}.0`;
+              const { data: newVersion } = await admin
+                .from("listing_versions")
+                .insert({
+                  listing_id: run.listing_id ?? "",
+                  semver: newSemver,
+                  changelog: `Auto-correction IA ${newSemver}`,
+                  prompt_body: currentVersion?.prompt_body ?? null,
+                  env: JSON.parse(JSON.stringify(mergedEnv)),
+                  contract,
+                })
+                .select("id")
+                .single();
+              if (newVersion?.id) {
+                await admin
+                  .from("listings")
+                  .update({ current_version_id: newVersion.id })
+                  .eq("id", run.listing_id ?? "");
+                appliedVersionId = newVersion.id;
+              }
+            } else {
+              await admin
+                .from("listing_versions")
+                .update({ env: JSON.parse(JSON.stringify(mergedEnv)), contract })
+                .eq("id", listing.current_version_id);
+              appliedVersionId = listing.current_version_id;
+            }
+          }
         } else if (listing?.status === "published") {
           const { data: currentVersion } = await admin
             .from("listing_versions")

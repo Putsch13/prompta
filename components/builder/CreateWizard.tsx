@@ -238,8 +238,13 @@ export function CreateWizard({ categories: _categories, edit }: Props) {
     commitPlanGraph(graph, false);
     graphHistoryRef.current = { past: [], future: [] };
     // Résout les actions Composio-only inventées → vrais outils + schéma réel.
+    // Garde anti-écrasement : si l'arbo a déjà changé (copilote, édition) quand
+    // l'enrichissement se termine, on ignore ce résultat périmé.
     void enrichComposioActions(graph).then((enriched) => {
-      if (enriched !== graph) commitPlanGraph(layoutGraph(normalizeGraph(enriched)), false);
+      if (enriched === graph) return;
+      setPlanGraph((current) =>
+        current === graph ? layoutGraph(normalizeGraph(enriched)) : current,
+      );
     });
 
     const connectorIds = plan.requiredConnectors.map((c) => c.connectorId);
