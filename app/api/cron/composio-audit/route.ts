@@ -38,6 +38,16 @@ export async function GET(req: NextRequest) {
   }
 
   const allToolkits = await listComposioToolkits();
+
+  // Sonde légère : ?count=1 → taille du catalogue (vérif pagination complète).
+  if (url.searchParams.get("count")) {
+    return NextResponse.json({
+      toolkits: allToolkits.length,
+      sample: allToolkits.slice(0, 5).map((t) => t.id),
+      last: allToolkits.slice(-3).map((t) => t.id),
+    });
+  }
+
   const targets = only?.length
     ? allToolkits.filter((t) => only.includes(t.id))
     : allToolkits.slice(offset, offset + limit);
