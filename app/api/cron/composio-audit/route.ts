@@ -55,6 +55,22 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Sonde résolution : ?resolve=connector.action[,connector.action…] →
+  // slug d'outil réellement choisi par le résolveur (vérif multi-apps).
+  const resolveParam = url.searchParams.get("resolve");
+  if (resolveParam) {
+    const { resolveComposioToolSlug } = await import("@/lib/composio/resolve-native-action");
+    const pairs = resolveParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 60);
+    const results: Record<string, string | null> = {};
+    for (const actionId of pairs) {
+      const connector = actionId.split(".")[0] ?? "";
+      results[actionId] = await resolveComposioToolSlug(connector, actionId).catch(
+        () => "ERREUR_CATALOGUE",
+      );
+    }
+    return NextResponse.json({ results });
+  }
+
   const targets = only?.length
     ? allToolkits.filter((t) => only.includes(t.id))
     : allToolkits.slice(offset, offset + limit);

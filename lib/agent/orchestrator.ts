@@ -166,6 +166,29 @@ function extractErrorCode(err: unknown): string {
   return "provider_error";
 }
 
+/**
+ * Nettoie une valeur produite par un remplissage IA : certains modèles
+ * répondent « Voici quelques options : **A** — **B**… » au lieu de LA valeur
+ * (un design Canva s'est retrouvé titré avec tout le pavé). On extrait la
+ * première proposition plausible et on retire le markdown.
+ */
+export function sanitizeAiFillValue(raw: string): string {
+  let v = raw.trim();
+  const lines = v.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    // Ligne d'intro (« Voici… », finit par « : ») → on prend la 1re puce/ligne suivante.
+    const first = lines[0];
+    const looksIntro = /^voici|^here|options?|suggestions?|propositions?/i.test(first) || first.endsWith(":");
+    v = looksIntro ? lines[1] ?? first : first;
+  }
+  return v
+    .replace(/^[-*•]\s*/, "")
+    .replace(/^\d+[.)]\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/^["'«\s]+|["'»\s]+$/g, "")
+    .trim();
+}
+
 const RETRYABLE_CODES = new Set(["rate_limit", "timeout", "provider_error"]);
 
 async function executeStepWithRetry(
@@ -426,12 +449,19 @@ async function executeStep(
           const filled = await callModel({
             provider: fillModel.provider,
             model: fillModel.apiModel,
-            messages: [{ role: "user", content: fillPrompt }],
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Tu remplis UN paramètre d'API. Réponds UNIQUEMENT avec la valeur finale : une seule proposition, sans liste d'options, sans markdown, sans guillemets, sans phrase d'introduction ni commentaire.",
+              },
+              { role: "user", content: fillPrompt },
+            ],
             apiKey: fillApiKey,
             maxTokens: 1024,
             tokenParam: fillModel.tokenParam,
           });
-          params[key] = filled.content.trim();
+          params[key] = sanitizeAiFillValue(filled.content);
           await logRunActivity({
             userId: ctx.userId,
             runId: ctx.runId,

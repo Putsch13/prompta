@@ -47,10 +47,19 @@ export function extractResourceLinks(
     void key;
     try {
       const parsed = JSON.parse(val) as Record<string, unknown>;
+      // Canva : l'edit_url renvoyée est un lien API temporaire à jeton
+      // (canva.com/api/design/eyJ…, expirable, « privé » hors session) — on
+      // construit l'URL pérenne du design depuis son id.
+      const design = (parsed as { design?: { id?: unknown } }).design;
+      if (design && typeof design.id === "string" && design.id.trim()) {
+        push("🎨 Ouvrir le design Canva", `https://www.canva.com/design/${design.id}/edit`);
+      }
       const walk = (obj: unknown, depth: number) => {
         if (depth > 3 || obj == null || typeof obj !== "object") return;
         for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
           if (typeof v === "string" && /^https:\/\//.test(v) && /url/i.test(k)) {
+            // Liens API temporaires (jeton dans l'URL) : jamais dans un email.
+            if (v.includes("canva.com/api/design")) continue;
             push(labelFor(v), v);
           } else if (typeof v === "object") {
             walk(v, depth + 1);

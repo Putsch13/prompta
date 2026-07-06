@@ -10,6 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildContract } from "../../lib/agent/contract";
+import { sanitizeAiFillValue } from "../../lib/agent/orchestrator";
 import { graphToSteps, type PlanGraph } from "../../lib/builder/plan-graph";
 import { AgentStepSchema, type AgentStep } from "../../lib/agent/schema";
 import type { ActionInput } from "../../lib/connectors/types";
@@ -92,4 +93,14 @@ test("graphToSteps: nœud sans aiFills → pas de champ parasite", () => {
   };
   const step = graphToSteps(graph)[0] as Extract<AgentStep, { type: "action" }>;
   assert.equal(step.aiFills, undefined);
+});
+
+test("sanitizeAiFillValue — extrait UNE valeur d'une réponse bavarde", () => {
+  assert.equal(
+    sanitizeAiFillValue("Voici quelques options de **titre court** :\n\n- **IA, avec sens**\n- **L'IA utile**"),
+    "IA, avec sens",
+  );
+  assert.equal(sanitizeAiFillValue('"Rapport mensuel"'), "Rapport mensuel");
+  assert.equal(sanitizeAiFillValue("Titre simple"), "Titre simple");
+  assert.equal(sanitizeAiFillValue("1. Premier choix\n2. Deuxième"), "Premier choix");
 });
