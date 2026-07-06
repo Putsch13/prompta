@@ -44,6 +44,7 @@ export function AgentLifecycleCard({
   const [launching, setLaunching] = useState(false);
   const [launchedRunId, setLaunchedRunId] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [needsMask, setNeedsMask] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -67,7 +68,8 @@ export function AgentLifecycleCard({
       });
       const data = await res.json();
       if (!res.ok) {
-        setLaunchError(data.message ?? "Cet agent demande des informations — ouvre le masque de lancement.");
+        setLaunchError(data.message ?? "Cet agent a besoin d'informations avant de démarrer.");
+        setNeedsMask(true);
         return;
       }
       setLaunchedRunId(data.runId ?? null);
@@ -154,7 +156,19 @@ export function AgentLifecycleCard({
           <Rocket className="h-3.5 w-3.5" /> Lancé ! Suivre en direct →
         </Link>
       )}
-      {launchError && <p className="mt-2 text-xs text-destructive">{launchError}</p>}
+      {launchError && (
+        <div className="mt-2 space-y-1.5">
+          <p className="text-xs text-destructive">{launchError}</p>
+          {needsMask && (
+            <Link
+              href={`/listing/${agent.slug}?run=1`}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
+            >
+              Compléter les infos et lancer <ArrowRight className="h-3 w-3" />
+            </Link>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-line-soft pt-3">
         <Link
@@ -164,25 +178,16 @@ export function AgentLifecycleCard({
           <Pencil className="h-3.5 w-3.5" /> Modifier
         </Link>
         {inProduction && (
-          <>
-            <button
-              type="button"
-              onClick={() => void quickLaunch()}
-              disabled={launching}
-              title="Démarre en tâche de fond — tu peux fermer la fenêtre, il continue."
-              className="inline-flex items-center gap-1.5 rounded-lg border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/5 disabled:opacity-50"
-            >
-              {launching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-              Lancer
-            </button>
-            <Link
-              href={`/listing/${agent.slug}?run=1`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft hover:border-accent hover:text-accent"
-              title="Masque complet (entrées, ressources, connexions)"
-            >
-              Lancer avec options
-            </Link>
-          </>
+          <button
+            type="button"
+            onClick={() => void quickLaunch()}
+            disabled={launching}
+            title="Démarre en tâche de fond — si l'agent a besoin d'infos, on te les demande."
+            className="inline-flex items-center gap-1.5 rounded-lg border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/5 disabled:opacity-50"
+          >
+            {launching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            Lancer
+          </button>
         )}
         <Link
           href={`/dashboard/runs?agent=${agent.id}`}

@@ -939,3 +939,114 @@ export function createDefaultNode(
       return { ...base, model: defaultModel, prompt: "" };
   }
 }
+
+// ─── Manifeste → graphe (édition d'un agent existant) ───────────────────────
+
+/** Nœud reconstruit depuis un AgentStep de manifeste, en préservant tout
+ *  (params, paramMeta, aiFills, inputsSchema, sharedEnv). */
+function agentStepToNode(step: BaseAgentStep, id: string, index: number): PlanNode {
+  const base = {
+    id,
+    outputKey: step.outputKey ?? `step_${index}_output`,
+    riskLevel: "low" as const,
+    requiresApproval: false,
+  };
+  switch (step.type) {
+    case "llm":
+      return {
+        ...base,
+        kind: "llm",
+        name: "Étape IA",
+        description: step.prompt.slice(0, 140),
+        model: step.model,
+        prompt: step.prompt,
+      };
+    case "tool":
+      return {
+        ...base,
+        kind: "tool",
+        name: `Outil ${step.tool}`,
+        toolId: step.tool,
+      };
+    case "action": {
+      const native = step.connector ? getConnectorAction(step.connector, step.action) : undefined;
+      return {
+        ...base,
+        kind: "action",
+        name: native?.label ?? step.action ?? "Action",
+        connectorId: step.connector,
+        actionSlug: step.action,
+        params: step.params,
+        paramMeta: step.paramMeta,
+        aiFills: step.aiFills,
+        sharedEnv: step.sharedEnv,
+        actionInputs: step.inputsSchema as ActionInput[] | undefined,
+        riskLevel: "medium",
+      };
+    }
+    case "code":
+      return { ...base, kind: "code", name: "Code", prompt: step.source };
+    case "condition":
+      return { ...base, kind: "condition", name: "Condition", expression: step.expression };
+    case "approval":
+      return {
+        ...base,
+        kind: "approval",
+        name: step.label ?? "Validation humaine",
+        prompt: step.payloadTemplate,
+        requiresApproval: true,
+        riskLevel: "medium",
+      };
+    case "retrieve":
+      return {
+        ...base,
+        kind: "retrieve",
+        name: "Recherche documentaire",
+        dataSource: step.source,
+        query: step.query,
+      };
+  }
+}
+
+/**
+ * Steps d'un manifeste → graphe éditable (inverse de graphToSteps).
+ * Les étapes parallèles sont dépliées en branches divergentes (les fins de
+ * branches se raccordent à l'étape suivante s'il y en a une).
+ */
+export function stepsToGraph(steps: AgentStep[], meta?: PlanGraph["meta"]): PlanGraph {
+  const nodes: PlanNode[] = [];
+  const edges: PlanEdge[] = [];
+  let prevIds: string[] = [];
+
+  const linkTo = (targetId: string) => {
+    for (const p of prevIds) {
+      edges.push({ id: edgeId(p, targetId), source: p, target: targetId });
+    }
+  };
+
+  steps.forEach((step, i) => {
+    if ("branches" in step && step.type === "parallel") {
+      const ends: string[] = [];
+      step.branches.forEach((branch, b) => {
+        let branchPrev = prevIds;
+        branch.steps.forEach((bs, k) => {
+          const id = `s${i}_${b}_${k}`;
+          nodes.push(agentStepToNode(bs, id, i * 100 + b * 10 + k));
+          for (const p of branchPrev) {
+            edges.push({ id: edgeId(p, id), source: p, target: id });
+          }
+          branchPrev = [id];
+        });
+        if (branch.steps.length > 0) ends.push(branchPrev[branchPrev.length - 1]);
+      });
+      if (ends.length > 0) prevIds = ends;
+      return;
+    }
+    const id = `s${i}`;
+    nodes.push(agentStepToNode(step as BaseAgentStep, id, i));
+    linkTo(id);
+    prevIds = [id];
+  });
+
+  return layoutGraph({ entryId: nodes[0]?.id ?? "", nodes, edges, meta });
+}

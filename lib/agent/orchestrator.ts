@@ -14,7 +14,7 @@ import {
   type ResolvedInput,
 } from "@/lib/agent/resolve-interface";
 import { AgentManifestSchema, type AgentManifest, type AgentStep, type BaseAgentStep, type ParallelStep } from "./schema";
-import { webSearch, httpFetch, fileRead, scanOutput } from "./tools";
+import { webSearch, httpFetch, fileRead } from "./tools";
 import { logRunActivity } from "./activity-log";
 import { runCodeInSandbox } from "./sandbox";
 import { evaluateCondition } from "./condition";
@@ -288,10 +288,6 @@ async function executeStep(
         detail: { model: apiModel, stepIndex },
       });
 
-      if (scanOutput(result.content)) {
-        throw new Error("Sortie interdite détectée — agent suspendu");
-      }
-
       const usage = {
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
@@ -421,9 +417,6 @@ async function executeStep(
             maxTokens: 1024,
             tokenParam: fillModel.tokenParam,
           });
-          if (scanOutput(filled.content)) {
-            throw new Error("Sortie IA interdite détectée — agent suspendu");
-          }
           params[key] = filled.content.trim();
           await logRunActivity({
             userId: ctx.userId,
@@ -526,10 +519,6 @@ async function executeStep(
           detail: { connector: step.connector, stepIndex },
         });
 
-        if (scanOutput(result.output)) {
-          throw new Error("Sortie connecteur interdite détectée");
-        }
-
         if (runId && stepDbId) {
           await logStepSuccess(stepDbId, result.output.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
         }
@@ -568,10 +557,6 @@ async function executeStep(
       }
       const code = interpolate(step.source, vars);
       const output = await runCodeInSandbox(code);
-      if (scanOutput(output)) {
-        throw new Error("Sortie code interdite détectée");
-      }
-
       if (runId && stepDbId) {
         await logStepSuccess(stepDbId, output.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
       }

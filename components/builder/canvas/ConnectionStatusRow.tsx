@@ -66,8 +66,12 @@ export function ConnectionStatusRow({ connectorId, returnUrl }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <p className="text-[10px] text-amber-700">⚠️ Non connecté</p>
+      {/* Nouvel onglet : la création en cours n'est pas perdue — le statut se
+          rafraîchit automatiquement au retour (listener focus). */}
       <a
         href={href}
+        target="_blank"
+        rel="noopener"
         className="inline-flex items-center gap-1 rounded border border-accent px-2 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/5"
       >
         <Plug className="h-3 w-3" /> Se connecter

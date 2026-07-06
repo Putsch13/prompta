@@ -27,6 +27,14 @@ export interface AutoFixUserAction {
   detail: string;
 }
 
+export interface AutoFixQuestion {
+  /** Clé stable pour renvoyer la réponse (ex: "nom_fichier"). */
+  key: string;
+  /** Question courte en français posée à l'utilisateur. */
+  question: string;
+  placeholder?: string;
+}
+
 export interface AutoFixResult {
   /** Explication en français de ce qui a planté et de ce qui a été corrigé. */
   explanation: string;
@@ -34,6 +42,8 @@ export interface AutoFixResult {
   changes: string[];
   /** Points qui nécessitent une action de l'utilisateur (non auto-réparables). */
   requiresUser: AutoFixUserAction[];
+  /** Questions à poser à l'utilisateur — ses réponses permettent une 2e passe de réparation. */
+  questions: AutoFixQuestion[];
   /** Steps corrigés validés, ou null si aucune correction de plan exploitable. */
   correctedSteps: AgentStep[] | null;
   /** Vrai si le plan a réellement été modifié de façon valide. */
@@ -63,8 +73,9 @@ Tu PEUX corriger (auto-réparable) — sois AUDACIEUX, ta mission est que le pro
 
 Tu NE corriges JAMAIS (→ requiresUser) :
 - une connexion/autorisation OAuth d'un service (connect/reconnect) ;
-- la fourniture d'un ID ou d'une URL de ressource précise (un Sheet/Doc/Drive précis) ;
 - le partage d'un fichier avec le compte connecté.
+
+QUAND UNE INFO MANQUE et que l'utilisateur peut la fournir en tapant une valeur (nom ou ID/URL d'un fichier précis, destinataire d'un email, texte ou donnée à utiliser…), NE renonce PAS : pose une ou plusieurs questions courtes via "questions". Si des RÉPONSES UTILISATEUR te sont fournies dans le message, intègre-les directement dans le plan corrigé (autoFixable: true).
 
 Interdits absolus : n'invente jamais de credentials, d'ID de ressource, d'adresse email, ni de valeur secrète.
 
@@ -78,6 +89,7 @@ Réponds UNIQUEMENT avec un objet JSON, sans markdown :
   "explanation": "résumé clair en français de ce qui a planté et de ce que tu corriges",
   "changes": ["modif 1 appliquée au plan", "..."],
   "requiresUser": [{ "type": "connect|reconnect|resource|input|other", "connector": "slug optionnel", "detail": "ce que l'utilisateur doit faire" }],
+  "questions": [{ "key": "slug_court", "question": "question courte en français", "placeholder": "exemple de réponse" }],
   "autoFixable": true,
   "correctedSteps": [ /* tableau COMPLET des steps corrigés, même format que l'entrée */ ]
 }
@@ -88,8 +100,26 @@ interface RawAutoFix {
   explanation?: unknown;
   changes?: unknown;
   requiresUser?: unknown;
+  questions?: unknown;
   autoFixable?: unknown;
   correctedSteps?: unknown;
+}
+
+function asQuestions(v: unknown): AutoFixQuestion[] {
+  if (!Array.isArray(v)) return [];
+  const out: AutoFixQuestion[] = [];
+  for (const item of v) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const question = typeof o.question === "string" ? o.question.trim() : "";
+    if (!question) continue;
+    out.push({
+      key: typeof o.key === "string" && o.key.trim() ? o.key.trim() : `q${out.length + 1}`,
+      question,
+      placeholder: typeof o.placeholder === "string" ? o.placeholder : undefined,
+    });
+  }
+  return out.slice(0, 5);
 }
 
 function asStringArray(v: unknown): string[] {
@@ -135,6 +165,7 @@ function buildUserPrompt(
   steps: AgentStep[],
   failed: FailedStepContext[],
   fixes: RunFix[],
+  answers?: Record<string, string>,
 ): string {
   const failedBlock = failed
     .map((f) => {
@@ -158,6 +189,11 @@ function buildUserPrompt(
     .map((x) => `- [${x.kind}] ${x.title} — ${x.detail}`)
     .join("\n");
 
+  const answersEntries = Object.entries(answers ?? {}).filter(([, v]) => v.trim());
+  const answersBlock = answersEntries.length
+    ? `\n\nRÉPONSES UTILISATEUR à tes questions précédentes (intègre-les dans le plan corrigé, ne repose pas ces questions) :\n${answersEntries.map(([k, v]) => `- ${k}: ${v}`).join("\n")}`
+    : "";
+
   return `Plan d'exécution actuel (steps) :
 ${JSON.stringify(steps, null, 2)}
 
@@ -165,7 +201,7 @@ Erreurs réelles survenues :
 ${failedBlock || "(aucune étape en échec listée)"}
 
 Pré-diagnostic déterministe (à confirmer/affiner) :
-${diag || "(aucun)"}
+${diag || "(aucun)"}${answersBlock}
 
 Diagnostique et corrige le plan comme demandé, puis renvoie le JSON.`;
 }
@@ -189,8 +225,10 @@ export async function autoFixRun(opts: {
   resolved: ResolvedModel;
   /** Schémas RÉELS des outils en échec (enums, requis, défauts). */
   toolSchemas?: ToolSchemaContext[];
+  /** Réponses de l'utilisateur aux questions d'une passe précédente. */
+  answers?: Record<string, string>;
 }): Promise<AutoFixResult> {
-  const { steps, failed, fixes, apiKey, resolved, toolSchemas } = opts;
+  const { steps, failed, fixes, apiKey, resolved, toolSchemas, answers } = opts;
 
   const schemaBlock = toolSchemas?.length
     ? `\n\nSCHÉMAS RÉELS des outils en échec (utilise CES clés/valeurs, choisis dans les enums) :\n${JSON.stringify(toolSchemas)}`
@@ -201,7 +239,7 @@ export async function autoFixRun(opts: {
     model: resolved.apiModel,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt(steps, failed, fixes) + schemaBlock },
+      { role: "user", content: buildUserPrompt(steps, failed, fixes, answers) + schemaBlock },
     ],
     apiKey,
     maxTokens: 8000,
@@ -235,6 +273,7 @@ export async function autoFixRun(opts: {
     explanation,
     changes: autoFixable ? asStringArray(raw.changes) : [],
     requiresUser,
+    questions: asQuestions(raw.questions),
     correctedSteps: autoFixable ? correctedSteps : null,
     autoFixable,
   };

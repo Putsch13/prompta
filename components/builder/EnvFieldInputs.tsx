@@ -81,9 +81,10 @@ export function EnvFieldInputs({
           )}
           <Link
             href="/dashboard/connexions"
+            target="_blank"
             className="mt-2 inline-flex text-xs font-medium text-accent hover:underline"
           >
-            Ouvrir mes connexions →
+            Ouvrir mes connexions (nouvel onglet) →
           </Link>
         </div>
       )}

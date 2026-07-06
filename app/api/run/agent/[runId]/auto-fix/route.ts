@@ -34,7 +34,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
   const limited = await builderRateLimit(user.id);
   if (limited) return limited;
 
-  const body = (await request.json().catch(() => ({}))) as { modelId?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    modelId?: string;
+    /** Réponses de l'utilisateur aux questions posées par une passe précédente. */
+    answers?: Record<string, string>;
+  };
   const admin = createAdminClient();
   const runId = params.runId;
 
@@ -179,6 +183,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
       apiKey: keyResult.apiKey,
       resolved: keyResult.resolved,
       toolSchemas,
+      answers: body.answers,
     });
   } catch (err) {
     return NextResponse.json(
@@ -297,6 +302,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     explanation: ai.explanation,
     changes: ai.changes,
     requiresUser: ai.requiresUser,
+    questions: ai.questions,
     autoFixable: ai.autoFixable,
     applied,
     blockedReason,

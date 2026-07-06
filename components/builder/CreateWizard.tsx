@@ -37,6 +37,7 @@ import {
   moveNode,
   normalizeGraph,
   planToGraph,
+  stepsToGraph,
   validatePlanGraph,
   hasBlockingGraphIssues,
   type PlanGraph,
@@ -64,6 +65,16 @@ const STEPS = STEP_META.map((s) => s.label);
 
 interface Props {
   categories: { id: string; name: string; slug: string }[];
+  /** Mode édition : recharge un agent existant dans le builder (arbo + copilote).
+   *  La sauvegarde crée une nouvelle version via /api/listings/update. */
+  edit?: {
+    listingId: string;
+    title: string;
+    description: string;
+    status: string | null;
+    promptBody: string;
+    manifest: import("@/lib/agent/schema").AgentManifest;
+  };
 }
 
 interface EnvField {
@@ -76,9 +87,9 @@ interface EnvField {
   paramKey?: string;
 }
 
-export function CreateWizard({ categories: _categories }: Props) {
+export function CreateWizard({ categories: _categories, edit }: Props) {
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(edit ? 1 : 0);
   const [saving, setSaving] = useState(false);
   const [testRunning, setTestRunning] = useState(false);
   // Aperçu opt-in : false = exécution réelle (défaut), true = simulation sans appel
@@ -105,24 +116,33 @@ export function CreateWizard({ categories: _categories }: Props) {
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const [generatedPlan, setGeneratedPlan] = useState<GeneratedAgentPlan | null>(null);
-  const [planGraph, setPlanGraph] = useState<PlanGraph | null>(null);
+  // Mode édition : le graphe démarre sur l'arborescence reconstruite du manifeste.
+  const [planGraph, setPlanGraph] = useState<PlanGraph | null>(() =>
+    edit
+      ? stepsToGraph(edit.manifest.steps, {
+          kind: edit.manifest.kind,
+          title: edit.title,
+          description: edit.description,
+        })
+      : null,
+  );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [graphIssues, setGraphIssues] = useState<ReturnType<typeof validatePlanGraph>>([]);
   const graphHistoryRef = useRef<{ past: PlanGraph[]; future: PlanGraph[] }>({ past: [], future: [] });
 
   const [form, setForm] = useState({
-    type: "prompt" as "prompt" | "agent" | "workflow",
-    kind: undefined as AgentKind | undefined,
-    executionMode: undefined as ExecutionMode | undefined,
-    title: "",
+    type: (edit ? edit.manifest.kind ?? "agent" : "prompt") as "prompt" | "agent" | "workflow",
+    kind: edit?.manifest.kind as AgentKind | undefined,
+    executionMode: edit?.manifest.executionMode as ExecutionMode | undefined,
+    title: edit?.title ?? "",
     categoryId: "",
-    description: "",
+    description: edit?.description ?? "",
     models: ["gpt-5.4"],
     techStack: [] as string[],
     integrations: [] as string[],
     tags: [] as string[],
-    promptBody: "",
-    agentSteps: [] as AgentStep[],
+    promptBody: edit?.promptBody ?? "",
+    agentSteps: (edit?.manifest.steps ?? []) as AgentStep[],
     envFields: [] as EnvField[],
     requiredSecrets: [] as KeyProvider[],
     requiredConnectors: [] as string[],
@@ -135,6 +155,71 @@ export function CreateWizard({ categories: _categories }: Props) {
     hostingEnabled: false,
     hostingFeeCents: 490,
   });
+
+  // ── Brouillon persistant ─────────────────────────────────────────────
+  // La création en cours survit à une navigation (OAuth, connexions…) ou à
+  // un rechargement : état sauvegardé en localStorage, restauré au montage.
+  const DRAFT_KEY = edit ? `prompta_wizard_edit_${edit.listingId}` : "prompta_wizard_draft_v1";
+  const draftRestoredRef = useRef(false);
+  const [draftNote, setDraftNote] = useState(false);
+
+  useEffect(() => {
+    if (draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as {
+        objectiveText?: string;
+        planGraph?: PlanGraph | null;
+        generatedPlan?: GeneratedAgentPlan | null;
+        form?: typeof form;
+        step?: number;
+        savedAt?: number;
+      };
+      // Brouillon de plus de 48h ou vide : on l'ignore.
+      const fresh = draft.savedAt && Date.now() - draft.savedAt < 48 * 3600_000;
+      if (!fresh || (!draft.planGraph && !draft.objectiveText?.trim())) return;
+      if (draft.objectiveText) setObjectiveText(draft.objectiveText);
+      if (draft.generatedPlan) setGeneratedPlan(draft.generatedPlan);
+      if (draft.form) setForm((prev) => ({ ...prev, ...draft.form }));
+      if (draft.planGraph) setPlanGraph(draft.planGraph);
+      if (typeof draft.step === "number" && draft.planGraph) setStep(draft.step);
+      setDraftNote(true);
+    } catch {
+      /* brouillon illisible — on repart proprement */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!draftRestoredRef.current) return;
+    if (!planGraph && !objectiveText.trim()) return;
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          DRAFT_KEY,
+          JSON.stringify({ objectiveText, planGraph, generatedPlan, form, step, savedAt: Date.now() }),
+        );
+      } catch {
+        /* quota localStorage — tant pis */
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [objectiveText, planGraph, generatedPlan, form, step]);
+
+  function clearDraft() {
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* noop */
+    }
+  }
+
+  function discardDraft() {
+    clearDraft();
+    window.location.reload();
+  }
 
   function commitPlanGraph(next: PlanGraph | null, pushHistory = true) {
     if (pushHistory && planGraph && next) {
@@ -344,6 +429,40 @@ export function CreateWizard({ categories: _categories }: Props) {
       return;
     }
 
+    // Mode édition : nouvelle version via l'API update (versionnage + quota).
+    if (edit) {
+      const res = await fetch("/api/listings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId: edit.listingId,
+          title: form.title,
+          description: form.description,
+          promptBody: form.promptBody,
+          manifest,
+          setupTime: form.setupTime,
+          // Republie si l'agent était déjà en production (le quota ne se reconsomme pas).
+          publish: publish || edit.status === "published",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setSaving(false);
+      if (!res.ok) {
+        if (data.error === "plan_limit") {
+          alert(`${data.message}\n\nTes modifications sont enregistrées en brouillon.`);
+          clearDraft();
+          router.push("/pricing");
+          return;
+        }
+        setStepError(data.message || data.error || "Enregistrement impossible");
+        return;
+      }
+      clearDraft();
+      router.push("/dashboard/contenus");
+      router.refresh();
+      return;
+    }
+
     const res = await fetch("/api/listings/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -386,12 +505,14 @@ export function CreateWizard({ categories: _categories }: Props) {
         if (pubData.error === "plan_limit") {
           // Quota du plan atteint : l'agent est sauvegardé en brouillon.
           alert(`${pubData.message}\n\nTon agent est enregistré en brouillon — il sera publiable dès l'upgrade.`);
+          clearDraft();
           router.push("/pricing");
           return;
         }
         alert(pubData.message || pubData.error || "Publication impossible");
       }
     }
+    clearDraft();
     router.push("/dashboard");
   }
 
@@ -568,6 +689,29 @@ export function CreateWizard({ categories: _categories }: Props) {
 
   return (
     <div className="rounded-2xl border border-line bg-card p-6 shadow-sm">
+      {draftNote && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5">
+          <p className="text-sm text-ink">
+            📝 Ta création en cours a été restaurée — reprends là où tu t&apos;étais arrêté.
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setDraftNote(false)}
+              className="text-xs font-medium text-accent hover:underline"
+            >
+              Continuer
+            </button>
+            <button
+              type="button"
+              onClick={discardDraft}
+              className="text-xs text-ink-faint hover:text-destructive hover:underline"
+            >
+              Repartir de zéro
+            </button>
+          </div>
+        </div>
+      )}
       <nav className="mb-8" aria-label="Étapes de création">
         <ol className="flex items-center">
           {STEP_META.map((meta, i) => {
@@ -937,7 +1081,7 @@ export function CreateWizard({ categories: _categories }: Props) {
               disabled={saving}
               className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-card2 disabled:opacity-50"
             >
-              Brouillon
+              {edit ? "Enregistrer (nouvelle version)" : "Brouillon"}
             </button>
             <button
               onClick={() => handleSubmit(true)}
@@ -945,7 +1089,11 @@ export function CreateWizard({ categories: _categories }: Props) {
               className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent/90 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
-              {saving ? "Mise en production…" : "Mettre en production"}
+              {saving
+                ? "Mise en production…"
+                : edit?.status === "published"
+                  ? "Enregistrer & republier"
+                  : "Mettre en production"}
             </button>
           </div>
         )}

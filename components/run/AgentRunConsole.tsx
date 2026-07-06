@@ -8,6 +8,7 @@ import {
   Clock,
   ClipboardCopy,
   Code,
+  GitBranch,
   Loader2,
   MessageSquare,
   RefreshCw,
@@ -54,6 +55,10 @@ type DisplayStep = {
   actionSlug: string | null;
   error: string | null;
   simulated?: boolean;
+  /** Sous-étape d'une branche parallèle (index encodé parent*100 + branche*10 + pos). */
+  sub?: { parent: number; branch: number; pos: number };
+  /** Numéro affiché ("3" ou "3.1.2" pour une sous-étape). */
+  displayNo?: string;
 };
 
 function normalizeStatus(s: string | null | undefined): RunStatus {
@@ -72,6 +77,8 @@ function stepIcon(type: string) {
       return <Zap className="h-4 w-4" />;
     case "code":
       return <Code className="h-4 w-4" />;
+    case "parallel":
+      return <GitBranch className="h-4 w-4" />;
     default:
       return <Bot className="h-4 w-4" />;
   }
@@ -387,29 +394,76 @@ export function AgentRunConsole({
     const fromTrace = stepTrace.map(mapTraceStep);
     const base = fromDb.length > 0 ? fromDb : fromTrace;
 
-    const byIndex = new Map<number, DisplayStep>();
-    for (const s of base) byIndex.set(s.index, s);
+    // Sous-étapes de branches parallèles : index encodé parent*100 + branche*10 + pos.
+    // On les rattache à leur étape parente au lieu de les perdre (ou de les
+    // afficher comme « étape 101 »).
+    const tops: DisplayStep[] = [];
+    const subsByParent = new Map<number, DisplayStep[]>();
+    for (const s of base) {
+      if (s.index >= 100) {
+        const parent = Math.floor(s.index / 100);
+        const branch = Math.floor((s.index % 100) / 10);
+        const pos = s.index % 10;
+        const list = subsByParent.get(parent) ?? [];
+        list.push({ ...s, sub: { parent, branch, pos }, displayNo: `${parent + 1}.${branch + 1}.${pos + 1}` });
+        subsByParent.set(parent, list);
+      } else {
+        tops.push(s);
+      }
+    }
+    for (const list of subsByParent.values()) {
+      list.sort((a, b) => (a.sub!.branch - b.sub!.branch) || (a.sub!.pos - b.sub!.pos));
+    }
 
-    const planned = Math.max(totalSteps, plannedLabels.length) || base.length;
-    if (planned === 0) return base;
+    const byIndex = new Map<number, DisplayStep>();
+    for (const s of tops) byIndex.set(s.index, s);
+
+    const planned = Math.max(totalSteps, plannedLabels.length) || tops.length;
 
     const merged: DisplayStep[] = [];
+    const pushWithSubs = (step: DisplayStep) => {
+      merged.push(step);
+      const subs = subsByParent.get(step.index);
+      if (subs) merged.push(...subs);
+    };
+
+    if (planned === 0) {
+      for (const s of tops) pushWithSubs(s);
+      return merged;
+    }
+
     for (let i = 0; i < planned; i++) {
       const existing = byIndex.get(i);
       if (existing) {
-        merged.push(existing);
+        pushWithSubs(existing);
         continue;
       }
-      const doneCount = liveCompleted || base.filter((s) => s.status === "success").length;
+      const subs = subsByParent.get(i);
+      const doneCount = liveCompleted || tops.filter((s) => s.status === "success").length;
       let stepStatus = "pending";
-      if (i < doneCount) stepStatus = "success";
-      else if (i === doneCount && isActive) stepStatus = "running";
+      if (subs && subs.length > 0) {
+        // Étape parallèle sans ligne propre : son état se déduit de ses branches.
+        stepStatus = subs.some((s) => s.status === "failed")
+          ? "failed"
+          : subs.every((s) => s.status === "success" || s.status === "skipped")
+            ? i < doneCount
+              ? "success"
+              : "running"
+            : "running";
+        if (!isActive && stepStatus === "running") stepStatus = "success";
+      } else if (i < doneCount) {
+        stepStatus = "success";
+      } else if (i === doneCount && isActive) {
+        stepStatus = "running";
+      }
 
-      merged.push({
+      pushWithSubs({
         id: `planned-${i}`,
         index: i,
-        type: "pending",
-        label: plannedLabels[i] ?? `Étape ${i + 1}`,
+        type: subs && subs.length > 0 ? "parallel" : "pending",
+        label:
+          plannedLabels[i] ??
+          (subs && subs.length > 0 ? `Branches parallèles (${subs.length} sous-étapes)` : `Étape ${i + 1}`),
         status: stepStatus,
         output: null,
         input: null,
@@ -419,20 +473,36 @@ export function AgentRunConsole({
         error: null,
       });
     }
+    // Sous-étapes orphelines au-delà du plan (sécurité).
+    for (const [parent, subs] of subsByParent) {
+      if (parent >= planned && !merged.some((m) => m.sub && m.sub.parent === parent)) {
+        merged.push(...subs);
+      }
+    }
     return merged;
   }, [dbSteps, stepTrace, totalSteps, plannedLabels, liveCompleted, isActive]);
 
+  // Suivi auto : on ne colle au bas de la liste que si l'utilisateur y est déjà —
+  // sinon son scroll manuel serait aspiré à chaque mise à jour live.
+  const autoFollow = useRef(true);
+  const lastAutoExpanded = useRef<string | null>(null);
   useEffect(() => {
     const running = displaySteps.find((s) => s.status === "running");
     const lastDone = [...displaySteps].reverse().find((s) => s.status === "success");
     const target = running ?? lastDone;
-    if (target) setExpanded(target.id);
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+    if (target && target.id !== lastAutoExpanded.current) {
+      lastAutoExpanded.current = target.id;
+      setExpanded(target.id);
+      if (autoFollow.current) {
+        listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+      }
+    }
   }, [displaySteps]);
 
-  const progressTotal = totalSteps || displaySteps.length || 1;
+  const topSteps = displaySteps.filter((s) => !s.sub);
+  const progressTotal = totalSteps || topSteps.length || 1;
   const progressDone =
-    liveCompleted || displaySteps.filter((s) => s.status === "success").length;
+    liveCompleted || topSteps.filter((s) => s.status === "success").length;
   const progressPct = Math.min(100, Math.round((progressDone / progressTotal) * 100));
 
   const statusLabel =
@@ -542,7 +612,11 @@ export function AgentRunConsole({
 
       <div
         ref={listRef}
-        className="max-h-[min(60vh,520px)] overflow-y-auto p-4 sm:p-5"
+        onScroll={() => {
+          const el = listRef.current;
+          if (el) autoFollow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+        className="max-h-[min(60vh,520px)] overflow-y-auto overscroll-contain p-4 sm:p-5"
       >
         {loading && displaySteps.length === 0 ? (
           <div className="flex items-center gap-2 py-8 text-sm text-ink-soft">
@@ -559,15 +633,15 @@ export function AgentRunConsole({
               const isLast = i === displaySteps.length - 1;
 
               return (
-                <li key={step.id} className="relative flex gap-3 pb-6">
+                <li key={step.id} className={`relative flex gap-3 ${step.sub ? "pb-4 pl-8" : "pb-6"}`}>
                   {!isLast && (
                     <span
-                      className="absolute left-[15px] top-8 h-[calc(100%-8px)] w-px bg-line"
+                      className={`absolute top-8 h-[calc(100%-8px)] w-px bg-line ${step.sub ? "left-[45px]" : "left-[15px]"}`}
                       aria-hidden
                     />
                   )}
                   <div
-                    className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+                    className={`relative z-10 flex shrink-0 items-center justify-center rounded-full border ${step.sub ? "h-7 w-7" : "h-8 w-8"} ${
                       step.status === "success"
                         ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                         : step.status === "failed"
@@ -592,9 +666,14 @@ export function AgentRunConsole({
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-medium text-ink">
-                            {step.index + 1}. {step.label}
+                          <span className={`font-medium text-ink ${step.sub ? "text-[13px]" : "text-sm"}`}>
+                            {step.displayNo ?? step.index + 1}. {step.label}
                           </span>
+                          {step.sub && (
+                            <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                              Branche {step.sub.branch + 1}
+                            </span>
+                          )}
                           {statusBadge(step.status)}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1.5">

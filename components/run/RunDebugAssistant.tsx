@@ -63,13 +63,21 @@ interface AutoFixUserAction {
   detail: string;
 }
 
+interface AutoFixQuestion {
+  key: string;
+  question: string;
+  placeholder?: string;
+}
+
 interface AutoFixResponse {
   explanation: string;
   changes: string[];
   requiresUser: AutoFixUserAction[];
+  questions?: AutoFixQuestion[];
   autoFixable: boolean;
   applied: boolean;
   blockedReason?: string | null;
+  relaunchedRunId?: string | null;
   relaunch: { listingId: string | null; versionId: string | null; inputs: Record<string, string> };
 }
 
@@ -90,6 +98,8 @@ export function RunDebugAssistant({ runId, status }: Props) {
   const [relaunching, setRelaunching] = useState<"test" | "agent" | null>(null);
   const [autoFixing, setAutoFixing] = useState(false);
   const [autoFix, setAutoFix] = useState<AutoFixResponse | null>(null);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [newRunId, setNewRunId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,10 +134,14 @@ export function RunDebugAssistant({ runId, status }: Props) {
     }
   }
 
-  async function runAutoFix() {
+  async function runAutoFix(withAnswers?: Record<string, string>) {
     setAutoFixing(true);
     try {
-      const res = await fetch(`/api/run/agent/${runId}/auto-fix`, { method: "POST" });
+      const res = await fetch(`/api/run/agent/${runId}/auto-fix`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(withAnswers ? { answers: withAnswers } : {}),
+      });
       const json = (await res.json().catch(() => ({}))) as AutoFixResponse & { error?: string };
       if (!res.ok) {
         setAutoFix({
@@ -141,6 +155,8 @@ export function RunDebugAssistant({ runId, status }: Props) {
         return;
       }
       setAutoFix(json);
+      // Run de test : l'IA a réparé ET relancé — on le signale clairement.
+      if (json.relaunchedRunId) setNewRunId(json.relaunchedRunId);
       // Si une correction de plan a été appliquée, relancer sur la version corrigée.
       if (json.applied && json.relaunch.versionId && data) {
         setData({ ...data, relaunch: { ...data.relaunch, versionId: json.relaunch.versionId } });
@@ -222,7 +238,7 @@ export function RunDebugAssistant({ runId, status }: Props) {
                   </p>
                   <button
                     type="button"
-                    onClick={runAutoFix}
+                    onClick={() => void runAutoFix()}
                     disabled={autoFixing}
                     className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
                   >
@@ -237,6 +253,22 @@ export function RunDebugAssistant({ runId, status }: Props) {
                   {autoFix && (
                     <div className="mt-3 space-y-2">
                       <p className="whitespace-pre-line text-xs text-ink">{autoFix.explanation}</p>
+
+                      {newRunId && (
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/dashboard/runs/${newRunId}`)}
+                          className="flex w-full items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-left hover:bg-emerald-100"
+                        >
+                          <span className="relative flex h-2.5 w-2.5 shrink-0">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                          </span>
+                          <span className="text-xs font-semibold text-emerald-800">
+                            Plan corrigé — un nouveau run est en cours. Suivre en direct →
+                          </span>
+                        </button>
+                      )}
 
                       {autoFix.applied && (
                         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2">
@@ -270,6 +302,39 @@ export function RunDebugAssistant({ runId, status }: Props) {
                               </li>
                             ))}
                           </ul>
+                        </div>
+                      )}
+
+                      {(autoFix.questions?.length ?? 0) > 0 && !newRunId && (
+                        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+                          <p className="text-xs font-semibold text-sky-900">
+                            L&apos;IA a besoin de précisions pour terminer la réparation :
+                          </p>
+                          <div className="mt-2 space-y-2">
+                            {autoFix.questions!.map((q) => (
+                              <label key={q.key} className="block">
+                                <span className="mb-1 block text-xs text-sky-900">{q.question}</span>
+                                <input
+                                  type="text"
+                                  value={answers[q.key] ?? ""}
+                                  placeholder={q.placeholder ?? "Votre réponse"}
+                                  onChange={(e) =>
+                                    setAnswers((prev) => ({ ...prev, [q.key]: e.target.value }))
+                                  }
+                                  className="w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-400"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void runAutoFix(answers)}
+                            disabled={autoFixing || autoFix.questions!.every((q) => !(answers[q.key] ?? "").trim())}
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                          >
+                            {autoFixing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                            Envoyer les réponses & réparer
+                          </button>
                         </div>
                       )}
                     </div>

@@ -163,7 +163,8 @@ export function ConnectionsMasque({
         </button>
       </div>
       <p className="mt-1 text-xs text-ink-soft">
-        Connectez vos comptes — vous reviendrez automatiquement sur cette page après OAuth.
+        Connectez vos comptes dans le nouvel onglet — ta progression ici est conservée et le
+        statut se met à jour tout seul au retour.
       </p>
 
       <div className="mt-4 space-y-3">
@@ -181,8 +182,12 @@ export function ConnectionsMasque({
                   <Check className="h-3 w-3" /> …{key.last4}
                 </span>
               ) : (
-                <Link href="/dashboard/connexions" className="text-xs text-accent hover:underline">
-                  Configurer
+                <Link
+                  href="/dashboard/connexions"
+                  target="_blank"
+                  className="text-xs text-accent hover:underline"
+                >
+                  Configurer <ExternalLink className="ml-0.5 inline h-3 w-3" />
                 </Link>
               )}
             </div>
@@ -231,6 +236,8 @@ export function ConnectionsMasque({
                 ) : (
                   <a
                     href={`/api/connectors/${id}/connect?returnUrl=${returnUrl}`}
+                    target="_blank"
+                    rel="noopener"
                     className="flex items-center gap-1 text-xs text-accent hover:underline"
                   >
                     Se connecter <ExternalLink className="h-3 w-3" />
@@ -252,6 +259,8 @@ export function ConnectionsMasque({
                   {!diag.ok && (
                     <a
                       href={`/api/connectors/${id}/connect?returnUrl=${returnUrl}`}
+                      target="_blank"
+                      rel="noopener"
                       className="shrink-0 font-medium underline"
                     >
                       Reconnecter
