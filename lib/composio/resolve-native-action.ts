@@ -124,7 +124,7 @@ const TRAP_TOKENS = new Set([
   "comment", "comments", "reply", "replies", "note", "notes",
   "sticker", "stickers", "label", "labels", "reaction", "reactions",
   "webhook", "webhooks", "watch", "acl", "permission", "permissions",
-  "revision", "revisions", "metadata",
+  "revision", "revisions", "metadata", "attachment", "attachments",
 ]);
 
 /**
