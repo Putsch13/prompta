@@ -143,6 +143,21 @@ export async function retrieveFromSource(params: RetrieveParams): Promise<Retrie
         google_drive: "GOOGLEDRIVE_FIND_FILE",
       };
 
+      // Intention « mes fichiers récents » : une phrase naturelle passée en
+      // recherche PAR NOM ne matche aucun fichier (résultat vide garanti).
+      // On LISTE le Drive (récents d'abord) au lieu de chercher un nom.
+      const recentIntent =
+        params.source === "google_drive" &&
+        /r[ée]cents?|derniers?|latest|recent|mes (documents|fichiers|docs)|tous les fichiers/i.test(q);
+      if (recentIntent) {
+        const listed = await executeComposioTool("GOOGLEDRIVE_LIST_FILES", params.userId, {});
+        if (!isEmptyRetrieval(listed.output)) {
+          sources.push({ type: params.source, label: "Fichiers récents du Drive" });
+          return { content: listed.output.slice(0, 12000), sources };
+        }
+        // Drive réellement vide → on laisse le flux standard produire l'erreur claire.
+      }
+
       const actionSlug = actionMap[params.source];
       const result = await executeComposioTool(actionSlug, params.userId, {
         query: params.query,
