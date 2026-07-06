@@ -2,14 +2,24 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { DashboardNav } from "@/components/DashboardNav";
 import { ApprovalNotifier } from "@/components/run/ApprovalNotifier";
+import { createClient } from "@/lib/supabase/server";
+import { grantWelcomeCredits } from "@/lib/billing/entitlements";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Crédits de bienvenue (2 €) — idempotent, s'applique aussi aux comptes
+  // existants à leur prochaine visite.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) await grantWelcomeCredits(user.id);
+
   return (
     <div className="min-h-screen bg-bg">
       <div className="mx-auto max-w-page px-4 py-8 sm:px-6 lg:px-8">

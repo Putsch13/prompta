@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
   const { data: listing } = await admin
     .from("listings")
-    .select("id, creator_id, current_version_id, pricing_mode, price_cents, subscription_price_cents, status")
+    .select("id, creator_id, current_version_id, pricing_mode, price_cents, subscription_price_cents, status, type")
     .eq("id", body.listingId)
     .single();
 
@@ -100,6 +100,25 @@ export async function POST(request: NextRequest) {
   if (body.pricingMode) updates.pricing_mode = body.pricingMode;
 
   if (body.publish) {
+    // Quota d'agents publiés selon le plan (les prompts ne comptent pas ;
+    // republier un agent déjà publié ne reconsomme pas le quota).
+    if (listing.type !== "prompt" && !["published", "under_review"].includes(listing.status ?? "")) {
+      const { canPublishAgent } = await import("@/lib/billing/entitlements");
+      const gate = await canPublishAgent(user.id, { excludeListingId: body.listingId });
+      if (!gate.allowed) {
+        return NextResponse.json(
+          {
+            error: "plan_limit",
+            message: gate.message,
+            plan: gate.planId,
+            limit: gate.limit,
+            current: gate.current,
+            upgradeUrl: "/pricing",
+          },
+          { status: 402 },
+        );
+      }
+    }
     updates.status = allFlags.length > 0 ? "under_review" : "published";
     updates.content_flags = allFlags;
   }

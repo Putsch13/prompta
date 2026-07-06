@@ -59,3 +59,14 @@ test.describe("Prompta — parcours public", () => {
     expect(bad.status()).toBe(401);
   });
 });
+
+test("pricing — page publique avec les 4 plans et JSON-LD", async ({ page }) => {
+  await page.goto("/pricing");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/gratuitement/i);
+  for (const plan of ["Découverte", "Starter", "Pro", "Scale"]) {
+    await expect(page.getByRole("heading", { name: plan, exact: true })).toBeVisible();
+  }
+  const jsonLd = await page.locator('script[type="application/ld+json"]').first().textContent();
+  expect(jsonLd).toContain("FAQPage");
+  expect(jsonLd).toContain("SoftwareApplication");
+});

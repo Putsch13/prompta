@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ExternalLink, CreditCard, Sparkles, Loader2 } from "lucide-react";
-import { PROMPTA_PRO_PRICE_CENTS } from "@/lib/stripe-plans";
+import { ExternalLink, CreditCard, Sparkles, Loader2, Bot, Coins } from "lucide-react";
 import { isSubscriptionAccessActive } from "@/lib/subscriptions/active";
 
 interface Subscription {
@@ -21,6 +20,17 @@ interface PlatformSub {
   current_period_end: string | null;
   cancel_at_period_end?: boolean;
   cancel_requested_at?: string | null;
+}
+
+interface PlanInfo {
+  id: string;
+  label: string;
+  priceCents: number;
+  publishedAgentLimit: number | null;
+  monthlyCreditCents: number;
+  unrestricted: boolean;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
 }
 
 function formatDate(iso: string | null | undefined): string | null {
@@ -52,8 +62,9 @@ function subscriptionStatusLabel(sub: {
 export default function AbonnementsPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [platformSub, setPlatformSub] = useState<PlatformSub | null>(null);
+  const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
+  const [publishedAgents, setPublishedAgents] = useState(0);
   const [loadingPortal, setLoadingPortal] = useState(false);
-  const [loadingPro, setLoadingPro] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -68,6 +79,8 @@ export default function AbonnementsPage() {
       if (proRes.ok) {
         const data = await proRes.json();
         setPlatformSub(data.subscription ?? null);
+        setPlanInfo(data.plan ?? null);
+        setPublishedAgents(data.usage?.publishedAgents ?? 0);
       }
     }
     load();
@@ -81,21 +94,13 @@ export default function AbonnementsPage() {
     setLoadingPortal(false);
   }
 
-  async function subscribePro() {
-    setLoadingPro(true);
-    const res = await fetch("/api/stripe/platform-subscribe", { method: "POST" });
-    const data = await res.json();
-    if (data.url) window.location.href = data.url;
-    setLoadingPro(false);
-  }
-
   const [cancellingPro, setCancellingPro] = useState(false);
   const [cancellingSubId, setCancellingSubId] = useState<string | null>(null);
 
   async function cancelPro() {
     if (
       !confirm(
-        "Annuler Prompta Pro ? Vous conservez l'accès jusqu'à la fin de la période déjà payée.",
+        "Annuler ton plan ? Tu conserves l'accès jusqu'à la fin de la période déjà payée.",
       )
     ) {
       return;
@@ -161,7 +166,7 @@ export default function AbonnementsPage() {
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-ink">Mes abonnements</h1>
-          <p className="mt-2 text-ink-soft">Gérez Prompta Pro et vos abonnements aux agents.</p>
+          <p className="mt-2 text-ink-soft">Ton plan Prompta et tes abonnements aux agents.</p>
         </div>
         <button
           onClick={openPortal}
@@ -173,46 +178,71 @@ export default function AbonnementsPage() {
         </button>
       </div>
 
+      {/* ── Mon plan Prompta ─────────────────────────────────────────── */}
       <div className="mb-8 rounded-xl border border-accent/30 bg-accent/5 p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <Sparkles className="mt-1 h-6 w-6 text-accent" />
             <div>
-              <h2 className="font-display text-lg font-semibold text-ink">Prompta Pro</h2>
-              <p className="mt-1 text-sm text-ink-soft">
-                Accès à tout le catalogue d&apos;agents —{" "}
-                {(PROMPTA_PRO_PRICE_CENTS / 100).toFixed(2)} €/mois
-              </p>
+              <h2 className="font-display text-lg font-semibold text-ink">
+                Plan {planInfo?.label ?? "…"}
+                {planInfo && planInfo.priceCents > 0 && (
+                  <span className="ml-2 text-sm font-normal text-ink-soft">
+                    {(planInfo.priceCents / 100).toLocaleString("fr-FR")} €/mois
+                  </span>
+                )}
+                {planInfo?.unrestricted && (
+                  <span className="ml-2 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-bold text-accent">
+                    ADMIN ILLIMITÉ
+                  </span>
+                )}
+              </h2>
+              {planInfo && (
+                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink-soft">
+                  <span className="flex items-center gap-1.5">
+                    <Bot className="h-4 w-4 text-accent" />
+                    {publishedAgents}
+                    {planInfo.publishedAgentLimit != null ? ` / ${planInfo.publishedAgentLimit}` : ""} agent
+                    {publishedAgents > 1 ? "s" : ""} publié{publishedAgents > 1 ? "s" : ""}
+                  </span>
+                  {planInfo.monthlyCreditCents > 0 && (
+                    <span className="flex items-center gap-1.5">
+                      <Coins className="h-4 w-4 text-accent" />
+                      {(planInfo.monthlyCreditCents / 100).toLocaleString("fr-FR")} € de crédits IA / mois
+                    </span>
+                  )}
+                </div>
+              )}
               {isProActive && proStatus && (
                 <p className={`mt-1 text-xs ${proStatus.className}`}>
                   {proStatus.text}
                   {!platformSub?.cancel_at_period_end && platformSub?.current_period_end && (
-                    <>
-                      {" "}
-                      · renouvellement le {formatDate(platformSub.current_period_end)}
-                    </>
+                    <> · renouvellement le {formatDate(platformSub.current_period_end)}</>
                   )}
                 </p>
               )}
+              <p className="mt-1 text-xs text-ink-faint">
+                Astuce : tes propres clés API (BYOK) = runs illimités, zéro crédit consommé.
+              </p>
             </div>
           </div>
-          {!isProActive ? (
-            <button
-              onClick={subscribePro}
-              disabled={loadingPro}
-              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
+          <div className="flex items-center gap-2">
+            <Link
+              href="/pricing"
+              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent/90"
             >
-              {loadingPro ? <Loader2 className="h-4 w-4 animate-spin" /> : "Souscrire à Pro"}
-            </button>
-          ) : !platformSub?.cancel_at_period_end ? (
-            <button
-              onClick={cancelPro}
-              disabled={cancellingPro}
-              className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              {cancellingPro ? <Loader2 className="h-4 w-4 animate-spin" /> : "Se désabonner"}
-            </button>
-          ) : null}
+              {planInfo && planInfo.priceCents > 0 ? "Changer de plan" : "Voir les plans"}
+            </Link>
+            {isProActive && !platformSub?.cancel_at_period_end && (
+              <button
+                onClick={cancelPro}
+                disabled={cancellingPro}
+                className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {cancellingPro ? <Loader2 className="h-4 w-4 animate-spin" /> : "Se désabonner"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

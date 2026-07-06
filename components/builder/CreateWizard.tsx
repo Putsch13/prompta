@@ -412,11 +412,21 @@ export function CreateWizard({ categories }: Props) {
     }
 
     if (publish && data.id) {
-      await fetch("/api/listings/update", {
+      const pubRes = await fetch("/api/listings/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ listingId: data.id, publish: true }),
       });
+      if (!pubRes.ok) {
+        const pubData = await pubRes.json().catch(() => ({}));
+        if (pubData.error === "plan_limit") {
+          // Quota du plan atteint : l'agent est sauvegardé en brouillon.
+          alert(`${pubData.message}\n\nTon agent est enregistré en brouillon — il sera publiable dès l'upgrade.`);
+          router.push("/pricing");
+          return;
+        }
+        alert(pubData.message || pubData.error || "Publication impossible");
+      }
     }
     router.push("/dashboard");
   }

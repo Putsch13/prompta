@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
-import { PROMPTA_PRO_PRICE_CENTS } from "@/lib/stripe-plans";
+import { PLANS, type PlanId } from "@/lib/billing/plans";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+/** Démarre l'abonnement à un plan Prompta (Starter / Pro / Scale). */
+export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -13,6 +14,14 @@ export async function POST() {
 
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as { plan?: string };
+  // Compat : l'ancien bouton « Prompta Pro » sans body → starter.
+  const planId = (body.plan ?? "starter") as PlanId;
+  const plan = PLANS[planId];
+  if (!plan || plan.priceCents <= 0) {
+    return NextResponse.json({ error: "Plan invalide" }, { status: 400 });
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -25,19 +34,22 @@ export async function POST() {
       {
         price_data: {
           currency: "eur",
-          product_data: { name: "Prompta Pro — Accès catalogue" },
-          unit_amount: PROMPTA_PRO_PRICE_CENTS,
+          product_data: {
+            name: `Prompta ${plan.label}`,
+            description: plan.tagline,
+          },
+          unit_amount: plan.priceCents,
           recurring: { interval: "month" },
         },
         quantity: 1,
       },
     ],
     automatic_tax: { enabled: true },
-    success_url: `${appUrl}/dashboard/abonnements?pro=1`,
-    cancel_url: `${appUrl}/dashboard/abonnements`,
-    metadata: { type: "platform_pro", buyer_id: user.id },
+    success_url: `${appUrl}/dashboard/abonnements?plan=${plan.id}`,
+    cancel_url: `${appUrl}/pricing`,
+    metadata: { type: "platform_plan", buyer_id: user.id, plan: plan.id },
     subscription_data: {
-      metadata: { type: "platform_pro", buyer_id: user.id },
+      metadata: { type: "platform_plan", buyer_id: user.id, plan: plan.id },
     },
   });
 

@@ -48,19 +48,22 @@ export async function POST(request: Request) {
         break;
       }
 
-      if (sessionType === "platform_pro") {
+      if (sessionType === "platform_pro" || sessionType === "platform_plan") {
         const buyerId = session.metadata?.buyer_id;
         const subId = session.subscription as string | null;
+        const planId = session.metadata?.plan ?? "starter";
         if (buyerId && subId) {
           await admin.from("platform_subscriptions").upsert(
             {
               user_id: buyerId,
               stripe_subscription_id: subId,
-              plan: "pro",
+              plan: planId,
               status: "active",
             },
             { onConflict: "user_id" }
           );
+          // Les crédits mensuels inclus sont accordés via invoice.paid
+          // (idempotent par facture), première échéance comprise.
         }
         break;
       }
@@ -214,14 +217,17 @@ export async function POST(request: Request) {
       const cancelAtPeriodEnd = isDeleted ? false : Boolean(subscription.cancel_at_period_end);
       const localStatus = isDeleted ? "canceled" : subscription.status;
 
-      if (subscription.metadata?.type === "platform_pro") {
+      if (
+        subscription.metadata?.type === "platform_pro" ||
+        subscription.metadata?.type === "platform_plan"
+      ) {
         const buyerId = subscription.metadata.buyer_id;
         if (buyerId) {
           await admin.from("platform_subscriptions").upsert(
             {
               user_id: buyerId,
               stripe_subscription_id: subscription.id,
-              plan: "pro",
+              plan: subscription.metadata.plan ?? "starter",
               status: localStatus,
               cancel_at_period_end: cancelAtPeriodEnd,
               current_period_end: periodEnd,
@@ -281,6 +287,25 @@ export async function POST(request: Request) {
       };
       const subscriptionId = invoice.subscription;
       if (subscriptionId) {
+        // ── Plan Prompta : crédits IA mensuels inclus (idempotent/facture) ──
+        const { data: platformSub } = await admin
+          .from("platform_subscriptions")
+          .select("user_id, plan")
+          .eq("stripe_subscription_id", subscriptionId)
+          .maybeSingle();
+        if (platformSub?.user_id) {
+          const invoiceId = (invoice as { id?: string }).id ?? `inv_${subscriptionId}_${Date.now()}`;
+          const { grantPlanMonthlyCredits } = await import("@/lib/billing/entitlements");
+          await grantPlanMonthlyCredits(platformSub.user_id, platformSub.plan, invoiceId).catch(
+            (e) => console.error("[webhook] plan credit grant failed:", e),
+          );
+          await admin
+            .from("platform_subscriptions")
+            .update({ status: "active" })
+            .eq("stripe_subscription_id", subscriptionId);
+          break;
+        }
+
         await admin
           .from("subscriptions")
           .update({ status: "active" })

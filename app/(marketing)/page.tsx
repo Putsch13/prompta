@@ -1,9 +1,22 @@
-import { Bot, Play, Bug, Plug, Hammer } from "lucide-react";
+import type { Metadata } from "next";
+import { Bot, Play, Bug, Plug, Hammer, Gift } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { B2BSection } from "@/components/marketing/B2BSection";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Prompta — Crée ton agent IA sans code, connecté à 800+ apps",
+  description:
+    "Construis un agent IA en décrivant ton objectif : Gmail, Sheets, Slack, Canva, Notion… Il travaille pour de vrai, tu valides les actions sensibles. Premier agent gratuit + 2 € de crédits IA offerts.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "Prompta — tes agents IA en production, sans code",
+    description:
+      "Décris ton objectif, le copilote construit l'agent. 800+ apps, validation humaine, logs en direct. Gratuit pour démarrer.",
+  },
+};
 
 const CATEGORY_ICONS: Record<string, string> = {
   copywriting: "✏️",
@@ -37,10 +50,10 @@ export default async function HomePage() {
               <span className="text-accent">agents IA</span>
             </h1>
             <p className="mt-6 text-lg leading-8 text-ink-soft">
-              La plateforme la plus simple pour construire des agents IA, les
-              connecter à tes outils (Gmail, Sheets, Slack…), les faire tourner
-              et les débugger — tout au même endroit. Comme Render, mais pour les
-              agents. Abonnement par agent en production.
+              Décris ton objectif, le copilote construit l&apos;agent : il lit ton
+              Drive, remplit tes Sheets, crée tes visuels Canva, envoie tes emails —
+              et s&apos;arrête pour te demander validation avant chaque action
+              sensible. Tu suis chaque étape en direct.
             </p>
 
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -49,15 +62,20 @@ export default async function HomePage() {
                 className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-6 text-base font-medium text-white shadow-sm transition-colors hover:bg-accent/90"
               >
                 <Bot className="h-5 w-5" />
-                Créer un agent
+                Créer mon agent gratuit
               </Link>
               <Link
-                href="/explore"
+                href="/pricing"
                 className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-6 text-base font-medium text-ink transition-colors hover:border-accent"
               >
-                Explorer les agents
+                Voir les tarifs
               </Link>
             </div>
+
+            <p className="mt-5 inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/5 px-4 py-1.5 text-sm font-medium text-accent">
+              <Gift className="h-4 w-4" />
+              1 agent publié gratuit · 2 € de crédits IA offerts · sans carte bancaire
+            </p>
           </div>
         </div>
       </section>
