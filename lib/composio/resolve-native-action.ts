@@ -151,7 +151,7 @@ export function pickToolSlug(
   const wantsTextWrite =
     WRITE_DOC_VERBS.has(primary) && (objectIsDoc || opts.hasTextContent === true);
 
-  let best: { slug: string; score: number; len: number } | null = null;
+  let best: { slug: string; score: number; rank: number; len: number } | null = null;
 
   for (const tool of tools) {
     const tail = toolTail(tool.slug, toolkit);
@@ -192,6 +192,7 @@ export function pickToolSlug(
     // sans porter le verbe).
     if (tailToks.has(primary)) score += 200;
 
+
     if (wantsTextWrite) {
       const writesText =
         /from[_ ]?text|create[_ ]?document|append[_ ]?text|write[_ ]?file|create[_ ]?doc/.test(tail);
@@ -202,9 +203,29 @@ export function pickToolSlug(
     }
 
     if (score <= 0) continue;
+
+    // Tokens « en trop » (hors verbe/objet demandés, nom du toolkit et
+    // mots-outils) : pour « create_design », COMMENT_REPLY_IN_DESIGN
+    // (extras: comment, reply) doit perdre face à
+    // CREATE_CANVA_DESIGN_WITH_OPTIONAL_ASSET (extra: asset). La pénalité ne
+    // sert qu'au CLASSEMENT (rankScore, calculé APRÈS tous les ajustements) —
+    // pas à l'admissibilité, sinon les variantes légitimes
+    // (rediger_brouillon → CREATE_EMAIL_DRAFT) passeraient sous le plancher.
+    const requested = new Set([...verbToks, ...synonyms, ...tokens(toolkit)]);
+    const STOPWORDS = new Set(["with", "optional", "in", "a", "an", "the", "new", "or", "and", "by", "for", "to", "of", "from", "text"]);
+    let extras = 0;
+    for (const t of tailToks) {
+      if (!requested.has(t) && !STOPWORDS.has(t)) extras += 1;
+    }
+    const rankScore = score - extras * 80;
+
     const len = tail.length;
-    if (!best || score > best.score || (score === best.score && len < best.len)) {
-      best = { slug: tool.slug, score, len };
+    if (
+      !best ||
+      rankScore > best.rank ||
+      (rankScore === best.rank && len < best.len)
+    ) {
+      best = { slug: tool.slug, score, rank: rankScore, len };
     }
   }
 

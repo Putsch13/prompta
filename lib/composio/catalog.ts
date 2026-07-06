@@ -314,6 +314,9 @@ async function fetchAllToolsRaw(toolkitSlug: string): Promise<RawToolItem[]> {
     if (Date.now() > deadline) break; // partiel > blocage
     const url = new URL("https://backend.composio.dev/api/v3/tools");
     url.searchParams.set("toolkit_slug", toolkitSlug);
+    // Aligné sur le SDK (toolkitVersions: "latest") : sans ce param, l'API sert
+    // une autre version du toolkit (ex. Canva sans CANVA_CREATE_DESIGN).
+    url.searchParams.set("toolkit_versions", "latest");
     url.searchParams.set("limit", "100");
     if (cursor) url.searchParams.set("cursor", cursor);
     const res = await fetch(url, {

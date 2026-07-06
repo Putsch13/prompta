@@ -96,3 +96,23 @@ test("pickToolSlug — read_design ne choisit jamais DELETE_DESIGN", () => {
   const tools = [canvaTool("CANVA_DELETE_DESIGN"), canvaTool("CANVA_GET_DESIGN")];
   assert.equal(pickToolSlug(tools, "canva", "read_design"), "CANVA_GET_DESIGN");
 });
+
+test("pickToolSlug — create_design évite COMMENT_REPLY quand seule la variante WITH_OPTIONAL_ASSET existe", () => {
+  const tools = [
+    { slug: "CANVA_CREATE_COMMENT_REPLY_IN_DESIGN", name: "Create comment reply in design", toolkit: "canva", inputs: [] },
+    { slug: "CANVA_CREATE_CANVA_DESIGN_WITH_OPTIONAL_ASSET", name: "Create Canva design with optional asset", toolkit: "canva", inputs: [] },
+    { slug: "CANVA_CREATE_DESIGN_COMMENT_IN_PREVIEW_API", name: "Create design comment", toolkit: "canva", inputs: [] },
+  ] as Parameters<typeof pickToolSlug>[0];
+  assert.equal(
+    pickToolSlug(tools, "canva", "canva.create_design"),
+    "CANVA_CREATE_CANVA_DESIGN_WITH_OPTIONAL_ASSET",
+  );
+});
+
+test("pickToolSlug — create_design préfère toujours l'exact CANVA_CREATE_DESIGN quand présent", () => {
+  const tools = [
+    { slug: "CANVA_CREATE_CANVA_DESIGN_WITH_OPTIONAL_ASSET", name: "Create Canva design with optional asset", toolkit: "canva", inputs: [] },
+    { slug: "CANVA_CREATE_DESIGN", name: "Create design", toolkit: "canva", inputs: [] },
+  ] as Parameters<typeof pickToolSlug>[0];
+  assert.equal(pickToolSlug(tools, "canva", "canva.create_design"), "CANVA_CREATE_DESIGN");
+});
