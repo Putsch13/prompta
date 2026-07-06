@@ -703,21 +703,35 @@ async function persistRunDeliverables(params: {
   async function saveOne(key: string, content: string, kind = "text") {
     if (!content.trim() || saved.has(key)) return;
     saved.add(key);
-    const ext = kind === "json" ? "json" : kind === "markdown" ? "md" : "txt";
+    const ext = kind === "json" ? "json" : kind === "markdown" ? "md" : kind === "html" ? "html" : "txt";
     await saveDeliverable({
       runId: params.runId,
       listingId: params.listingId,
       userId: params.userId,
       kind,
       filename: sanitizeDeliverableFilename(`${key}.${ext}`),
-      mimeType: kind === "json" ? "application/json" : "text/plain",
+      mimeType: kind === "json" ? "application/json" : kind === "html" ? "text/html" : "text/plain",
       content,
-      previewText: content.slice(0, 500),
+      previewText: kind === "html" ? params.outputs.result?.slice(0, 500) : content.slice(0, 500),
     });
   }
 
   if (params.outputs.result) {
     await saveOne("result", params.outputs.result, "markdown");
+    // Rapport HTML stylé (téléchargeable, imprimable en PDF) : le livrable
+    // « présentable » du dossier de mission, pas juste un corps de texte.
+    if (params.outputs.result.length > 200) {
+      try {
+        const { markdownToDocumentHtml } = await import("@/lib/email/markdown-to-html");
+        await saveOne(
+          "rapport",
+          markdownToDocumentHtml(params.outputs.result, { title: "Rapport de mission", subtitle: "Dossier de mission Prompta" }),
+          "html",
+        );
+      } catch {
+        // best-effort — le .md reste disponible
+      }
+    }
   }
 
   for (const key of params.manifest.outputs ?? []) {

@@ -97,3 +97,46 @@ export function markdownToEmailHtml(md: string): string {
 
   return `<div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;font-size:15px;max-width:660px">${out.join("\n")}</div>`;
 }
+
+/**
+ * Markdown → document HTML complet et stylé (rapport téléchargeable).
+ * Utilisé pour le livrable « rapport » du dossier de mission : un fichier
+ * autoporteur, lisible en navigateur, imprimable en PDF.
+ */
+export function markdownToDocumentHtml(
+  md: string,
+  opts: { title: string; subtitle?: string },
+): string {
+  const body = markdownToEmailHtml(md);
+  const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(opts.title)}</title>
+<style>
+  body { margin: 0; background: #f6f7fb; }
+  .page { max-width: 760px; margin: 32px auto; background: #fff; border-radius: 14px;
+          box-shadow: 0 8px 30px rgba(17,24,39,.08); overflow: hidden; }
+  .cover { background: linear-gradient(135deg, #4F46E5, #7C3AED); color: #fff; padding: 36px 44px; }
+  .cover h1 { margin: 0; font: 700 26px/1.25 -apple-system,'Segoe UI',Roboto,sans-serif; }
+  .cover p { margin: 8px 0 0; opacity: .85; font: 400 14px -apple-system,'Segoe UI',Roboto,sans-serif; }
+  .content { padding: 32px 44px 44px; }
+  .footer { padding: 14px 44px; border-top: 1px solid #eef0f4; color: #9ca3af;
+            font: 400 12px -apple-system,'Segoe UI',Roboto,sans-serif; }
+  @media print { body { background:#fff } .page { box-shadow:none; margin:0; max-width:none } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="cover">
+    <h1>${escapeHtml(opts.title)}</h1>
+    <p>${opts.subtitle ? escapeHtml(opts.subtitle) + " · " : ""}${date}</p>
+  </div>
+  <div class="content">${body}</div>
+  <div class="footer">Généré par un agent Prompta</div>
+</div>
+</body>
+</html>`;
+}

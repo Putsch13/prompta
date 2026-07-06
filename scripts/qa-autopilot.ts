@@ -842,6 +842,14 @@ const DREAM_TESTS: QaTest[] = [
         ...sheetsWrite("Dream — Étude de marché coaching", "Jalon;Semaine;Description", "{{plan_csv}}", "etude"),
         {
           type: "action",
+          connector: "canva",
+          action: "canva.create_design",
+          params: { design_type: "presentation", title: "" },
+          aiFills: { title: { model: MODEL, prompt: "Titre de présentation (5 mots max) pour cette étude de marché : {{marche}}" } },
+          outputKey: "support_etude",
+        },
+        {
+          type: "action",
           connector: "google_calendar",
           action: "google_calendar.create_event",
           params: { summary: "Dream — kick-off étude coaching", description: "{{plan}}", start_datetime: "2026-07-15T09:30:00", event_duration_hour: "1" },
@@ -1379,6 +1387,10 @@ async function main() {
       status: "pending", error_message: null, steps_completed: 0,
     };
 
+    // QA_LEAVE_APPROVALS=1 : les validations humaines restent EN ATTENTE pour
+    // que le propriétaire les vive dans l'espace validation (pas d'auto-approve).
+    const leaveApprovals = process.env.QA_LEAVE_APPROVALS === "1";
+
     while (Date.now() - started < RUN_TIMEOUT_MS) {
       await new Promise((r) => setTimeout(r, 4000));
       const { data: row } = await sb
@@ -1388,9 +1400,10 @@ async function main() {
         .single();
       if (row) final = row;
       if (["completed", "failed", "suspended", "cancelled"].includes(final.status)) break;
+      if (leaveApprovals && final.status === "awaiting_approval") break;
       // La pause de validation peut rester « running » en base (drift 0045) :
       // on vérifie les approbations pendantes à CHAQUE itération.
-      if (["awaiting_approval", "running", "pending"].includes(final.status)) {
+      if (!leaveApprovals && ["awaiting_approval", "running", "pending"].includes(final.status)) {
         const did = await autoApproveOwn(ownRunIds, user.id);
         if (did) await tick();
       }
@@ -1400,6 +1413,15 @@ async function main() {
     const durationMs = Date.now() - started;
     let verdict: QaResult["verdict"] = "OK";
     let note: string | undefined;
+    if (leaveApprovals && final.status === "awaiting_approval") {
+      results.push({
+        name: test.name, goal: test.goal, runId: run.id, status: final.status,
+        durationMs, stepsCompleted: final.steps_completed ?? 0, error: null,
+        verdict: "OK", note: "En attente de TA validation (espace Validations)",
+      });
+      console.log(`  → awaiting_approval en ${(durationMs / 1000).toFixed(0)}s [à valider manuellement]`);
+      continue;
+    }
     if (!test.expect.includes(final.status)) {
       verdict = "ERREUR";
       if (final.status === "pending") note = "Jamais traité — worker/tick injoignable ?";
