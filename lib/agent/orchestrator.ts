@@ -728,19 +728,37 @@ async function persistRunDeliverables(params: {
 }): Promise<void> {
   const saved = new Set<string>();
 
+  // Données tabulaires (lignes « a;b;c ») → .csv : s'ouvre dans Excel/Numbers.
+  function isCsvLike(content: string): boolean {
+    const lines = content.trim().split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return false;
+    const cols = lines.map((l) => l.split(";").length);
+    return cols[0] >= 2 && cols.every((c) => Math.abs(c - cols[0]) <= 1);
+  }
+
   async function saveOne(key: string, content: string, kind = "text") {
     if (!content.trim() || saved.has(key)) return;
     saved.add(key);
-    const ext = kind === "json" ? "json" : kind === "markdown" ? "md" : kind === "html" ? "html" : "txt";
+    const effectiveKind = kind === "text" && isCsvLike(content) ? "csv" : kind;
+    const ext =
+      effectiveKind === "json" ? "json"
+      : effectiveKind === "markdown" ? "md"
+      : effectiveKind === "html" ? "html"
+      : effectiveKind === "csv" ? "csv"
+      : "txt";
     await saveDeliverable({
       runId: params.runId,
       listingId: params.listingId,
       userId: params.userId,
-      kind,
+      kind: effectiveKind,
       filename: sanitizeDeliverableFilename(`${key}.${ext}`),
-      mimeType: kind === "json" ? "application/json" : kind === "html" ? "text/html" : "text/plain",
+      mimeType:
+        effectiveKind === "json" ? "application/json"
+        : effectiveKind === "html" ? "text/html"
+        : effectiveKind === "csv" ? "text/csv"
+        : "text/plain",
       content,
-      previewText: kind === "html" ? params.outputs.result?.slice(0, 500) : content.slice(0, 500),
+      previewText: effectiveKind === "html" ? params.outputs.result?.slice(0, 500) : content.slice(0, 500),
     });
   }
 
@@ -1117,6 +1135,23 @@ export async function runAgent(
           outputs,
           manifest: manifestWithLimits,
         }).catch((e) => console.warn("[orchestrator] deliverables save failed:", e));
+
+        // Dossier de mission par email : livrables en vraies pièces jointes +
+        // liens vers les ressources créées (Sheets, Canva…). Best-effort.
+        try {
+          const { sendMissionReport } = await import("./mission-report");
+          await sendMissionReport({
+            runId: effectiveContext.runId,
+            userId: effectiveContext.userId,
+            listingId:
+              effectiveContext.listingId && effectiveContext.listingId !== "preview"
+                ? effectiveContext.listingId
+                : null,
+            outputs,
+          });
+        } catch (e) {
+          console.warn("[orchestrator] mission report email failed:", e);
+        }
       }
 
       if (memoryEnabled && effectiveContext.runId) {

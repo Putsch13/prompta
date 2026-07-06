@@ -302,3 +302,87 @@ export async function sendApprovalRequestEmail(params: ApprovalRequestParams) {
     console.error("Erreur envoi email approbation:", error);
   }
 }
+
+// ─── Dossier de mission : email avec VRAIES pièces jointes ───────────────────
+
+export interface MissionReportAttachment {
+  filename: string;
+  /** Contenu texte (sera encodé pour Resend). */
+  content: string;
+  contentType?: string;
+}
+
+export interface MissionReportParams {
+  to: string;
+  agentTitle: string;
+  runId: string;
+  /** Résumé court affiché dans le corps. */
+  summary?: string;
+  /** Liens vers les ressources RÉELLES créées (feuille Sheets, design Canva…). */
+  links: { label: string; url: string }[];
+  attachments: MissionReportAttachment[];
+}
+
+/**
+ * Email de fin de mission envoyé PAR la plateforme (Resend) au propriétaire du
+ * run : les livrables en pièces jointes (rapport HTML, CSV…) + boutons vers
+ * les ressources créées dans les apps. Destinataire = propriétaire du run,
+ * jamais un tiers.
+ */
+export async function sendMissionReportEmail(params: MissionReportParams) {
+  const { to, agentTitle, runId, summary, links, attachments } = params;
+
+  const linkButtons = links
+    .map(
+      (l) =>
+        `<a href="${l.url}" style="display:inline-block;background:#4F46E5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin:4px 6px 4px 0;">${l.label}</a>`,
+    )
+    .join("");
+
+  const attachList = attachments
+    .map((a) => `<li style="margin:2px 0;">📎 ${a.filename}</li>`)
+    .join("");
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<body style="font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#1f2937;max-width:640px;margin:0 auto;padding:24px;">
+  <div style="background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;border-radius:14px;padding:26px 30px;">
+    <p style="margin:0;font-size:13px;opacity:.85;">Mission terminée ✅</p>
+    <h1 style="margin:6px 0 0;font-size:22px;">${agentTitle}</h1>
+  </div>
+  ${summary ? `<p style="margin:20px 0 8px;line-height:1.55;">${summary}</p>` : ""}
+  ${
+    links.length
+      ? `<h3 style="margin:22px 0 8px;font-size:15px;">Ressources créées dans tes apps</h3><div>${linkButtons}</div>`
+      : ""
+  }
+  ${
+    attachments.length
+      ? `<h3 style="margin:22px 0 6px;font-size:15px;">Livrables en pièces jointes</h3><ul style="margin:4px 0;padding-left:20px;font-size:14px;">${attachList}</ul>`
+      : ""
+  }
+  <div style="text-align:center;margin:26px 0 8px;">
+    <a href="${APP_URL}/dashboard/runs/${runId}" style="display:inline-block;border:1px solid #4F46E5;color:#4F46E5;padding:11px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
+      Ouvrir le dossier de mission complet
+    </a>
+  </div>
+</body>
+</html>`.trim();
+
+  try {
+    await getResend().emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject: `📦 Mission terminée — ${agentTitle}`,
+      html,
+      attachments: attachments.map((a) => ({
+        filename: a.filename,
+        content: Buffer.from(a.content, "utf-8"),
+        contentType: a.contentType,
+      })),
+    });
+  } catch (error) {
+    console.error("Erreur envoi dossier de mission:", error);
+  }
+}
