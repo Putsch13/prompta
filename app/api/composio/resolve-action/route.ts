@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
     const toolkit = toComposioToolkitSlug(connector);
     const tools = await listComposioTools(toolkit);
     const tool = tools.find((t) => t.slug === slug);
+    // On expose defaultValue/enumValues/maxLength du schéma pour que le builder
+    // pré-remplisse les requis triviaux (ex. design_type) dès la conception.
     return NextResponse.json({
       slug,
       name: tool?.name ?? slug,

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Bot, Play, Bug, Plug, Hammer, Gift } from "lucide-react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
 import { B2BSection } from "@/components/marketing/B2BSection";
 
 export const dynamic = "force-dynamic";
@@ -18,28 +17,7 @@ export const metadata: Metadata = {
   },
 };
 
-const CATEGORY_ICONS: Record<string, string> = {
-  copywriting: "✏️",
-  code: "💻",
-  marketing: "📣",
-  sales: "📈",
-  data: "📊",
-  design: "🎨",
-  hr: "👥",
-  support: "🎧",
-  productivity: "⚡",
-  education: "📚",
-};
-
 export default async function HomePage() {
-  const supabase = await createClient();
-
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("slug, name, icon")
-    .order("name")
-    .limit(8);
-
   return (
     <div className="min-h-screen bg-bg">
       <section className="relative overflow-hidden">
@@ -74,38 +52,9 @@ export default async function HomePage() {
 
             <p className="mt-5 inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/5 px-4 py-1.5 text-sm font-medium text-accent">
               <Gift className="h-4 w-4" />
-              1 agent publié gratuit · 2 € de crédits IA offerts · sans carte bancaire
+              1 agent hébergé gratuit · 2 € de crédits IA offerts · sans carte bancaire
             </p>
           </div>
-        </div>
-      </section>
-
-      <section className="border-t border-line">
-        <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
-          <h2 className="text-center font-display text-2xl font-bold text-ink">
-            Explorer par catégorie
-          </h2>
-          <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {(categories || []).map((cat) => (
-              <Link
-                key={cat.slug}
-                href={`/c/${cat.slug}`}
-                className="group flex flex-col items-center gap-3 rounded-xl border border-line bg-card p-6 transition-all hover:border-accent hover:shadow-md"
-              >
-                <span className="text-3xl">
-                  {cat.icon || CATEGORY_ICONS[cat.slug] || "📁"}
-                </span>
-                <span className="text-sm font-medium text-ink transition-colors group-hover:text-accent">
-                  {cat.name}
-                </span>
-              </Link>
-            ))}
-          </div>
-          {(!categories || categories.length === 0) && (
-            <p className="mt-8 text-center text-sm text-ink-soft">
-              Les catégories seront disponibles prochainement.
-            </p>
-          )}
         </div>
       </section>
 

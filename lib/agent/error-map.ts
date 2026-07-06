@@ -31,6 +31,7 @@ export type AgentErrorCode =
   | "idempotency_conflict"
   | "missing_file_content"
   | "missing_required_params"
+  | "retrieval_empty"
   | "code_runtime"
   | "unknown";
 
@@ -80,6 +81,16 @@ export function mapAgentError(
   }
   if (/approval[\s_-]*expired|validation humaine.*expir|approbation.*expir/i.test(raw)) {
     return { code: "approval_expired", message: "Validation humaine expirée.", hint: "Relancez l'agent.", raw };
+  }
+
+  // ─── Recherche de données sans résultat ────────────────────────────────
+  if (/retrieval_empty/i.test(raw)) {
+    return {
+      code: "retrieval_empty",
+      message: raw.replace(/^.*retrieval_empty:\s*/, ""),
+      hint: "Vérifiez le nom exact et le partage avec le compte connecté, puis relancez.",
+      raw, connector, action,
+    };
   }
 
   // ─── Champs requis manquants (garde Composio générique) ─────────────────

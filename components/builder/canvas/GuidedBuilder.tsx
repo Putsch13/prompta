@@ -192,7 +192,10 @@ export function GuidedBuilder({
     onGraphChange(updateNode(graph, nodeId, patch));
   }
 
-  async function runCopilot(history: ChatMessage[]) {
+  const lastHistoryRef = useRef<ChatMessage[]>([]);
+
+  async function runCopilot(history: ChatMessage[], attempt = 0) {
+    lastHistoryRef.current = history;
     setLoading(true);
     setError(null);
     try {
@@ -204,6 +207,13 @@ export function GuidedBuilder({
       });
       const data = await res.json();
       if (!res.ok) {
+        // Relance automatique silencieuse : le message de l'utilisateur est
+        // déjà dans l'historique, il n'a RIEN à retaper.
+        if (attempt < 1) {
+          setLoading(false);
+          await new Promise((r) => setTimeout(r, 600));
+          return runCopilot(history, attempt + 1);
+        }
         setError(data.error || "Erreur copilote");
         return;
       }
@@ -224,7 +234,12 @@ export function GuidedBuilder({
       setDone(!!data.done);
       setMessages((m) => [...m, { role: "assistant", content: String(data.assistant ?? "") }]);
     } catch {
-      setError("Erreur réseau. Réessayez.");
+      if (attempt < 1) {
+        setLoading(false);
+        await new Promise((r) => setTimeout(r, 600));
+        return runCopilot(history, attempt + 1);
+      }
+      setError("Erreur réseau.");
     } finally {
       setLoading(false);
     }
@@ -380,7 +395,20 @@ export function GuidedBuilder({
                 <Loader2 className="h-3 w-3 animate-spin" /> Le copilote réfléchit…
               </div>
             )}
-            {error && <p className="text-xs text-destructive">{error}</p>}
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                <p className="flex-1 text-xs text-destructive">
+                  {error} — ton message est conservé, rien à retaper.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void runCopilot(lastHistoryRef.current)}
+                  className="shrink-0 rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent/90"
+                >
+                  Renvoyer
+                </button>
+              </div>
+            )}
           </div>
 
           {focusedNode && !done && (

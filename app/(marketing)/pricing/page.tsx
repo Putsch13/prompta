@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 const FAQ = [
   {
     q: "Le plan gratuit est-il vraiment gratuit ?",
-    a: "Oui. Vous construisez autant d'agents que vous voulez, vous en publiez un, et vous recevez 2 € de crédits IA (GPT + Claude) à l'inscription — sans carte bancaire.",
+    a: "Oui. Vous construisez autant d'agents que vous voulez, vous en hébergez un en production, et vous recevez 2 € de crédits IA (GPT + Claude) à l'inscription — sans carte bancaire.",
   },
   {
     q: "Que sont les crédits IA inclus ?",
@@ -35,11 +35,11 @@ const FAQ = [
   },
   {
     q: "Puis-je changer de plan ou annuler ?",
-    a: "À tout moment. L'annulation prend effet en fin de période — vos agents publiés au-delà du quota repassent simplement en brouillon, rien n'est supprimé.",
+    a: "À tout moment. L'annulation prend effet en fin de période — vos agents en production au-delà du quota repassent simplement en brouillon, rien n'est supprimé.",
   },
   {
-    q: "Comment gagner de l'argent avec mes agents ?",
-    a: "Dès le plan Pro, vendez vos agents par abonnement sur la marketplace : vos abonnés paient chaque mois, Prompta prend 20 % de commission, le reste est versé sur votre compte Stripe.",
+    q: "Mes données et mes comptes sont-ils en sécurité ?",
+    a: "Vos jetons OAuth sont chiffrés, chaque action sensible peut exiger votre validation humaine avant exécution, et le dossier de mission trace tout ce que l'agent a fait — entrées, sorties, emails envoyés.",
   },
 ];
 

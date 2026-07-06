@@ -15,7 +15,7 @@ import { ActionWorkspacePanel } from "@/components/run/ActionWorkspacePanel";
 import { HumanApprovalModal, type ApprovalDetails } from "@/components/run/HumanApprovalModal";
 import type { StepTraceEntry } from "@/lib/agent/orchestrator";
 
-type RunStatus = string;
+export type RunStatus = string;
 
 interface DeliverableItem {
   id: string;
@@ -114,23 +114,76 @@ export function AgentRunExperience({
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
   const [loadingDeliverables, setLoadingDeliverables] = useState(false);
+  // Étapes réelles depuis la base (run traité par le worker) : sans ça la vue
+  // Apps restait vide pour un run async (stepTrace n'est rempli que par le
+  // wizard en mode sync legacy).
+  const [dbSteps, setDbSteps] = useState<DisplayStep[]>([]);
 
   const showApprovalModal =
     status === "awaiting_approval" && Boolean(approvalId) && Boolean(onApprove);
 
-  const displaySteps: DisplayStep[] = useMemo(
-    () =>
-      stepTrace.map((s, i) => ({
-        id: `trace-${i}`,
-        index: s.stepIndex,
-        type: s.stepType,
-        label: s.label,
-        status: s.status,
-        output: s.outputPreview ?? null,
-        actionSlug: s.actionSlug ?? null,
-      })),
-    [stepTrace],
-  );
+  const activeForSteps =
+    status === "running" || status === "pending" || status === "queued" || status === "checking";
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    async function loadSteps() {
+      try {
+        const res = await fetch(`/api/run/agent/${runId}/steps`);
+        if (!res.ok || cancelled) return;
+        const d = await res.json();
+        const steps = (d.steps ?? []) as Array<{
+          id: string;
+          stepIndex: number;
+          stepType: string;
+          label: string | null;
+          status: string;
+          outputPreview: unknown;
+          actionSlug: string | null;
+        }>;
+        setDbSteps(
+          steps.map((s) => ({
+            id: s.id,
+            index: s.stepIndex,
+            type: s.stepType,
+            label: s.label ?? `Étape ${s.stepIndex + 1}`,
+            status: s.status,
+            output:
+              typeof s.outputPreview === "string"
+                ? s.outputPreview
+                : s.outputPreview != null
+                  ? JSON.stringify(s.outputPreview, null, 2)
+                  : null,
+            actionSlug: s.actionSlug,
+          })),
+        );
+      } catch {
+        /* best-effort */
+      }
+    }
+    loadSteps();
+    if (!activeForSteps) return;
+    const t = setInterval(loadSteps, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [runId, activeForSteps]);
+
+  const displaySteps: DisplayStep[] = useMemo(() => {
+    // Les étapes DB (worker) priment ; fallback sur stepTrace (wizard sync).
+    if (dbSteps.length > 0) return dbSteps;
+    return stepTrace.map((s, i) => ({
+      id: `trace-${i}`,
+      index: s.stepIndex,
+      type: s.stepType,
+      label: s.label,
+      status: s.status,
+      output: s.outputPreview ?? null,
+      actionSlug: s.actionSlug ?? null,
+    }));
+  }, [dbSteps, stepTrace]);
 
   const groups = useMemo(() => {
     const map = new Map<string, DisplayStep[]>();

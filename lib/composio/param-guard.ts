@@ -123,9 +123,10 @@ export async function guardComposioParams(
         return `« ${m.label} » (${m.key})${choices}`;
       })
       .join(", ");
+    // Pas d'instruction ici : le hint est ajouté une seule fois par error-map
+    // (sinon message dédoublé « … — Ouvrez l'étape… — Ouvrez l'étape… »).
     throw new Error(
-      `missing_required_params: L'action ${toolSlug} requiert des champs non renseignés : ${list}. ` +
-        `Ouvrez l'étape dans le builder et renseignez-les (valeur fixe, « Demander à l'abonné » ou « Générer par IA »).`,
+      `missing_required_params: L'action ${toolSlug} requiert des champs non renseignés : ${list}.`,
     );
   }
 

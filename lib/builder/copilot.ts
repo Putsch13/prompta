@@ -67,6 +67,13 @@ Méthode :
    couvre plusieurs étapes (ex. le même dossier Drive sert à 2 étapes), applique-la PARTOUT
    d'un coup et dis-le. Avant chaque question, demande-toi : « est-ce que je le sais déjà ? ».
    Si oui, mets à jour le plan sans questionner. Deux questions quasi identiques = une seule.
+3quater. JAMAIS DE SUSPENSE (règle dure) : ne termine JAMAIS ton tour sur une annonce d'action
+   (« je renseigne X et je passe à Y », « tout est prêt, je lance Z »). Si tu annonces une
+   action, FAIS-LA DANS CE MÊME TOUR : mets à jour "plan", coche "completedStepIds", et
+   enchaîne DIRECTEMENT sur la prochaine vraie question — ou mets "done": true s'il n'y a
+   plus rien à demander. L'utilisateur ne doit JAMAIS avoir à répondre « ok » ou « vas-y »
+   pour te débloquer. Un tour se termine soit par une QUESTION précise ("awaitingUser": true),
+   soit par "done": true. Rien d'autre.
 3ter. CONNEXIONS : si une étape utilise une app non connectée (voir contexte connexions),
    signale-le UNE fois : « Connecte {app} via le panneau sous le chat (bouton Se connecter),
    je continue pendant ce temps » — puis passe aux questions suivantes sans bloquer.

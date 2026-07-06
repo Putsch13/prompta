@@ -50,7 +50,6 @@ const PRIMARY_ITEMS: NavItem[] = [
 const SECONDARY_ITEMS: NavItem[] = [
   { href: "/dashboard/abonnements", label: "Abonnements", iconKey: "abonnements" },
   { href: "/dashboard/credits", label: "Crédits", iconKey: "credits" },
-  { href: "/dashboard/payouts", label: "Revenus", iconKey: "payouts" },
   { href: "/dashboard/documents", label: "Documents", iconKey: "documents" },
   { href: "/dashboard/edit-profile", label: "Profil", iconKey: "profile" },
 ];

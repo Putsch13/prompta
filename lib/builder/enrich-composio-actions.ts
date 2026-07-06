@@ -53,6 +53,21 @@ export async function enrichComposioActions(graph: PlanGraph): Promise<PlanGraph
         Object.entries(node.params ?? {}).filter(([k]) => validKeys.has(k)),
       );
 
+      // Pré-remplit AU BUILD les paramètres requis triviaux (default du schéma
+      // ou enum à choix unique) — ex. design_type de Canva. Ainsi ils ne
+      // manquent JAMAIS au run et l'utilisateur n'a rien à corriger après coup.
+      for (const input of data.inputs ?? []) {
+        const withMeta = input as ActionInput & { defaultValue?: string; enumValues?: string[] };
+        const current = params[input.key];
+        if (current != null && String(current).trim() !== "") continue;
+        if (!input.required) continue;
+        if (withMeta.defaultValue != null && withMeta.defaultValue !== "") {
+          params[input.key] = withMeta.defaultValue;
+        } else if (withMeta.enumValues?.length === 1) {
+          params[input.key] = withMeta.enumValues[0];
+        }
+      }
+
       g = updateNode(g, node.id, {
         actionSlug: data.slug,
         actionInputs: data.inputs,

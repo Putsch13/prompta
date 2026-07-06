@@ -37,6 +37,30 @@ export function extractFirstUrl(text: string): string | null {
   return match ? match[0].replace(/[).,;]+$/, "") : null;
 }
 
+/** Sortie d'une recherche « sans résultat » (fonction pure, testable). */
+export function isEmptyRetrieval(output: string): boolean {
+  const t = output.trim();
+  if (!t) return true;
+  // Structures vides fréquentes renvoyées par les outils Composio.
+  if (/^(\[\]|\{\}|null|"")$/.test(t)) return true;
+  try {
+    const parsed = JSON.parse(t);
+    if (Array.isArray(parsed) && parsed.length === 0) return true;
+    if (parsed && typeof parsed === "object") {
+      const arr =
+        (parsed as Record<string, unknown>).files ??
+        (parsed as Record<string, unknown>).results ??
+        (parsed as Record<string, unknown>).items ??
+        (parsed as Record<string, unknown>).messages ??
+        (parsed as Record<string, unknown>).data;
+      if (Array.isArray(arr) && arr.length === 0) return true;
+    }
+  } catch {
+    // pas du JSON — on se fie au texte
+  }
+  return /no files? found|aucun (r[eé]sultat|fichier)|not found|0 results?/i.test(t);
+}
+
 export async function retrieveFromSource(params: RetrieveParams): Promise<RetrieveResult> {
   const max = params.maxResults ?? 5;
   const sources: RetrieveResult["sources"] = [];
@@ -124,6 +148,17 @@ export async function retrieveFromSource(params: RetrieveParams): Promise<Retrie
         query: params.query,
         max_results: String(max),
       });
+
+      // Recherche SANS RÉSULTAT = échec explicite : sinon l'agent continue avec
+      // un contenu vide (« pas de fichier trouvé ») et l'utilisateur ne
+      // comprend l'échec qu'à l'étape de validation, trop tard. On coupe ici
+      // avec un message actionnable.
+      if (isEmptyRetrieval(result.output)) {
+        throw new Error(
+          `retrieval_empty: Aucun résultat pour « ${q} » dans ${params.source}. ` +
+            `Vérifiez le nom/mot-clé et que l'élément est bien partagé avec le compte connecté.`,
+        );
+      }
 
       sources.push({ type: params.source, label: params.query });
       return { content: result.output.slice(0, 12000), sources };

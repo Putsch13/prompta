@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, Search, X, Zap } from "lucide-react";
+import { Menu, X, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AuthNav } from "@/components/AuthNav";
 import { WalletBalanceBadge } from "@/components/wallet/WalletBalanceBadge";
 
 const NAV = [
-  { href: "/explore", label: "Explorer" },
   { href: "/pricing", label: "Tarifs" },
   { href: "/wallet", label: "Mon wallet", authOnly: true },
   { href: "/dashboard", label: "Dashboard" },
@@ -83,14 +82,6 @@ export function Header() {
 
         <div className="flex items-center gap-2 sm:gap-3">
           <WalletBalanceBadge />
-          <Link
-            href="/explore"
-            prefetch
-            className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-card2 hover:text-ink"
-            aria-label="Rechercher"
-          >
-            <Search className="h-4 w-4" />
-          </Link>
           <AuthNav />
           <button
             type="button"

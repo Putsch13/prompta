@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, ClipboardCopy, Check, Loader2, RotateCcw, Download, FileText, Package } from "lucide-react";
+import { ArrowLeft, ClipboardCopy, Check, Loader2, RotateCcw, Download, FileText, Package, Maximize2 } from "lucide-react";
 import { AgentRunConsole } from "@/components/run/AgentRunConsole";
+import { AgentRunExperience } from "@/components/run/AgentRunExperience";
 import type { RunStepLog } from "@/components/run/RunStepTimeline";
+import type { RunStatus } from "@/components/run/AgentRunExperience";
 
 interface Deliverable {
   id: string;
@@ -42,6 +44,7 @@ export default function RunDetailPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [resultCopied, setResultCopied] = useState(false);
+  const [immersive, setImmersive] = useState(false);
 
   const load = useCallback(async () => {
     const [runRes, stepsRes, delivRes] = await Promise.all([
@@ -131,6 +134,13 @@ export default function RunDetailPage() {
           <ArrowLeft className="h-4 w-4" /> Runs &amp; logs
         </Link>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setImmersive(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
+          >
+            <Maximize2 className="h-3.5 w-3.5" /> Vue live &amp; apps
+          </button>
           <button
             type="button"
             onClick={copyReport}
@@ -286,6 +296,25 @@ export default function RunDetailPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {immersive && (
+        <AgentRunExperience
+          title="Exécution"
+          status={run.status as RunStatus}
+          runId={runId}
+          stepsCompleted={run.steps_completed ?? 0}
+          totalSteps={run.planned_steps?.length ?? 0}
+          plannedLabels={run.planned_steps ?? []}
+          pollWhileRunning={ACTIVE.has(run.status)}
+          errorMessage={run.error_message}
+          finalOutput={
+            typeof (run.output as Record<string, unknown> | null)?.result === "string"
+              ? (run.output as Record<string, string>).result
+              : undefined
+          }
+          onClose={() => setImmersive(false)}
+        />
       )}
     </div>
   );
