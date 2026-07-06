@@ -36,7 +36,6 @@ export default function EditListingPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [priceCents, setPriceCents] = useState(0);
 
   // Nouvelle version
   const [promptBody, setPromptBody] = useState("");
@@ -65,7 +64,7 @@ export default function EditListingPage() {
     async function load() {
       const { data: listing } = await supabase
         .from("listings")
-        .select("title, description, price_cents, status, slug, current_version_id")
+        .select("title, description, status, slug, current_version_id")
         .eq("id", id)
         .single();
 
@@ -76,7 +75,6 @@ export default function EditListingPage() {
 
       setTitle(listing.title);
       setDescription(listing.description || "");
-      setPriceCents(listing.price_cents ?? 0);
       setListingStatus(listing.status ?? "draft");
       setListingSlug(listing.slug ?? null);
 
@@ -160,12 +158,7 @@ export default function EditListingPage() {
     // Mettre à jour le listing
     await supabase
       .from("listings")
-      .update({
-        title,
-        description,
-        price_cents: priceCents,
-        ...(publish ? { status: "under_review" as const } : {}),
-      })
+      .update({ title, description })
       .eq("id", id);
 
     // Créer une nouvelle version
@@ -204,9 +197,31 @@ export default function EditListingPage() {
         .eq("id", id);
     }
 
+    // Mise en production via l'API : applique la porte de quota du plan et
+    // la modération de contenu (l'écriture directe les contournait).
+    if (publish) {
+      const res = await fetch("/api/listings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: id, publish: true }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSaving(false);
+        setPublishing(false);
+        if (data.error === "plan_limit") {
+          alert(`${data.message}\n\nTes modifications sont enregistrées en brouillon.`);
+          router.push("/pricing");
+          return;
+        }
+        setError(data.message || data.error || "Mise en production impossible");
+        return;
+      }
+    }
+
     setSaving(false);
     setPublishing(false);
-    router.push("/dashboard");
+    router.push("/dashboard/contenus");
     router.refresh();
   }
 
@@ -221,11 +236,11 @@ export default function EditListingPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
       <Link
-        href="/dashboard"
+        href="/dashboard/contenus"
         className="mb-6 inline-flex items-center gap-1 text-sm text-muted hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
-        Retour au dashboard
+        Retour à mes agents
       </Link>
 
       <h1 className="text-2xl font-bold">Modifier : {title}</h1>
@@ -299,20 +314,6 @@ export default function EditListingPage() {
             />
           </div>
         )}
-
-        {/* Prix */}
-        <div>
-          <label htmlFor="price" className="block text-sm font-medium">Prix (EUR)</label>
-          <input
-            id="price"
-            type="number"
-            min={0}
-            step={0.01}
-            value={priceCents / 100}
-            onChange={(e) => setPriceCents(Math.round(parseFloat(e.target.value || "0") * 100))}
-            className="mt-1 h-11 w-full rounded-lg border border-border bg-card px-4 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
 
         {/* Changelog */}
         <div>
@@ -407,7 +408,7 @@ export default function EditListingPage() {
               ) : (
                 <>
                   <Send className="h-4 w-4" />
-                  Soumettre pour review
+                  Mettre en production
                 </>
               )}
             </button>
