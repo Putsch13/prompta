@@ -116,3 +116,26 @@ test("pickToolSlug — create_design préfère toujours l'exact CANVA_CREATE_DES
   ] as Parameters<typeof pickToolSlug>[0];
   assert.equal(pickToolSlug(tools, "canva", "canva.create_design"), "CANVA_CREATE_DESIGN");
 });
+
+test("pickToolSlug — tokens pièges : create_task évite CREATE_TASK_COMMENT quand une vraie création existe", () => {
+  const tools = [
+    { slug: "ASANA_CREATE_TASK_COMMENT", name: "Create task comment", toolkit: "asana", inputs: [] },
+    { slug: "ASANA_CREATE_SUBTASK_FOR_TASK", name: "Create subtask for task", toolkit: "asana", inputs: [] },
+  ] as Parameters<typeof pickToolSlug>[0];
+  assert.equal(pickToolSlug(tools, "asana", "asana.create_task"), "ASANA_CREATE_SUBTASK_FOR_TASK");
+});
+
+test("pickToolSlug — create_issue préfère CREATE_NEW_ISSUE à CREATE_ISSUE_NOTE", () => {
+  const tools = [
+    { slug: "GITLAB_CREATE_ISSUE_NOTE", name: "Create issue note", toolkit: "gitlab", inputs: [] },
+    { slug: "GITLAB_CREATE_NEW_ISSUE", name: "Create new issue", toolkit: "gitlab", inputs: [] },
+  ] as Parameters<typeof pickToolSlug>[0];
+  assert.equal(pickToolSlug(tools, "gitlab", "gitlab.create_issue"), "GITLAB_CREATE_NEW_ISSUE");
+});
+
+test("pickToolSlug — un piège explicitement demandé reste résolvable", () => {
+  const tools = [
+    { slug: "ASANA_CREATE_TASK_COMMENT", name: "Create task comment", toolkit: "asana", inputs: [] },
+  ] as Parameters<typeof pickToolSlug>[0];
+  assert.equal(pickToolSlug(tools, "asana", "asana.create_task_comment"), "ASANA_CREATE_TASK_COMMENT");
+});

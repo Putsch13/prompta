@@ -25,7 +25,7 @@ interface Case {
   forbid?: string[];
 }
 
-const FORBID_DEFAULT = ["comment", "reply", "webhook", "label", "permission", "revision", "acl", "watch"];
+const FORBID_DEFAULT = ["comment", "reply", "webhook", "label", "permission", "revision", "acl", "watch", "note", "sticker"];
 
 const CASES: Case[] = [
   // Google
@@ -39,7 +39,7 @@ const CASES: Case[] = [
   { action: "google_drive.create_folder", verb: ["create", "add"] },
   { action: "google_docs.create_document", verb: ["create", "add"] },
   // Créa / social
-  { action: "canva.create_design", verb: ["create"], forbid: [...FORBID_DEFAULT] },
+  { action: "canva.create_design", verb: ["create", "post"], forbid: [...FORBID_DEFAULT] },
   { action: "canva.list_designs", verb: ["list", "get", "find"] },
   { action: "linkedin.create_post", verb: ["create", "post", "share", "publish"] },
   { action: "twitter.create_post", verb: ["create", "post", "tweet", "publish"] },

@@ -118,6 +118,15 @@ function verbMatchers(primary: string): Set<string> {
   return new Set(VERB_SYNONYMS[primary] ?? [primary]);
 }
 
+/** Tokens qui changent l'OBJET de l'action (sous-ressources) : fortement
+ *  pénalisés quand ils ne figurent pas dans la demande. */
+const TRAP_TOKENS = new Set([
+  "comment", "comments", "reply", "replies", "note", "notes",
+  "sticker", "stickers", "label", "labels", "reaction", "reactions",
+  "webhook", "webhooks", "watch", "acl", "permission", "permissions",
+  "revision", "revisions", "metadata",
+]);
+
 /**
  * Choisit le meilleur slug d'outil pour `actionId` parmi `tools`.
  * Fonction PURE (testable sans réseau).
@@ -214,10 +223,16 @@ export function pickToolSlug(
     const requested = new Set([...verbToks, ...synonyms, ...tokens(toolkit)]);
     const STOPWORDS = new Set(["with", "optional", "in", "a", "an", "the", "new", "or", "and", "by", "for", "to", "of", "from", "text"]);
     let extras = 0;
+    let traps = 0;
     for (const t of tailToks) {
-      if (!requested.has(t) && !STOPWORDS.has(t)) extras += 1;
+      if (requested.has(t) || STOPWORDS.has(t)) continue;
+      // Tokens à CHANGEMENT D'OBJET : « create_task » ne doit jamais tomber sur
+      // CREATE_TASK_COMMENT, « create_issue » sur CREATE_ISSUE_NOTE, ni
+      // « create_card » sur CREATE_CARD_STICKER — l'outil fait AUTRE CHOSE.
+      if (TRAP_TOKENS.has(t)) traps += 1;
+      else extras += 1;
     }
-    const rankScore = score - extras * 80;
+    const rankScore = score - extras * 80 - traps * 400;
 
     const len = tail.length;
     if (
