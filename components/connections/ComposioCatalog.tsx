@@ -4,20 +4,10 @@ import { useMemo, useState } from "react";
 import { Check, ExternalLink, Loader2, RefreshCw, Search, Zap } from "lucide-react";
 import type { ComposioToolkitEntry } from "@/lib/composio/catalog";
 
-const CATEGORIES = [
-  "Toutes",
-  "Populaires",
-  "Connectées",
-  "Non connectées",
-  "Messagerie",
-  "CRM / Sales",
-  "Productivité",
-  "Dev",
-  "E-commerce / Web",
-  "Finance",
-  "Réseaux sociaux",
-  "Autre",
-];
+/** Méta-filtres épinglés en tête — le reste est dérivé des données réelles. */
+const PINNED_FILTERS = ["Toutes", "Populaires", "Connectées", "Non connectées"];
+/** Nombre max de catégories réelles affichées (le reste bascule dans « Autre »). */
+const MAX_CATEGORY_CHIPS = 12;
 
 interface Props {
   toolkits: ComposioToolkitEntry[];
@@ -66,6 +56,34 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
     [connections]
   );
 
+  // Catégories réelles, triées par volume — les petites basculent dans « Autre ».
+  const { categoryChips, mainCategories } = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of toolkits) {
+      counts.set(t.category, (counts.get(t.category) ?? 0) + 1);
+    }
+    const sorted = [...counts.entries()]
+      .filter(([cat]) => cat !== "Autre")
+      .sort((a, b) => b[1] - a[1]);
+    const main = sorted.slice(0, MAX_CATEGORY_CHIPS);
+    const mainSet = new Set(main.map(([cat]) => cat));
+    const autreCount = toolkits.filter((t) => !mainSet.has(t.category)).length;
+    const chips: Array<{ label: string; count?: number }> = [
+      ...PINNED_FILTERS.map((label) => ({
+        label,
+        count:
+          label === "Populaires"
+            ? toolkits.filter((t) => t.popular).length
+            : label === "Connectées"
+              ? connectedSet.size
+              : undefined,
+      })),
+      ...main.map(([cat, n]) => ({ label: cat, count: n })),
+      ...(autreCount > 0 ? [{ label: "Autre", count: autreCount }] : []),
+    ];
+    return { categoryChips: chips, mainCategories: mainSet };
+  }, [toolkits, connectedSet]);
+
   const filtered = useMemo(() => {
     let list = toolkits;
     const q = search.trim().toLowerCase();
@@ -84,13 +102,25 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
       case "Non connectées":
         list = list.filter((t) => !connectedSet.has(t.id));
         break;
+      case "Autre":
+        list = list.filter((t) => !mainCategories.has(t.category));
+        break;
       default:
         if (category !== "Toutes") {
           list = list.filter((t) => t.category === category);
         }
     }
-    return list;
-  }, [toolkits, search, category, connectedSet]);
+    // Connectées et populaires d'abord — l'utilisateur retrouve SES apps en tête.
+    return [...list].sort((a, b) => {
+      const ca = connectedSet.has(a.id) ? 0 : 1;
+      const cb = connectedSet.has(b.id) ? 0 : 1;
+      if (ca !== cb) return ca - cb;
+      const pa = a.popular ? 0 : 1;
+      const pb = b.popular ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return a.label.localeCompare(b.label, "fr");
+    });
+  }, [toolkits, search, category, connectedSet, mainCategories]);
 
   async function testConnection(toolkitId: string) {
     setTesting(toolkitId);
@@ -130,16 +160,24 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        {CATEGORIES.map((cat) => (
+        {categoryChips.map((chip) => (
           <button
-            key={cat}
+            key={chip.label}
             type="button"
-            onClick={() => setCategory(cat)}
+            onClick={() => {
+              setCategory(chip.label);
+              setVisibleCount(120);
+            }}
             className={`rounded-full px-3 py-1 text-xs ${
-              category === cat ? "bg-accent text-white" : "border border-line text-ink-soft hover:bg-card2"
+              category === chip.label ? "bg-accent text-white" : "border border-line text-ink-soft hover:bg-card2"
             }`}
           >
-            {cat}
+            {chip.label}
+            {chip.count !== undefined && (
+              <span className={`ml-1 ${category === chip.label ? "text-white/70" : "text-ink-faint"}`}>
+                {chip.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
