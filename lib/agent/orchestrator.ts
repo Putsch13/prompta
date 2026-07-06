@@ -111,23 +111,37 @@ function resolveJsonPath(obj: string, path: string): string {
  * Interpolate {{key}} and {{key.path.to.field}} references.
  * - Simple: {{my_var}} → vars["my_var"]
  * - JSON path: {{step_0_output.data.name}} → JSON parse step_0_output then access data.name
+ * - `maxVarChars` : plafond PAR VALEUR substituée — indispensable pour les
+ *   prompts LLM : une extraction (Gmail, Sheets…) peut ramener des centaines
+ *   de Ko de JSON qui feraient exploser le prompt (erreur fournisseur, coût).
  */
-function interpolate(template: string, vars: Record<string, string>): string {
+function interpolate(
+  template: string,
+  vars: Record<string, string>,
+  opts?: { maxVarChars?: number },
+): string {
+  const cap = (v: string): string =>
+    opts?.maxVarChars && v.length > opts.maxVarChars
+      ? `${v.slice(0, opts.maxVarChars)}\n…[contenu tronqué : ${Math.round(v.length / 1000)} Ko au total]`
+      : v;
   return template.replace(/\{\{([\w.:]+)\}\}/g, (match, expr: string) => {
     if (expr.startsWith("resource:")) {
       return vars[expr] ?? match;
     }
     const dotIdx = expr.indexOf(".");
     if (dotIdx === -1) {
-      return vars[expr] ?? match;
+      return vars[expr] !== undefined ? cap(vars[expr]) : match;
     }
     const baseKey = expr.slice(0, dotIdx);
     const path = expr.slice(dotIdx + 1);
     const baseVal = vars[baseKey];
     if (baseVal === undefined) return match;
-    return resolveJsonPath(baseVal, path);
+    return cap(resolveJsonPath(baseVal, path));
   });
 }
+
+/** Plafond par variable dans un prompt LLM (~6k tokens par valeur). */
+const LLM_VAR_CHAR_CAP = 24_000;
 
 /**
  * Champs de contenu où une URL doit rester intacte (on n'extrait pas l'ID).
@@ -230,7 +244,7 @@ async function executeStep(
   try {
     if (step.type === "llm") {
       const { provider, apiModel, tokenParam } = resolved!;
-      const prompt = interpolate(step.prompt, vars);
+      const prompt = interpolate(step.prompt, vars, { maxVarChars: LLM_VAR_CHAR_CAP });
       if (runId && stepDbId) {
         await updateStepInput(stepDbId, { prompt: prompt.slice(0, 500) }).catch(() => undefined);
       }
@@ -398,7 +412,7 @@ async function executeStep(
       if (step.aiFills && Object.keys(step.aiFills).length > 0) {
         for (const [key, fill] of Object.entries(step.aiFills)) {
           const fillModel = resolveModelOrDefault(fill.model);
-          const fillPrompt = interpolate(fill.prompt, vars);
+          const fillPrompt = interpolate(fill.prompt, vars, { maxVarChars: LLM_VAR_CHAR_CAP });
           if (simulated || ctx.demoMode) {
             params[key] = `[${ctx.demoMode ? "DÉMO" : "APERÇU"} IA ${fillModel.apiModel}] ${fillPrompt.slice(0, 200)}`;
             continue;

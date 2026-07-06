@@ -1257,6 +1257,171 @@ const DREAM_TESTS: QaTest[] = [
   },
 ];
 
+// ═══════════════ Scénarios EXTRACT — lectures/extractions réelles ═══════════════
+// QA_EXTRACT=1 : l'agent LIT les apps (boîte mail, feuilles, agenda, designs)
+// comme un vrai utilisateur — c'est le chemin le moins testé et le plus risqué
+// (JSON énormes, plages/IDs, pagination).
+const EXTRACT_TESTS: QaTest[] = [
+  {
+    name: "extract_gmail_inbox_digest",
+    goal: "Lire la boîte Gmail → digest des derniers emails → envoi du récap à soi-même",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.read",
+          params: { query: "in:inbox newer_than:2d" },
+          outputKey: "boite",
+        },
+        llm(
+          "Voici le JSON de mes derniers emails : {{boite}}\nFais un DIGEST : pour chaque email (max 8) — expéditeur, objet, résumé 1 ligne, urgence (haute/normale/basse). Termine par « À traiter en priorité : X ».",
+          "digest",
+        ),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "📥 Digest de ta boîte mail", body: "{{digest}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "extract_sheets_roundtrip",
+    goal: "Écrire dans une feuille PUIS la relire (sheets.read) et vérifier les données",
+    manifest: {
+      kind: "agent",
+      steps: [
+        ...sheetsWrite("Extract — roundtrip", "Produit;Stock;Prix", "Clavier;12;49\nSouris;30;19\nÉcran;5;179", "rt"),
+        {
+          type: "action",
+          connector: "google_sheets",
+          action: "sheets.read",
+          params: { spreadsheet_id: "{{rt_id}}", range: "A1:C4" },
+          outputKey: "relecture",
+        },
+        llm(
+          "Voici les valeurs relues depuis la feuille : {{relecture}}\nVérifie : 3 produits + 1 en-tête, et calcule la valeur totale du stock (somme stock×prix). Réponds en 3 lignes.",
+          "verif",
+        ),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🔁 Sheets roundtrip — écrit puis relu", body: "{{verif}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+  },
+  {
+    name: "extract_calendar_agenda",
+    goal: "Lire l'agenda Google Calendar (événements à venir) → brief du planning",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "action",
+          connector: "google_calendar",
+          action: "google_calendar.list_events",
+          params: {},
+          outputKey: "agenda",
+        },
+        llm(
+          "Voici mes événements à venir (JSON) : {{agenda}}\nFais un brief de planning : liste chaque événement (date, heure, titre) puis signale les journées chargées. 8 lignes max.",
+          "brief_agenda",
+        ),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🗓️ Brief de ton agenda", body: "{{brief_agenda}}" },
+        },
+      ],
+    },
+    // Lecture dynamique (resolver) : un échec doit rester actionnable.
+    expect: ["completed", "failed"],
+    errorPattern: /requiert des champs|introuvable|non connecté|autorisation|reconnect/i,
+  },
+  {
+    name: "extract_drive_inventaire",
+    goal: "Extraire l'inventaire Drive → catégorisation → BDD Sheets structurée",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "retrieve", source: "google_drive", query: "mes documents récents", maxResults: 8, outputKey: "fichiers" },
+        llm(
+          "Voici mes fichiers Drive : {{fichiers}}\nConvertis en lignes CSV exactes Nom;Type;Catégorie (une par fichier, catégorie déduite du nom : admin/projet/perso/data — AUCUN autre texte).",
+          "inventaire_csv",
+        ),
+        ...sheetsWrite("Extract — inventaire Drive", "Nom;Type;Catégorie", "{{inventaire_csv}}", "inv"),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🗂️ Inventaire Drive structuré", body: "Inventaire écrit dans la feuille « Extract — inventaire Drive » :\n\n{{inventaire_csv}}" },
+        },
+      ],
+    },
+    expect: ["completed"],
+    expectDeliverable: true,
+  },
+  {
+    name: "extract_canva_bibliotheque",
+    goal: "Lister les designs Canva existants → inventaire commenté",
+    manifest: {
+      kind: "agent",
+      steps: [
+        {
+          type: "action",
+          connector: "canva",
+          action: "canva.list_designs",
+          params: {},
+          outputKey: "designs",
+        },
+        llm(
+          "Voici mes designs Canva (JSON) : {{designs}}\nListe-les (titre + type si visible) et repère les doublons de titres. 8 lignes max.",
+          "biblio",
+        ),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🎨 Ta bibliothèque Canva", body: "{{biblio}}" },
+        },
+      ],
+    },
+    expect: ["completed", "failed"],
+    errorPattern: /requiert des champs|introuvable|non connecté|autorisation|reconnect/i,
+  },
+  {
+    name: "extract_web_structuration",
+    goal: "Page web → extraction JSON structurée → chemins {{data.x}} → BDD Sheets",
+    manifest: {
+      kind: "agent",
+      steps: [
+        { type: "retrieve", source: "url", query: "https://www.anthropic.com" },
+        llm(
+          'Extrais de cette page {{step_0_output}} un JSON STRICT (aucun autre texte) : {"titre":"...","promesse":"...","cta":"...","audience":"..."}',
+          "data",
+        ),
+        llm("Réponds exactement : {{data.titre}} | {{data.cta}}", "controle_json"),
+        ...sheetsWrite("Extract — analyse page web", "Champ;Valeur", "Titre;{{data.titre}}\nPromesse;{{data.promesse}}\nCTA;{{data.cta}}\nAudience;{{data.audience}}", "web"),
+        {
+          type: "action",
+          connector: "gmail",
+          action: "gmail.send",
+          params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🌐 Extraction web structurée", body: "Contrôle JSON : {{controle_json}}\n\nDonnées écrites dans la feuille « Extract — analyse page web »." },
+        },
+      ],
+    },
+    expect: ["completed"],
+  },
+];
+
 interface QaResult {
   name: string;
   goal: string;
@@ -1327,11 +1492,13 @@ async function main() {
   // QA_ULTRA=1 : inclut les scénarios ultra-complexes (conservés en base).
   // QA_DREAM=1 : lance UNIQUEMENT les missions vitrines (20 scénarios).
   const pool =
-    process.env.QA_DREAM === "1"
-      ? DREAM_TESTS
-      : process.env.QA_ULTRA === "1"
-        ? [...TESTS, ...ULTRA_TESTS]
-        : TESTS;
+    process.env.QA_EXTRACT === "1"
+      ? EXTRACT_TESTS
+      : process.env.QA_DREAM === "1"
+        ? DREAM_TESTS
+        : process.env.QA_ULTRA === "1"
+          ? [...TESTS, ...ULTRA_TESTS]
+          : TESTS;
   const selected = only?.length ? pool.filter((t) => only.includes(t.name)) : pool;
   if (only?.length) console.log(`Sélection : ${selected.map((t) => t.name).join(", ")}\n`);
 
