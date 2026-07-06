@@ -1,52 +1,58 @@
 import Link from "next/link";
-import { Check, Circle, CreditCard, Plus, DollarSign } from "lucide-react";
+import { Check, Circle, Plus, Plug, Rocket } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 interface Props {
   userId: string;
-  kycComplete: boolean;
+  /** Conservé pour compat — plus utilisé (parcours sans vente). */
+  kycComplete?: boolean;
 }
 
-export async function BuilderOnboardingChecklist({ userId, kycComplete }: Props) {
+/** Parcours d'activation : connecter → construire → mettre en production. */
+export async function BuilderOnboardingChecklist({ userId }: Props) {
   const supabase = await createClient();
+  const admin = createAdminClient();
 
-  const { data: userListings } = await supabase
-    .from("listings")
-    .select("id")
-    .eq("creator_id", userId);
-
-  const ids = userListings?.map((l) => l.id) ?? [];
-
-  const [{ count: listingCount }, { count: purchaseCount }] = await Promise.all([
-    Promise.resolve({ count: ids.length }),
-    supabase
-      .from("purchases")
-      .select("*", { count: "exact", head: true })
-      .in("listing_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
-      .eq("status", "completed"),
-  ]);
+  const [{ count: connectionCount }, { count: agentCount }, { count: runCount }] =
+    await Promise.all([
+      admin
+        .from("user_connections")
+        .select("*", { count: "exact", head: true })
+        .eq("owner_id", userId)
+        .eq("status", "connected"),
+      supabase
+        .from("listings")
+        .select("*", { count: "exact", head: true })
+        .eq("creator_id", userId)
+        .neq("type", "prompt"),
+      admin
+        .from("listing_agent_runs")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId),
+    ]);
 
   const steps = [
     {
-      id: "stripe",
-      label: "Compléter Stripe",
-      done: kycComplete,
-      href: "/dashboard/payouts",
-      icon: CreditCard,
+      id: "connect",
+      label: "Connecter une première app (Gmail, Sheets, Canva…)",
+      done: (connectionCount ?? 0) > 0,
+      href: "/dashboard/connexions",
+      icon: Plug,
     },
     {
-      id: "publish",
-      label: "Publier son 1er contenu",
-      done: (listingCount ?? 0) > 0,
+      id: "build",
+      label: "Construire son premier agent avec le copilote",
+      done: (agentCount ?? 0) > 0,
       href: "/dashboard/new",
       icon: Plus,
     },
     {
-      id: "sale",
-      label: "Recevoir une 1re vente",
-      done: (purchaseCount ?? 0) > 0,
-      href: "/dashboard/payouts",
-      icon: DollarSign,
+      id: "run",
+      label: "Le lancer pour de vrai et suivre le live",
+      done: (runCount ?? 0) > 0,
+      href: "/dashboard/new",
+      icon: Rocket,
     },
   ];
 
@@ -54,10 +60,10 @@ export async function BuilderOnboardingChecklist({ userId, kycComplete }: Props)
   if (completed === steps.length) return null;
 
   return (
-    <div className="mt-8 rounded-xl border border-line bg-card p-6">
-      <h2 className="font-display text-lg font-semibold text-ink">Parcours builder</h2>
+    <div className="mt-8 rounded-2xl border border-line bg-card p-6">
+      <h2 className="font-display text-lg font-semibold text-ink">Bien démarrer</h2>
       <p className="mt-1 text-sm text-ink-soft">
-        {completed}/{steps.length} étapes
+        {completed}/{steps.length} étapes — ton premier agent en production en moins de 10 minutes.
       </p>
       <ul className="mt-4 space-y-3">
         {steps.map((step) => (

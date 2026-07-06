@@ -5,9 +5,9 @@
 :root {
   --background: #FAFAFA;
   --foreground: #191919;
-  --accent: #0A66C2;
-  --accent-hover: #004182;
-  --accent-light: #E8F0FE;
+  --accent: #4F46E5;
+  --accent-hover: #4338CA;
+  --accent-light: #EEF2FF;
 }
 
 @media (prefers-color-scheme: dark) {

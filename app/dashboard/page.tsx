@@ -4,27 +4,61 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   Plus,
-  Download,
-  Star,
-  DollarSign,
+  Bot,
+  Coins,
+  ClipboardCheck,
+  Activity,
   Pencil,
-  ExternalLink,
   AlertTriangle,
-  CreditCard,
-  TrendingUp,
-  RotateCcw,
+  ArrowRight,
 } from "lucide-react";
 import type { Metadata } from "next";
-import { TypeBadge, PriceTag, fmt } from "@/components/ui";
-import { PromoteButton } from "@/components/PromoteButton";
+import { StatusPill, statusTone } from "@/components/ui";
 import { BuilderOnboardingChecklist } from "@/components/onboarding/BuilderOnboardingChecklist";
-import { creatorNetCents, PLATFORM_COMMISSION_PERCENT } from "@/lib/stripe";
+import { getUserPlan, publishedAgentCount } from "@/lib/billing/entitlements";
+import { getCreditBalance } from "@/lib/credits";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Dashboard | Prompta",
 };
+
+const RUN_STATUS_LABELS: Record<string, string> = {
+  pending: "En attente",
+  running: "En cours",
+  awaiting_approval: "Validation requise",
+  completed: "Terminé",
+  failed: "Échoué",
+  suspended: "Suspendu",
+  cancelled: "Annulé",
+};
+
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+  href,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  sub?: string;
+  href?: string;
+}) {
+  const inner = (
+    <div className="h-full rounded-2xl border border-line bg-card p-5 transition-shadow hover:shadow-md">
+      <div className="flex items-center gap-2 text-ink-soft">
+        {icon}
+        <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
+      </div>
+      <p className="mt-3 font-display text-3xl font-bold text-ink">{value}</p>
+      {sub && <p className="mt-1 text-xs text-ink-faint">{sub}</p>}
+    </div>
+  );
+  return href ? <Link href={href}>{inner}</Link> : inner;
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -44,326 +78,233 @@ export default async function DashboardPage() {
 
   if (!profile) redirect("/onboarding");
 
-  const { data: stripeAccount } = await supabase
-    .from("stripe_accounts")
-    .select("charges_enabled, payouts_enabled")
-    .eq("profile_id", user.id)
-    .maybeSingle();
-
-  const kycComplete =
-    stripeAccount?.charges_enabled === true && stripeAccount?.payouts_enabled === true;
-
-  const { data: listings } = await supabase
-    .from("listings")
-    .select("id, title, slug, type, status, price_cents, created_at, updated_at")
-    .eq("creator_id", user.id)
-    .order("updated_at", { ascending: false });
-
-  const listingIds = (listings || []).map((l) => l.id);
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const [
-    { count: totalDownloads },
-    { data: purchases },
-    { data: reviews },
-    { data: subs },
-    { data: recentAgentRuns },
+    planInfo,
+    published,
+    balanceCents,
+    { data: agents },
+    { count: runsWeek },
+    { count: failedWeek },
+    { count: pendingApprovals },
+    { data: recentRuns },
     { count: invalidKeys },
-    { data: underReview },
   ] = await Promise.all([
-    supabase
-      .from("downloads")
-      .select("*", { count: "exact", head: true })
-      .in("listing_id", listingIds.length ? listingIds : ["00000000-0000-0000-0000-000000000000"]),
+    getUserPlan(user.id),
+    publishedAgentCount(user.id),
+    getCreditBalance(user.id),
     admin
-      .from("purchases")
-      .select("amount_cents, platform_fee_cents, listing_id")
-      .in("listing_id", listingIds.length ? listingIds : ["00000000-0000-0000-0000-000000000000"])
-      .eq("status", "completed"),
-    supabase
-      .from("reviews")
-      .select("rating, listing_id")
-      .in("listing_id", listingIds.length ? listingIds : ["00000000-0000-0000-0000-000000000000"]),
-    admin
-      .from("subscriptions")
-      .select("listing_id")
-      .in("listing_id", listingIds.length ? listingIds : ["00000000-0000-0000-0000-000000000000"])
-      .eq("status", "active"),
+      .from("listings")
+      .select("id, title, slug, type, status, updated_at")
+      .eq("creator_id", user.id)
+      .neq("type", "prompt")
+      .order("updated_at", { ascending: false })
+      .limit(8),
     admin
       .from("listing_agent_runs")
-      .select("id, status, error_message, created_at, listing_id, listing:listings(title, slug)")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gt("created_at", weekAgo),
+    admin
+      .from("listing_agent_runs")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("status", "failed")
+      .gt("created_at", weekAgo),
+    admin
+      .from("agent_approvals")
+      .select("*, listing_agent_runs!inner(user_id)", { count: "exact", head: true })
+      .eq("listing_agent_runs.user_id", user.id)
+      .eq("status", "pending"),
+    admin
+      .from("listing_agent_runs")
+      .select("id, status, created_at, listing:listings(title)")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
-      .limit(5),
-    supabase
+      .limit(6),
+    admin
       .from("user_api_keys")
       .select("*", { count: "exact", head: true })
       .eq("owner_id", user.id)
       .eq("is_valid", false),
-    supabase
-      .from("listings")
-      .select("id, title")
-      .eq("creator_id", user.id)
-      .eq("status", "under_review"),
   ]);
 
-  const totalSalesCents = (purchases ?? []).reduce((s, p) => s + p.amount_cents, 0);
-  const totalCommissionCents = (purchases ?? []).reduce((s, p) => s + p.platform_fee_cents, 0);
-  const netRevenueCents = totalSalesCents - totalCommissionCents;
-
-  const { data: listingPrices } = await admin
-    .from("listings")
-    .select("id, subscription_price_cents")
-    .in("id", listingIds.length ? listingIds : ["00000000-0000-0000-0000-000000000000"]);
-
-  const priceMap = Object.fromEntries(
-    (listingPrices ?? []).map((l) => [l.id, l.subscription_price_cents ?? 0])
-  );
-  const mrrCents = (subs ?? []).reduce(
-    (s, sub) => s + creatorNetCents(priceMap[sub.listing_id] ?? 0),
-    0
-  );
-
-  const avgRating =
-    reviews && reviews.length > 0
-      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
-      : 0;
-
   const alerts: { message: string; href: string }[] = [];
-  if (!kycComplete) {
-    alerts.push({ message: "Complétez Stripe pour vendre du contenu payant", href: "/dashboard/payouts" });
+  if ((pendingApprovals ?? 0) > 0) {
+    alerts.push({
+      message: `${pendingApprovals} validation(s) en attente — un agent est en pause`,
+      href: "/dashboard/validations",
+    });
+  }
+  if ((failedWeek ?? 0) > 0) {
+    alerts.push({
+      message: `${failedWeek} run(s) en échec cette semaine — l'IA peut les réparer`,
+      href: "/dashboard/runs",
+    });
   }
   if ((invalidKeys ?? 0) > 0) {
     alerts.push({ message: `${invalidKeys} clé(s) API invalide(s)`, href: "/dashboard/connexions" });
   }
-  if (underReview && underReview.length > 0) {
-    alerts.push({
-      message: `${underReview.length} contenu(s) en revue`,
-      href: `/dashboard/listing/${underReview[0].id}/edit`,
-    });
-  }
-  const recentRunsTyped = (recentAgentRuns ?? []) as {
-    id: string;
-    status: string;
-    listing: { title?: string; slug?: string } | null;
-  }[];
 
-  const failedRuns = recentRunsTyped.filter((r) => r.status === "failed");
-  if (failedRuns.length > 0) {
-    alerts.push({ message: "Des runs agent ont échoué récemment", href: "/dashboard/runs" });
-  }
+  const quotaLabel =
+    planInfo.unrestricted || planInfo.plan.publishedAgentLimit == null
+      ? `${published}`
+      : `${published} / ${planInfo.plan.publishedAgentLimit}`;
 
   return (
     <div>
-      <div className="mb-6 rounded-xl border border-line bg-card p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <CreditCard className="h-5 w-5 text-accent" />
-            <div>
-              <p className="font-medium text-ink">
-                Compte Stripe :{" "}
-                {kycComplete ? (
-                  <span className="text-green-600">✅ connecté</span>
-                ) : (
-                  <span className="text-amber-600">⚠️ à compléter</span>
-                )}
-              </p>
-              <p className="mt-0.5 text-xs text-ink-soft">
-                Connectez votre compte une seule fois. Ensuite, fixez un prix sur vos contenus et la
-                commission de {PLATFORM_COMMISSION_PERCENT} % est prélevée automatiquement.
-              </p>
-            </div>
-          </div>
-          {!kycComplete && (
-            <Link
-              href="/dashboard/payouts"
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
-            >
-              Configurer Stripe
-            </Link>
-          )}
-          {kycComplete && (
-            <Link
-              href="/dashboard/payouts"
-              className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-accent"
-            >
-              Voir mes revenus
-            </Link>
-          )}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-ink">
+            Bonjour, {profile.display_name}
+          </h1>
+          <p className="mt-1 text-sm text-ink-soft">
+            Plan {planInfo.plan.label}
+            {planInfo.unrestricted ? " · illimité" : ""} — tes agents travaillent, tu supervises.
+          </p>
         </div>
-      </div>
-
-      <div>
-        <h1 className="font-display text-2xl font-bold text-ink">
-          Bonjour, {profile.display_name}
-        </h1>
-        <p className="mt-1 text-sm text-ink-soft">@{profile.username} · Espace builder</p>
-      </div>
-
-      <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={<DollarSign className="h-5 w-5 text-accent" />} label="Ventes cumulées" value={`${(netRevenueCents / 100).toFixed(0)} €`} />
-        <StatCard icon={<TrendingUp className="h-5 w-5 text-accent" />} label="MRR abonnements" value={`${(mrrCents / 100).toFixed(0)} €`} sub={`${subs?.length ?? 0} abonné(s)`} />
-        <StatCard icon={<CreditCard className="h-5 w-5 text-accent" />} label={`Commission (${PLATFORM_COMMISSION_PERCENT} %)`} value={`${(totalCommissionCents / 100).toFixed(0)} €`} />
-        <StatCard icon={<Download className="h-5 w-5 text-accent" />} label="Téléchargements" value={totalDownloads || 0} />
-        <StatCard icon={<Star className="h-5 w-5 text-accent" />} label="Note moyenne" value={avgRating > 0 ? avgRating.toFixed(1) : "—"} />
+        <Link
+          href="/dashboard/new"
+          className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent-hover"
+        >
+          <Plus className="h-4 w-4" /> Nouvel agent
+        </Link>
       </div>
 
       {alerts.length > 0 && (
-        <div className="mt-6 space-y-2">
+        <div className="mt-5 space-y-2">
           {alerts.map((a) => (
             <Link
-              key={a.message}
+              key={a.href + a.message}
               href={a.href}
-              className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 hover:bg-amber-100"
+              className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 hover:border-amber-300"
             >
-              <AlertTriangle className="h-4 w-4" /> {a.message}
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span className="flex-1">{a.message}</span>
+              <ArrowRight className="h-4 w-4 shrink-0" />
             </Link>
           ))}
         </div>
       )}
 
-      <BuilderOnboardingChecklist userId={user.id} kycComplete={kycComplete} />
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          icon={<Bot className="h-4 w-4" />}
+          label="Agents en production"
+          value={quotaLabel}
+          sub={planInfo.plan.publishedAgentLimit == null || planInfo.unrestricted ? "illimité" : `plan ${planInfo.plan.label}`}
+          href="/dashboard/contenus"
+        />
+        <StatCard
+          icon={<Activity className="h-4 w-4" />}
+          label="Runs sur 7 jours"
+          value={runsWeek ?? 0}
+          sub={failedWeek ? `${failedWeek} échec(s)` : "aucun échec"}
+          href="/dashboard/runs"
+        />
+        <StatCard
+          icon={<ClipboardCheck className="h-4 w-4" />}
+          label="Validations"
+          value={pendingApprovals ?? 0}
+          sub="en attente de ton feu vert"
+          href="/dashboard/validations"
+        />
+        <StatCard
+          icon={<Coins className="h-4 w-4" />}
+          label="Crédits IA"
+          value={`${(Math.max(0, balanceCents) / 100).toFixed(2)} €`}
+          sub={planInfo.plan.monthlyCreditCents > 0 ? `+${(planInfo.plan.monthlyCreditCents / 100).toFixed(0)} €/mois inclus` : "recharge ou BYOK"}
+          href="/dashboard/credits"
+        />
+      </div>
 
-      {(recentRunsTyped.length > 0) && (
-        <div className="mt-8">
+      <BuilderOnboardingChecklist userId={user.id} kycComplete={true} />
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        {/* ── Runs récents ── */}
+        <section className="rounded-2xl border border-line bg-card p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold text-ink">Runs récents</h2>
             <Link href="/dashboard/runs" className="text-sm text-accent hover:underline">
-              Tout voir
+              Tout voir →
             </Link>
           </div>
-          <div className="mt-3 space-y-2">
-            {recentRunsTyped.map((run) => (
-              <div key={run.id} className="flex items-center justify-between rounded-lg border border-line bg-card px-4 py-2 text-sm">
-                <span>{run.listing?.title ?? "Agent"}</span>
-                <span className={run.status === "completed" ? "text-green-600" : run.status === "failed" ? "text-red-600" : "text-amber-600"}>
-                  {run.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+          {(recentRuns ?? []).length === 0 ? (
+            <p className="mt-4 text-sm text-ink-soft">
+              Aucun run pour l&apos;instant — lance ton premier agent.
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-line-soft">
+              {(recentRuns ?? []).map((r) => (
+                <li key={r.id}>
+                  <Link
+                    href={`/dashboard/runs/${r.id}`}
+                    className="flex items-center gap-3 py-2.5 hover:bg-card2/50"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                      {(r.listing as { title?: string } | null)?.title ?? "Agent"}
+                    </span>
+                    <StatusPill tone={statusTone(r.status)}>
+                      {RUN_STATUS_LABELS[r.status] ?? r.status}
+                    </StatusPill>
+                    <span className="shrink-0 text-xs text-ink-faint">
+                      {new Date(r.created_at ?? Date.now()).toLocaleDateString("fr-FR")}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
-      <div className="mt-10">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold text-ink">Mes contenus</h2>
-          <Link href="/dashboard/new" className="flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
-            <Plus className="h-4 w-4" /> Ajouter
-          </Link>
-        </div>
-
-        {!listings || listings.length === 0 ? (
-          <div className="mt-6 rounded-xl border-2 border-dashed border-line bg-card p-12 text-center">
-            <p className="text-ink-soft">Aucun contenu publié.</p>
-            <Link href="/dashboard/new" className="mt-4 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white">
-              <Plus className="h-4 w-4" /> Déposer mon premier contenu
+        {/* ── Mes agents ── */}
+        <section className="rounded-2xl border border-line bg-card p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-lg font-semibold text-ink">Mes agents</h2>
+            <Link href="/dashboard/contenus" className="text-sm text-accent hover:underline">
+              Tout voir →
             </Link>
           </div>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {await Promise.all(
-              listings.map(async (listing) => {
-                const [{ count: dl }, { count: sales }, { count: activeSubs }, { data: agentRuns }] =
-                  await Promise.all([
-                    supabase.from("downloads").select("*", { count: "exact", head: true }).eq("listing_id", listing.id),
-                    admin.from("purchases").select("*", { count: "exact", head: true }).eq("listing_id", listing.id).eq("status", "completed"),
-                    admin.from("subscriptions").select("*", { count: "exact", head: true }).eq("listing_id", listing.id).eq("status", "active"),
-                    admin.from("listing_agent_runs").select("status").eq("listing_id", listing.id),
-                  ]);
-                const listingReviews = (reviews ?? []).filter((r) => r.listing_id === listing.id);
-                const rating =
-                  listingReviews.length > 0
-                    ? listingReviews.reduce((s, r) => s + r.rating, 0) / listingReviews.length
-                    : null;
-                const runsOk = (agentRuns ?? []).filter((r) => r.status === "completed").length;
-                const runsFail = (agentRuns ?? []).filter((r) => r.status === "failed").length;
-
-                return (
-                  <div key={listing.id} className="rounded-xl border border-line bg-card p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <TypeBadge type={listing.type as "prompt" | "agent" | "workflow"} size="sm" />
-                        <div>
-                          <h3 className="font-medium text-ink">{listing.title}</h3>
-                          <p className="text-xs text-ink-faint">
-                            {dl ?? 0} vues/dl · {sales ?? 0} ventes · {activeSubs ?? 0} abonnés
-                            {rating != null && ` · ${rating.toFixed(1)} ★`}
-                            {(listing.type === "agent" || listing.type === "workflow") &&
-                              ` · ${runsOk} runs OK / ${runsFail} échecs`}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge status={listing.status ?? "draft"} />
-                        <PriceTag priceCents={listing.price_cents ?? 0} size="sm" />
-                        <Link href={`/dashboard/listing/${listing.id}/edit`} className="rounded-lg border border-line p-2 hover:bg-card2" title="Éditer">
-                          <Pencil className="h-4 w-4 text-ink-faint" />
-                        </Link>
-                        <Link href={`/dashboard/new?fork=${listing.id}`} className="rounded-lg border border-line p-2 hover:bg-card2" title="Nouvelle version">
-                          <RotateCcw className="h-4 w-4 text-ink-faint" />
-                        </Link>
-                        {listing.status === "published" && (
-                          <>
-                            <PromoteButton slug={listing.slug} title={listing.title} />
-                            <Link href={`/listing/${listing.slug}`} className="rounded-lg border border-line p-2 hover:bg-card2" title="Voir la fiche">
-                              <ExternalLink className="h-4 w-4 text-ink-faint" />
-                            </Link>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
+          {(agents ?? []).length === 0 ? (
+            <div className="mt-4">
+              <p className="text-sm text-ink-soft">
+                Décris ton objectif, le copilote construit l&apos;agent.
+              </p>
+              <Link
+                href="/dashboard/new"
+                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+              >
+                <Plus className="h-4 w-4" /> Créer mon premier agent
+              </Link>
+            </div>
+          ) : (
+            <ul className="mt-3 divide-y divide-line-soft">
+              {(agents ?? []).map((a) => (
+                <li key={a.id} className="flex items-center gap-3 py-2.5">
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{a.title}</span>
+                  <StatusPill
+                    tone={a.status === "published" ? "success" : a.status === "under_review" ? "warning" : "neutral"}
+                  >
+                    {a.status === "published"
+                      ? "En production"
+                      : a.status === "under_review"
+                        ? "En revue"
+                        : "Brouillon"}
+                  </StatusPill>
+                  <Link
+                    href={`/dashboard/listing/${a.id}/edit`}
+                    className="shrink-0 rounded-lg border border-line p-1.5 text-ink-soft hover:border-accent hover:text-accent"
+                    aria-label="Éditer"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number | string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-line bg-card p-4">
-      <div className="flex items-center gap-2">
-        {icon}
-        <span className="text-xs text-ink-soft">{label}</span>
-      </div>
-      <p className="mt-2 font-display text-2xl font-bold text-ink">
-        {typeof value === "number" ? fmt(value) : value}
-      </p>
-      {sub && <p className="text-xs text-ink-faint">{sub}</p>}
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    draft: "bg-card2 text-ink-soft",
-    under_review: "bg-amber-50 text-amber-700",
-    published: "bg-green-50 text-green-700",
-    rejected: "bg-red-50 text-red-700",
-  };
-  const labels: Record<string, string> = {
-    draft: "Brouillon",
-    under_review: "En revue",
-    published: "Publié",
-    rejected: "Refusé",
-  };
-  return (
-    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status] || styles.draft}`}>
-      {labels[status] || status}
-    </span>
   );
 }
