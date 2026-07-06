@@ -297,19 +297,26 @@ interface RawToolItem {
 }
 
 /** Tous les outils d'un toolkit via l'API REST v3 (curseur suivi — le SDK
- *  jette next_cursor et tronquait les gros toolkits). */
+ *  jette next_cursor et tronquait les gros toolkits). Budget temps : quelques
+ *  méga-toolkits mettent > 100 s (timeout proxy) — on rend alors un catalogue
+ *  PARTIEL plutôt que de bloquer toute la requête. */
 async function fetchAllToolsRaw(toolkitSlug: string): Promise<RawToolItem[]> {
   const apiKey = process.env.COMPOSIO_API_KEY?.trim();
   if (!apiKey) return [];
   const items: RawToolItem[] = [];
   let cursor: string | null = null;
+  const deadline = Date.now() + 45_000;
   for (let page = 0; page < 30; page++) {
+    if (Date.now() > deadline) break; // partiel > blocage
     const url = new URL("https://backend.composio.dev/api/v3/tools");
     url.searchParams.set("toolkit_slug", toolkitSlug);
     url.searchParams.set("limit", "100");
     if (cursor) url.searchParams.set("cursor", cursor);
-    const res = await fetch(url, { headers: { "x-api-key": apiKey } });
-    if (!res.ok) break;
+    const res = await fetch(url, {
+      headers: { "x-api-key": apiKey },
+      signal: AbortSignal.timeout(20_000),
+    }).catch(() => null);
+    if (!res || !res.ok) break;
     const data = (await res.json()) as { items?: RawToolItem[]; next_cursor?: string | null };
     items.push(...(data.items ?? []));
     cursor = data.next_cursor ?? null;

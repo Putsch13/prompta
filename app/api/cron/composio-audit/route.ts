@@ -48,6 +48,13 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Sonde légère : ?slugs=1 → slugs de la tranche (sans fetch des outils).
+  if (url.searchParams.get("slugs")) {
+    return NextResponse.json({
+      slugs: allToolkits.slice(offset, offset + limit).map((t) => t.id),
+    });
+  }
+
   const targets = only?.length
     ? allToolkits.filter((t) => only.includes(t.id))
     : allToolkits.slice(offset, offset + limit);
