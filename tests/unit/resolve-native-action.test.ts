@@ -139,3 +139,12 @@ test("pickToolSlug — un piège explicitement demandé reste résolvable", () =
   ] as Parameters<typeof pickToolSlug>[0];
   assert.equal(pickToolSlug(tools, "asana", "asana.create_task_comment"), "ASANA_CREATE_TASK_COMMENT");
 });
+
+test("pickToolSlug — deprecated exclu + premier token mutant écarté en lecture + piège annulé si défaut", () => {
+  const tools = [
+    { slug: "TRELLO_ADD_BOARDS_LISTS_BY_ID_BOARD", name: "Add new list to board (Deprecated)", description: "DEPRECATED: use...", toolkit: "trello", inputs: [] },
+    { slug: "TRELLO_GET_BOARDS_BY_ID_BOARD", name: "Get boards by id board", toolkit: "trello", inputs: [{ key: "idBoard", label: "Id Board", required: true, type: "text", kind: "input", defaultScope: "dynamic" }] },
+    { slug: "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER", name: "Get member boards by id", toolkit: "trello", inputs: [{ key: "idMember", label: "Id Member", required: false, type: "text", kind: "input", defaultScope: "dynamic", defaultValue: "me" }] },
+  ] as Parameters<typeof pickToolSlug>[0];
+  assert.equal(pickToolSlug(tools, "trello", "trello.list_boards"), "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER");
+});

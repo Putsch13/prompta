@@ -53,7 +53,7 @@ const VERB_SYNONYMS: Record<string, string[]> = {
   read: ["read", "get", "download", "export", "fetch", "parse", "retrieve", "view", "show", "find"],
   get: ["get", "read", "download", "export", "fetch", "retrieve", "find"],
   download: ["download", "export", "get", "read", "fetch"],
-  list: ["list", "search", "find", "getall", "query", "fetch", "all"],
+  list: ["list", "search", "find", "getall", "query", "fetch", "all", "get"],
   search: ["search", "find", "list", "query", "lookup"],
   find: ["find", "search", "get", "list", "lookup"],
   create: ["create", "add", "insert", "upload", "new", "make", "post"],
@@ -164,9 +164,14 @@ export function pickToolSlug(
   let best: { slug: string; score: number; rank: number; len: number } | null = null;
 
   for (const tool of tools) {
+    // Outils DÉPRÉCIÉS : jamais choisis (Composio fournit toujours le
+    // remplaçant — ex. TRELLO_ADD_BOARDS_LISTS… « (Deprecated) »).
+    if (/deprecated/i.test(tool.name) || /^\s*deprecated/i.test(tool.description ?? "")) continue;
+
     const tail = toolTail(tool.slug, toolkit);
     const tailNorm = norm(tail);
-    const tailToks = new Set([...tokens(tail), ...tokens(tool.name)]);
+    const slugToks = tokens(tail);
+    const tailToks = new Set([...slugToks, ...tokens(tool.name)]);
 
     const hasVerb = Array.from(synonyms).some((s) => tailToks.has(s));
     const hasMutating = Array.from(tailToks).some((t) => MUTATING.has(t));
@@ -174,6 +179,10 @@ export function pickToolSlug(
 
     // Garde-fou : verbe demandé en lecture seule mais outil mutant/destructif → on écarte.
     if (requestedReadOnly && hasMutating && !hasReadToken) continue;
+    // Ancrage sur le PREMIER token du slug (= le verbe de l'API REST) : un nom
+    // marketing contenant « list » ne blanchit pas un ADD_/CREATE_/DELETE_
+    // (« Add new list to board » piégeait list_boards).
+    if (requestedReadOnly && slugToks.length > 0 && MUTATING.has(slugToks[0])) continue;
     // Symétrique : verbe d'ÉCRITURE demandé mais outil purement lecture → on
     // écarte (sinon « create_spreadsheet » choisissait VALUES_GET parce que
     // son nom contenait « spreadsheet » — le score objet dominait le verbe).
@@ -223,6 +232,17 @@ export function pickToolSlug(
     // (rediger_brouillon → CREATE_EMAIL_DRAFT) passeraient sous le plancher.
     const requested = new Set([...verbToks, ...synonyms, ...tokens(toolkit)]);
     const STOPWORDS = new Set(["with", "optional", "in", "a", "an", "the", "new", "or", "and", "by", "for", "to", "of", "from", "text"]);
+    // Un token « piège » est ANNULÉ si le schéma porte un paramètre
+    // correspondant optionnel ou avec défaut : idMember (défaut « me ») sur
+    // GET_MEMBERS_BOARDS ne change pas l'objet de l'action.
+    const defaultedTokens = new Set<string>();
+    for (const input of tool.inputs ?? []) {
+      if (input.defaultValue !== undefined || !input.required) {
+        // Découpe camelCase (idMember → id, member) avant tokenisation.
+        const snake = input.key.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+        for (const t of tokens(snake)) defaultedTokens.add(t);
+      }
+    }
     let extras = 0;
     let traps = 0;
     for (const t of tailToks) {
@@ -230,8 +250,16 @@ export function pickToolSlug(
       // Tokens à CHANGEMENT D'OBJET : « create_task » ne doit jamais tomber sur
       // CREATE_TASK_COMMENT, « create_issue » sur CREATE_ISSUE_NOTE, ni
       // « create_card » sur CREATE_CARD_STICKER — l'outil fait AUTRE CHOSE.
-      if (TRAP_TOKENS.has(t)) traps += 1;
-      else extras += 1;
+      if (TRAP_TOKENS.has(t)) {
+        const singular = t.endsWith("s") ? t.slice(0, -1) : t;
+        // Annulé ET gratuit : le sous-objet est auto-remplissable (défaut/optionnel),
+        // il ne doit ni disqualifier ni pénaliser (idMember défaut « me »).
+        if (!(defaultedTokens.has(t) || defaultedTokens.has(singular) || defaultedTokens.has(t + "s"))) {
+          traps += 1;
+        }
+      } else {
+        extras += 1;
+      }
     }
     const rankScore = score - extras * 80 - traps * 400;
 
