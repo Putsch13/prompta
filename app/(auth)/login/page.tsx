@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -10,6 +10,15 @@ export default function LoginPage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/dashboard";
+
+  // Déjà connecté ? Direction le dashboard immédiatement — pas d'écran de
+  // connexion inutile (et pas de « il faut rafraîchir »).
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) window.location.assign(redirect);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
