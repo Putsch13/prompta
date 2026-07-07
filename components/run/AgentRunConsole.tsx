@@ -768,6 +768,7 @@ export function AgentRunConsole({
       )}
 
       <HumanApprovalModal
+        runId={runId}
         open={runStatus === "awaiting_approval" && approval != null && !modalDismissed}
         approval={approval}
         onApprove={handleApprove}

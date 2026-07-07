@@ -1422,6 +1422,327 @@ const EXTRACT_TESTS: QaTest[] = [
   },
 ];
 
+// ═══════════════ Scénarios PROD — production RÉELLE dans Notion/Trello/LinkedIn/YouTube/Stripe ═══════════════
+// QA_PROD=1. Emails uniquement vers SELF_EMAIL. LinkedIn : la publication réelle
+// est UNIQUEMENT dans prod_linkedin_post_reel (à lancer avec QA_LEAVE_APPROVALS=1
+// pour que le propriétaire décide) — les autres missions préparent sans publier.
+const PROD_TESTS: QaTest[] = [
+  // ── NOTION (5) ──
+  {
+    name: "prod_notion_base_connaissances",
+    goal: "Notion : page « Base de connaissances IA » rédigée et créée",
+    manifest: { kind: "agent", steps: [
+      { type: "tool", tool: "web_search", params: { query: "meilleures pratiques agents IA entreprise 2026" } },
+      llm("Rédige une page de base de connaissances structurée (titres, listes) : « Adopter les agents IA » à partir de : {{step_0_output}}. 300 mots max.", "contenu"),
+      { type: "action", connector: "notion", action: "notion.create_page", params: { title: "QA Prod — Adopter les agents IA" }, aiFills: { content: { model: MODEL, prompt: "Reprends tel quel : {{contenu}}" } }, outputKey: "page" },
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🗒️ Page Notion créée — base de connaissances", body: "Page créée : {{page}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_notion_notes_reunion",
+    goal: "Notion : compte-rendu de réunion fictif structuré",
+    manifest: { kind: "agent", steps: [
+      llm("Rédige un compte-rendu de réunion FICTIF (équipe produit, sprint) : décisions, actions, responsables. Structure markdown.", "cr"),
+      { type: "action", connector: "notion", action: "notion.create_page", params: { title: "QA Prod — CR sprint produit" }, aiFills: { content: { model: MODEL, prompt: "Reprends tel quel : {{cr}}" } }, outputKey: "page" },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_notion_veille_hebdo",
+    goal: "Notion : page de veille avec sources web réelles",
+    manifest: { kind: "agent", steps: [
+      { type: "parallel", branches: [
+        { steps: [{ type: "tool", tool: "web_search", params: { query: "actualité SaaS France cette semaine" } }], outputKey: "saas" },
+        { steps: [{ type: "tool", tool: "web_search", params: { query: "levées de fonds IA Europe cette semaine" } }], outputKey: "funding" },
+      ], outputKey: "veille" },
+      llm("Page de veille hebdo : 3 brèves SaaS ({{saas}}) + 3 brèves funding ({{funding}}), avec source pour chaque.", "note"),
+      { type: "action", connector: "notion", action: "notion.create_page", params: { title: "QA Prod — Veille hebdo" }, aiFills: { content: { model: MODEL, prompt: "Reprends tel quel : {{note}}" } } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_notion_plan_projet",
+    goal: "Notion : plan de projet en 5 phases avec jalons",
+    manifest: { kind: "agent", steps: [
+      llm("Plan de projet « Lancement newsletter B2B » : 5 phases, jalons datés, livrables. Markdown structuré.", "plan"),
+      { type: "approval", label: "QA Prod — valider le plan avant création Notion", payloadTemplate: "{{plan}}", outputKey: "plan_ok" },
+      { type: "action", connector: "notion", action: "notion.create_page", params: { title: "QA Prod — Plan newsletter B2B" }, aiFills: { content: { model: MODEL, prompt: "Reprends tel quel : {{plan_ok}}" } } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_notion_faq_produit",
+    goal: "Notion : FAQ produit générée depuis le site",
+    manifest: { kind: "agent", steps: [
+      { type: "retrieve", source: "url", query: "https://prompta-sjtf.onrender.com/aide" },
+      llm("Extrais 5 Q/R clés de cette FAQ : {{step_0_output}}. Format : ### Question puis réponse.", "faq"),
+      { type: "action", connector: "notion", action: "notion.create_page", params: { title: "QA Prod — FAQ produit (extrait)" }, aiFills: { content: { model: MODEL, prompt: "Reprends tel quel : {{faq}}" } } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  // ── TRELLO (5) ──
+  {
+    name: "prod_trello_board_lancement",
+    goal: "Trello : board de lancement produit créé avec listes",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "trello", action: "trello.create_board", params: { name: "QA Prod — Lancement" }, outputKey: "board" },
+      llm("Réponds UNIQUEMENT l'id du board créé : {{board}}", "board_id"),
+      { type: "action", connector: "trello", action: "trello.create_list", params: { name: "À faire", board_id: "{{board_id}}" }, outputKey: "liste" },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_trello_cartes_actions",
+    goal: "Trello : cartes d'action générées par IA sur une liste",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "trello", action: "trello.create_board", params: { name: "QA Prod — Actions semaine" }, outputKey: "board" },
+      llm("Réponds UNIQUEMENT l'id du board : {{board}}", "board_id"),
+      { type: "action", connector: "trello", action: "trello.create_list", params: { name: "Sprint", board_id: "{{board_id}}" }, outputKey: "liste" },
+      llm("Réponds UNIQUEMENT l'id de la liste : {{liste}}", "list_id"),
+      { type: "action", connector: "trello", action: "trello.create_card", params: { name: "Préparer la démo client", list_id: "{{list_id}}" }, outputKey: "carte" },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_trello_retro_sprint",
+    goal: "Trello : rétro de sprint (généré) postée en carte",
+    manifest: { kind: "agent", steps: [
+      llm("Rétro de sprint FICTIVE : 3 points positifs, 3 axes d'amélioration, 2 actions. Concis.", "retro"),
+      { type: "action", connector: "trello", action: "trello.create_board", params: { name: "QA Prod — Rétro" }, outputKey: "board" },
+      llm("Réponds UNIQUEMENT l'id du board : {{board}}", "board_id"),
+      { type: "action", connector: "trello", action: "trello.create_list", params: { name: "Rétro", board_id: "{{board_id}}" }, outputKey: "liste" },
+      llm("Réponds UNIQUEMENT l'id de la liste : {{liste}}", "list_id"),
+      { type: "action", connector: "trello", action: "trello.create_card", params: { name: "Rétro sprint", desc: "{{retro}}", list_id: "{{list_id}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_trello_veille_cartes",
+    goal: "Trello : 1 carte de veille alimentée par recherche web",
+    manifest: { kind: "agent", steps: [
+      { type: "tool", tool: "web_search", params: { query: "tendances gestion de projet 2026" } },
+      llm("Synthèse en 5 puces : {{step_0_output}}", "synthese"),
+      { type: "action", connector: "trello", action: "trello.create_board", params: { name: "QA Prod — Veille PM" }, outputKey: "board" },
+      llm("Réponds UNIQUEMENT l'id du board : {{board}}", "board_id"),
+      { type: "action", connector: "trello", action: "trello.create_list", params: { name: "Veille", board_id: "{{board_id}}" }, outputKey: "liste" },
+      llm("Réponds UNIQUEMENT l'id de la liste : {{liste}}", "list_id"),
+      { type: "action", connector: "trello", action: "trello.create_card", params: { name: "Tendances PM 2026", desc: "{{synthese}}", list_id: "{{list_id}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_trello_checklist_onboarding",
+    goal: "Trello : carte onboarding avec description checklist",
+    manifest: { kind: "agent", steps: [
+      llm("Checklist d'onboarding d'un nouveau collaborateur (8 items, une ligne chacun).", "checklist"),
+      { type: "action", connector: "trello", action: "trello.create_board", params: { name: "QA Prod — Onboarding" }, outputKey: "board" },
+      llm("Réponds UNIQUEMENT l'id du board : {{board}}", "board_id"),
+      { type: "action", connector: "trello", action: "trello.create_list", params: { name: "Nouveaux", board_id: "{{board_id}}" }, outputKey: "liste" },
+      llm("Réponds UNIQUEMENT l'id de la liste : {{liste}}", "list_id"),
+      { type: "action", connector: "trello", action: "trello.create_card", params: { name: "Onboarding — Semaine 1", desc: "{{checklist}}", list_id: "{{list_id}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  // ── LINKEDIN (4) — préparation SANS publication (sauf *_reel, gardée par approbation) ──
+  {
+    name: "prod_linkedin_kit_posts",
+    goal: "LinkedIn : kit de 3 posts rédigés (AUCUNE publication) → email",
+    manifest: { kind: "agent", steps: [
+      { type: "tool", tool: "web_search", params: { query: "actualité intelligence artificielle B2B semaine" } },
+      llm("Rédige 3 posts LinkedIn distincts (hook, corps, CTA, hashtags) à partir de : {{step_0_output}}. Sépare-les par ---.", "kit"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "💼 Kit 3 posts LinkedIn (rien publié)", body: "{{kit}}" } },
+    ] },
+    expect: ["completed"],
+  },
+  {
+    name: "prod_linkedin_calendrier",
+    goal: "LinkedIn : calendrier édito 2 semaines → Sheets + email (AUCUNE publication)",
+    manifest: { kind: "agent", steps: [
+      llm("Calendrier éditorial LinkedIn 2 semaines, format CSV exact Date;Angle;Hook (10 lignes, AUCUN autre texte).", "cal"),
+      ...sheetsWrite("QA Prod — Calendrier LinkedIn", "Date;Angle;Hook", "{{cal}}", "li"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "💼 Calendrier LinkedIn prêt", body: "{{cal}}" } },
+    ] },
+    expect: ["completed"],
+  },
+  {
+    name: "prod_linkedin_analyse_profil",
+    goal: "LinkedIn : recommandations de positionnement (recherche + analyse, rien publié)",
+    manifest: { kind: "agent", steps: [
+      { type: "tool", tool: "web_search", params: { query: "personal branding LinkedIn fondateur startup conseils 2026" } },
+      llm("5 recommandations de positionnement LinkedIn pour un fondateur SaaS IA, appuyées sur : {{step_0_output}}.", "recos"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "💼 Positionnement LinkedIn — recommandations", body: "{{recos}}" } },
+    ] },
+    expect: ["completed"],
+  },
+  {
+    name: "prod_linkedin_post_reel",
+    goal: "LinkedIn : PUBLICATION RÉELLE — gardée par TA validation (lancer avec QA_LEAVE_APPROVALS=1)",
+    manifest: { kind: "agent", steps: [
+      llm("Post LinkedIn court et sincère : « je teste Prompta, une plateforme pour construire des agents IA connectés à ses outils — impressionné par X et Y ». Hook + 4 lignes + 3 hashtags. Ton authentique fondateur.", "post"),
+      { type: "approval", label: "⚠️ PUBLIER ce post sur TON LinkedIn ?", payloadTemplate: "{{post}}", outputKey: "post_ok" },
+      { type: "action", connector: "linkedin", action: "linkedin.create_post", params: { commentary: "{{post_ok}}" }, outputKey: "publie" },
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "💼 Post LinkedIn publié", body: "{{publie}}" } },
+    ] },
+    expect: ["completed", "awaiting_approval", "failed"], errorPattern: /connecté|autorisation|requiert/i,
+  },
+  // ── YOUTUBE (3) — non connecté ? le rapport le dira ──
+  {
+    name: "prod_youtube_playlist_veille",
+    goal: "YouTube : playlist privée « Veille IA » créée",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "youtube", action: "youtube.create_playlist", params: { title: "QA Prod — Veille IA", privacy_status: "private" }, outputKey: "playlist" },
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "▶️ Playlist YouTube créée", body: "{{playlist}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_youtube_recherche_curation",
+    goal: "YouTube : curation de 5 vidéos sur un sujet → email",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "youtube", action: "youtube.search_videos", params: { query: "construire des agents IA tutoriel" }, outputKey: "videos" },
+      llm("Sélectionne les 5 meilleures vidéos de : {{videos}} — titre + chaîne + pourquoi la regarder (1 ligne).", "curation"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "▶️ Curation YouTube — agents IA", body: "{{curation}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_youtube_script_video",
+    goal: "YouTube : script de vidéo rédigé depuis une recherche de tendances (rien uploadé)",
+    manifest: { kind: "agent", steps: [
+      { type: "tool", tool: "web_search", params: { query: "sujets vidéos tech qui performent YouTube 2026" } },
+      llm("Script de vidéo YouTube 3 min « Mon agent IA travaille pendant que je dors » : hook 15s, 3 sections, CTA. Appuyé sur : {{step_0_output}}.", "script"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "▶️ Script vidéo YouTube prêt", body: "{{script}}" } },
+    ] },
+    expect: ["completed"],
+  },
+  // ── STRIPE (3) — artefacts de config uniquement, JAMAIS de mouvement d'argent ──
+  {
+    name: "prod_stripe_produit_paylink",
+    goal: "Stripe : produit + lien de paiement créés (config, aucun débit)",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "stripe", action: "stripe.create_product", params: { name: "QA Prod — Audit IA (test)" }, outputKey: "produit" },
+      llm("Réponds UNIQUEMENT l'id du produit : {{produit}}", "product_id"),
+      { type: "action", connector: "stripe", action: "stripe.create_price", params: { product: "{{product_id}}", unit_amount: "4900", currency: "eur" }, outputKey: "prix" },
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "💳 Produit Stripe créé (test)", body: "Produit : {{produit}}\n\nPrix : {{prix}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_stripe_coupon",
+    goal: "Stripe : coupon de réduction créé (config)",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "stripe", action: "stripe.create_coupon", params: { percent_off: "20", duration: "once", name: "QAPROD20" }, outputKey: "coupon" },
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "💳 Coupon Stripe créé (test)", body: "{{coupon}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "prod_stripe_sante_compte",
+    goal: "Stripe : lecture des clients + synthèse santé du compte (lecture seule)",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "stripe", action: "stripe.list_customers", params: {}, outputKey: "clients" },
+      llm("Synthèse du compte Stripe : nombre de clients visibles dans {{clients}}, observations. 4 lignes.", "sante"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "💳 Santé compte Stripe", body: "{{sante}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+];
+
+// ═══════════════ Scénarios EXPLOIT — des agents EXPLOITENT la production ci-dessus ═══════════════
+// QA_EXPLOIT=1 — à lancer APRÈS la vague PROD.
+const EXPLOIT_TESTS: QaTest[] = [
+  {
+    name: "exploit_notion_digest",
+    goal: "Relire les pages Notion « QA Prod » créées → digest par email",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "notion", action: "notion.search", params: { query: "QA Prod" }, outputKey: "pages" },
+      llm("Voici des pages Notion : {{pages}}. Liste celles dont le titre contient « QA Prod » (titre + 1 ligne de contexte).", "digest"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🔁 Exploit — pages Notion produites", body: "{{digest}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "exploit_trello_rapport_boards",
+    goal: "Relire les boards Trello créés → rapport d'avancement",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "trello", action: "trello.list_boards", params: {}, outputKey: "boards" },
+      llm("Parmi ces boards Trello {{boards}}, liste ceux nommés « QA Prod — … » et fais un mini rapport (nom + 1 ligne).", "rapport"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🔁 Exploit — boards Trello produits", body: "{{rapport}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "exploit_stripe_inventaire",
+    goal: "Relire les produits Stripe créés → inventaire",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "stripe", action: "stripe.list_products", params: {}, outputKey: "produits" },
+      llm("Inventaire des produits Stripe {{produits}} : liste ceux dont le nom contient « QA Prod » avec leur id.", "inventaire"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🔁 Exploit — produits Stripe", body: "{{inventaire}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "exploit_youtube_playlist_lecture",
+    goal: "Relire les playlists YouTube → vérifier « QA Prod — Veille IA »",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "youtube", action: "youtube.list_playlists", params: {}, outputKey: "playlists" },
+      llm("Ces playlists YouTube {{playlists}} contiennent-elles « QA Prod — Veille IA » ? Réponds OUI/NON + liste.", "verif"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🔁 Exploit — playlists YouTube", body: "{{verif}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "exploit_cross_synthese_production",
+    goal: "SYNTHÈSE CROISÉE : tout ce que les agents ont produit (Notion + Trello) → rapport de mission",
+    manifest: { kind: "agent", steps: [
+      { type: "parallel", branches: [
+        { steps: [{ type: "action", connector: "notion", action: "notion.search", params: { query: "QA Prod" }, outputKey: "n" }], outputKey: "notion_prod" },
+        { steps: [{ type: "action", connector: "trello", action: "trello.list_boards", params: {}, outputKey: "t" }], outputKey: "trello_prod" },
+      ], outputKey: "recolte" },
+      llm("RAPPORT DE PRODUCTION des agents : pages Notion ({{n}}) et boards Trello ({{t}}) créés aujourd'hui avec « QA Prod ». 1) inventaire 2) taux de réussite apparent 3) recommandation. Markdown.", "rapport_final"),
+      { type: "approval", label: "Exploit — valider le rapport de production", payloadTemplate: "{{rapport_final}}", outputKey: "rapport_ok" },
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🏭 Rapport de production des agents", body: "{{rapport_ok}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+    expectDeliverable: true,
+  },
+  {
+    name: "exploit_notion_vers_trello",
+    goal: "PONT : lire une page Notion produite → en faire des cartes d'action Trello",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "notion", action: "notion.search", params: { query: "QA Prod — Plan newsletter" }, outputKey: "pages" },
+      llm("De cette page Notion {{pages}}, extrais 3 actions concrètes (une ligne chacune, séparées par |).", "actions"),
+      { type: "action", connector: "trello", action: "trello.create_board", params: { name: "QA Exploit — Actions du plan" }, outputKey: "board" },
+      llm("Réponds UNIQUEMENT l'id du board : {{board}}", "board_id"),
+      { type: "action", connector: "trello", action: "trello.create_list", params: { name: "Actions", board_id: "{{board_id}}" }, outputKey: "liste" },
+      llm("Réponds UNIQUEMENT l'id de la liste : {{liste}}", "list_id"),
+      { type: "action", connector: "trello", action: "trello.create_card", params: { name: "Actions du plan newsletter", desc: "{{actions}}", list_id: "{{list_id}}" } },
+    ] },
+    expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
+  },
+  {
+    name: "exploit_audit_livrables",
+    goal: "MÉTA : relire les feuilles Sheets « QA Prod » → contrôle qualité des livrables",
+    manifest: { kind: "agent", steps: [
+      { type: "retrieve", source: "google_drive", query: "QA Prod", maxResults: 5, outputKey: "fichiers" },
+      llm("Contrôle qualité : ces fichiers {{fichiers}} produits par les agents — liste-les et note s'ils semblent complets. 6 lignes max.", "controle"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🔁 Exploit — contrôle qualité des livrables", body: "{{controle}}" } },
+    ] },
+    expect: ["completed"],
+  },
+  {
+    name: "exploit_bilan_email",
+    goal: "MÉTA : relire les emails QA reçus aujourd'hui → bilan de la campagne de test",
+    manifest: { kind: "agent", steps: [
+      { type: "action", connector: "gmail", action: "gmail.read", params: { query: "from:me subject:(QA OR Prod OR Exploit) newer_than:1d" }, outputKey: "mails" },
+      llm("Bilan de la campagne de test : {{mails}} — combien d'emails de mission, quels types de livrables, qu'est-ce qui manque ? 8 lignes.", "bilan"),
+      { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "🏁 Bilan de la campagne de production", body: "{{bilan}}" } },
+    ] },
+    expect: ["completed"],
+  },
+];
+
 interface QaResult {
   name: string;
   goal: string;
@@ -1492,13 +1813,17 @@ async function main() {
   // QA_ULTRA=1 : inclut les scénarios ultra-complexes (conservés en base).
   // QA_DREAM=1 : lance UNIQUEMENT les missions vitrines (20 scénarios).
   const pool =
-    process.env.QA_EXTRACT === "1"
-      ? EXTRACT_TESTS
-      : process.env.QA_DREAM === "1"
-        ? DREAM_TESTS
-        : process.env.QA_ULTRA === "1"
-          ? [...TESTS, ...ULTRA_TESTS]
-          : TESTS;
+    process.env.QA_PROD === "1"
+      ? PROD_TESTS
+      : process.env.QA_EXPLOIT === "1"
+        ? EXPLOIT_TESTS
+        : process.env.QA_EXTRACT === "1"
+          ? EXTRACT_TESTS
+          : process.env.QA_DREAM === "1"
+            ? DREAM_TESTS
+            : process.env.QA_ULTRA === "1"
+              ? [...TESTS, ...ULTRA_TESTS]
+              : TESTS;
   const selected = only?.length ? pool.filter((t) => only.includes(t.name)) : pool;
   if (only?.length) console.log(`Sélection : ${selected.map((t) => t.name).join(", ")}\n`);
 

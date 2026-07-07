@@ -261,6 +261,7 @@ export function AgentRunExperience({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0b0f14] text-white">
       <HumanApprovalModal
+        runId={runId ?? undefined}
         open={showApprovalModal}
         approval={
           approvalDetails ??

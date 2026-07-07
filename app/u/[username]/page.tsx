@@ -192,10 +192,6 @@ export default async function ProfilePage(props: Props) {
           <p className="mt-3 text-base text-ink">{profile.headline}</p>
         )}
 
-        {profile.bio && (
-          <p className="mt-2 text-sm text-ink-soft">{profile.bio}</p>
-        )}
-
         {badges && badges.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
             {badges.map((badge, i) => {

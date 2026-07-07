@@ -18,7 +18,6 @@ export default function EditProfilePage() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [headline, setHeadline] = useState("");
-  const [bio, setBio] = useState("");
   const [location, setLocation] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -42,7 +41,7 @@ export default function EditProfilePage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("username, display_name, headline, bio, location, avatar_url")
+        .select("username, display_name, headline, location, avatar_url")
         .eq("id", user.id)
         .single();
 
@@ -50,7 +49,6 @@ export default function EditProfilePage() {
         setUsername(profile.username);
         setDisplayName(profile.display_name);
         setHeadline(profile.headline || "");
-        setBio(profile.bio || "");
         setLocation(profile.location || "");
         setAvatarUrl(profile.avatar_url);
         if (profile.avatar_url) setAvatarPreview(profile.avatar_url);
@@ -97,7 +95,6 @@ export default function EditProfilePage() {
         username,
         display_name: displayName,
         headline: headline || null,
-        bio: bio || null,
         location: location || null,
         avatar_url: newAvatarUrl,
       })
@@ -236,20 +233,6 @@ export default function EditProfilePage() {
             onChange={(e) => setHeadline(e.target.value)}
             className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             placeholder="Expert en prompts de copywriting IA"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="bio" className="block text-[11px] font-bold uppercase tracking-wide text-ink-soft">
-            Bio
-          </label>
-          <textarea
-            id="bio"
-            rows={4}
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-line bg-card px-4 py-3 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none"
-            placeholder="Parle de toi, ton expertise, tes projets..."
           />
         </div>
 

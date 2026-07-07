@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, ShieldAlert, X } from "lucide-react";
+import { Loader2, ShieldAlert, Sparkles, X } from "lucide-react";
 
 export interface ApprovalDetails {
   id: string;
@@ -16,6 +16,8 @@ interface Props {
   onApprove: (approvalId: string, modifiedContent: string) => Promise<void>;
   onReject: (approvalId: string) => Promise<void>;
   onClose?: () => void;
+  /** Active la retouche conversationnelle (« affine avec l'agent »). */
+  runId?: string;
 }
 
 export function HumanApprovalModal({
@@ -24,9 +26,15 @@ export function HumanApprovalModal({
   onApprove,
   onReject,
   onClose,
+  runId,
 }: Props) {
   const [content, setContent] = useState("");
   const [acting, setActing] = useState<"approve" | "reject" | null>(null);
+  // Retouche conversationnelle : historique des échanges avec l'agent.
+  const [instruction, setInstruction] = useState("");
+  const [revising, setRevising] = useState(false);
+  const [exchanges, setExchanges] = useState<Array<{ ask: string; ok: boolean }>>([]);
+  const [reviseError, setReviseError] = useState<string | null>(null);
 
   useEffect(() => {
     if (approval?.preview != null) {
@@ -34,7 +42,37 @@ export function HumanApprovalModal({
     } else {
       setContent("");
     }
+    setExchanges([]);
+    setInstruction("");
+    setReviseError(null);
   }, [approval?.id, approval?.preview]);
+
+  async function refine() {
+    const ask = instruction.trim();
+    if (!ask || !runId || !approval || revising) return;
+    setRevising(true);
+    setReviseError(null);
+    try {
+      const res = await fetch(`/api/run/agent/${runId}/approve/revise`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalId: approval.id, instruction: ask, content }),
+      });
+      const data = (await res.json()) as { revised?: string; error?: string };
+      if (res.ok && data.revised) {
+        setContent(data.revised);
+        setExchanges((x) => [...x, { ask, ok: true }]);
+        setInstruction("");
+      } else {
+        setReviseError(data.error ?? "Retouche impossible — réessaie.");
+        setExchanges((x) => [...x, { ask, ok: false }]);
+      }
+    } catch {
+      setReviseError("Retouche impossible — réessaie.");
+    } finally {
+      setRevising(false);
+    }
+  }
 
   if (!open || !approval) return null;
 
@@ -84,6 +122,49 @@ export function HumanApprovalModal({
             className="mt-2 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-mono text-sm text-white placeholder:text-white/30"
             placeholder="Aperçu de l'action en attente…"
           />
+
+          {runId && (
+            <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-white/70">
+                <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+                Affine avec l&apos;agent — dis-lui ce que tu veux changer
+              </p>
+              {exchanges.length > 0 && (
+                <div className="mt-2 max-h-24 space-y-1 overflow-y-auto">
+                  {exchanges.map((e, i) => (
+                    <p key={i} className={`text-[11px] ${e.ok ? "text-white/50" : "text-red-300"}`}>
+                      {e.ok ? "✓" : "✗"} « {e.ask} »{e.ok ? " — appliqué ci-dessus" : ""}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={instruction}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void refine();
+                    }
+                  }}
+                  disabled={revising}
+                  placeholder="Ex. « plus court et tutoie », « ajoute les chiffres du T2 »…"
+                  className="h-9 flex-1 rounded-lg border border-white/15 bg-black/30 px-3 text-sm text-white placeholder:text-white/30 disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={() => void refine()}
+                  disabled={revising || !instruction.trim()}
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-violet-500 px-3 text-xs font-medium text-white hover:bg-violet-400 disabled:opacity-50"
+                >
+                  {revising ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  Retoucher
+                </button>
+              </div>
+              {reviseError && <p className="mt-1.5 text-[11px] text-red-300">{reviseError}</p>}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-white/10 px-5 py-4">
