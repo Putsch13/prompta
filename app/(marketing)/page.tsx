@@ -18,21 +18,30 @@ import { PLANS } from "@/lib/billing/plans";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Prompta — Crée ton agent IA sans code, connecté à 800+ apps",
+  title: "Prompta — Crée ton agent IA sans code, connecté à 1000+ apps",
   description:
     "Construis un agent IA en décrivant ton objectif : Gmail, Sheets, Slack, Canva, Notion… Il travaille pour de vrai, tu valides les actions sensibles. Premier agent gratuit + 2 € de crédits IA offerts.",
   alternates: { canonical: "/" },
   openGraph: {
     title: "Prompta — tes agents IA en production, sans code",
     description:
-      "Décris ton objectif, le copilote construit l'agent. 800+ apps, validation humaine, logs en direct. Gratuit pour démarrer.",
+      "Décris ton objectif, le copilote construit l'agent. 1000+ apps, validation humaine, logs en direct. Gratuit pour démarrer.",
   },
 };
 
-const APPS = [
+/** Slugs Composio des 20 apps les plus courantes — logos affichés en carrousel. */
+const TOP_APP_SLUGS = [
+  "gmail", "googlesheets", "googledrive", "googlecalendar", "googledocs",
+  "notion", "slack", "canva", "linkedin", "github",
+  "hubspot", "trello", "airtable", "stripe", "shopify",
+  "instagram", "twitter", "youtube", "telegram", "discord",
+];
+
+/** Repli texte si le catalogue est indisponible au rendu. */
+const APPS_FALLBACK = [
   "Gmail", "Google Sheets", "Google Drive", "Canva", "Notion", "Slack",
   "Google Calendar", "HubSpot", "Telegram", "GitHub", "Airtable", "Trello",
-  "Outlook", "LinkedIn", "Discord", "+ 780 autres",
+  "LinkedIn", "Stripe", "Shopify", "Instagram", "YouTube", "Discord",
 ];
 
 const DEMO_STEPS = [
@@ -44,6 +53,23 @@ const DEMO_STEPS = [
 ];
 
 export default async function HomePage() {
+  // Logos officiels des apps phares (catalogue Composio, cache serveur 15 min).
+  let appLogos: Array<{ label: string; logo?: string }> = [];
+  try {
+    const { listComposioToolkits } = await import("@/lib/composio/catalog");
+    const toolkits = await listComposioToolkits();
+    const byId = new Map(toolkits.map((t) => [t.id, t]));
+    appLogos = TOP_APP_SLUGS.flatMap((slug) => {
+      const tk = byId.get(slug);
+      return tk ? [{ label: tk.label, logo: tk.logo }] : [];
+    });
+  } catch {
+    // catalogue indisponible → repli texte
+  }
+  if (appLogos.length < 10) {
+    appLogos = APPS_FALLBACK.map((label) => ({ label }));
+  }
+
   return (
     <div className="min-h-screen bg-bg">
       {/* ── HERO ────────────────────────────────────────────────────────── */}
@@ -133,18 +159,38 @@ export default async function HomePage() {
       {/* ── APPS ────────────────────────────────────────────────────────── */}
       <section className="border-t border-line bg-card">
         <div className="mx-auto max-w-page px-4 py-12 sm:px-6 lg:px-8">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-ink-faint">
+          <p className="text-center text-sm font-semibold text-ink">
+            Plus de 1 000 applications connectables pour vos agents
+          </p>
+          <p className="mt-1 text-center text-xs font-bold uppercase tracking-wider text-ink-faint">
             Connecté à tes outils du quotidien
           </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
-            {APPS.map((app) => (
-              <span
-                key={app}
-                className="rounded-full border border-line bg-bg px-4 py-1.5 text-sm font-medium text-ink-soft"
-              >
-                {app}
-              </span>
-            ))}
+          {/* Carrousel infini : deux copies de la rangée, translation -50 %. */}
+          <div className="marquee-mask relative mt-8 overflow-hidden">
+            <div className="animate-marquee flex w-max items-center gap-3">
+              {[0, 1].map((copy) => (
+                <div key={copy} aria-hidden={copy === 1} className="flex items-center gap-3 pr-3">
+                  {appLogos.map((app) => (
+                    <span
+                      key={`${copy}-${app.label}`}
+                      className="flex shrink-0 items-center gap-2.5 rounded-full border border-line bg-bg px-4 py-2 text-sm font-medium text-ink-soft"
+                    >
+                      {app.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={app.logo}
+                          alt=""
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          className="h-6 w-6 rounded object-contain"
+                        />
+                      ) : null}
+                      {app.label}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>

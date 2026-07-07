@@ -31,7 +31,7 @@ export function Footer() {
               </li>
               <li>
                 <Link href="/dashboard/connexions" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
-                  800+ applications
+                  1000+ applications
                 </Link>
               </li>
             </ul>

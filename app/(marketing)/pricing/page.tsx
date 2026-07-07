@@ -65,7 +65,7 @@ export default function PricingPage() {
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
         description:
-          "Plateforme no-code pour créer, lancer et débugger des agents IA connectés à 800+ applications.",
+          "Plateforme no-code pour créer, lancer et débugger des agents IA connectés à 1000+ applications.",
         offers: PLAN_ORDER.map((id) => ({
           "@type": "Offer",
           name: `Prompta ${PLANS[id].label}`,
