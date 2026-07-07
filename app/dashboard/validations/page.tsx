@@ -9,7 +9,7 @@ interface ApprovalItem {
   id: string;
   runId: string;
   stepIndex: number;
-  payload: { preview?: string; label?: string } & Record<string, unknown>;
+  payload: { preview?: string; full?: string; label?: string } & Record<string, unknown>;
   expiresAt: string;
   createdAt: string;
   agentTitle: string;
@@ -46,7 +46,8 @@ function ValidationsContent() {
       setEdited((prev) => {
         const merged = { ...prev };
         for (const it of next) {
-          if (merged[it.id] === undefined) merged[it.id] = it.payload?.preview ?? "";
+          // Contenu INTÉGRAL (full) — la préview 2000 car. ne sert qu'aux notifs.
+          if (merged[it.id] === undefined) merged[it.id] = it.payload?.full ?? it.payload?.preview ?? "";
         }
         return merged;
       });

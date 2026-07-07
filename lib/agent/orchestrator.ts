@@ -269,7 +269,7 @@ async function executeStep(
       const { provider, apiModel, tokenParam } = resolved!;
       const prompt = interpolate(step.prompt, vars, { maxVarChars: LLM_VAR_CHAR_CAP });
       if (runId && stepDbId) {
-        await updateStepInput(stepDbId, { prompt: prompt.slice(0, 500) }).catch(() => undefined);
+        await updateStepInput(stepDbId, { prompt: prompt.slice(0, 2000) }).catch(() => undefined);
       }
 
       if (simulated || ctx.demoMode) {
@@ -332,7 +332,7 @@ async function executeStep(
       };
 
       if (runId && stepDbId) {
-        await logStepSuccess(stepDbId, result.content.slice(0, 1000), usage, stepStartedAt).catch(() => undefined);
+        await logStepSuccess(stepDbId, result.content.slice(0, 4000), usage, stepStartedAt).catch(() => undefined);
       }
 
       return { content: result.content, usage };
@@ -382,7 +382,7 @@ async function executeStep(
       });
 
       if (runId && stepDbId) {
-        await logStepSuccess(stepDbId, content.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
+        await logStepSuccess(stepDbId, content.slice(0, 4000), undefined, stepStartedAt).catch(() => undefined);
       }
 
       return { content, usage: { inputTokens: 0, outputTokens: 0, tool: step.tool } };
@@ -539,7 +539,7 @@ async function executeStep(
             detail: { connector: step.connector, stepIndex },
           });
           if (runId && stepDbId) {
-            await logStepSuccess(stepDbId, cached.previousOutput.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
+            await logStepSuccess(stepDbId, cached.previousOutput.slice(0, 4000), undefined, stepStartedAt).catch(() => undefined);
           }
           return {
             content: cached.previousOutput,
@@ -578,7 +578,7 @@ async function executeStep(
         });
 
         if (runId && stepDbId) {
-          await logStepSuccess(stepDbId, result.output.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
+          await logStepSuccess(stepDbId, result.output.slice(0, 4000), undefined, stepStartedAt).catch(() => undefined);
         }
 
         // Indice AMONT générique : beaucoup d'apps renvoient un
@@ -638,7 +638,7 @@ async function executeStep(
       const code = interpolate(step.source, vars);
       const output = await runCodeInSandbox(code);
       if (runId && stepDbId) {
-        await logStepSuccess(stepDbId, output.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
+        await logStepSuccess(stepDbId, output.slice(0, 4000), undefined, stepStartedAt).catch(() => undefined);
       }
       return { content: output };
     }
@@ -671,7 +671,7 @@ async function executeStep(
       });
       const content = JSON.stringify({ data: retrieved.content, sources: retrieved.sources });
       if (runId && stepDbId) {
-        await logStepSuccess(stepDbId, content.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
+        await logStepSuccess(stepDbId, content.slice(0, 4000), undefined, stepStartedAt).catch(() => undefined);
       }
       return { content };
     }

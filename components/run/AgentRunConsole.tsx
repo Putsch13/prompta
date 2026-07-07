@@ -136,8 +136,9 @@ function mapDbStep(s: RunStepLog): DisplayStep {
     type: s.stepType,
     label: s.label ?? `Étape ${s.stepIndex + 1}`,
     status: s.status,
-    output: previewText(s.outputPreview),
-    input: previewText(s.inputPreview, 300),
+    // Debug : tout ce qui est stocké est montré (les zones scrollent).
+    output: previewText(s.outputPreview, 4000),
+    input: previewText(s.inputPreview, 2000),
     durationMs: s.durationMs,
     model: s.model,
     actionSlug: s.actionSlug,
@@ -714,6 +715,17 @@ export function AgentRunConsole({
 
                     {isOpen && (step.input || step.output) && (
                       <div className="mt-3 space-y-2 rounded-xl border border-line bg-card p-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void navigator.clipboard
+                              .writeText(JSON.stringify({ step: step.label, input: step.input, output: step.output, error: step.error }, null, 2))
+                              .catch(() => undefined);
+                          }}
+                          className="inline-flex items-center gap-1 rounded border border-line px-2 py-0.5 text-[10px] text-ink-faint hover:bg-card2"
+                        >
+                          <ClipboardCopy className="h-3 w-3" /> Copier cette étape
+                        </button>
                         {step.input && (
                           <div>
                             <p className="text-[10px] font-bold uppercase tracking-wide text-ink-faint">

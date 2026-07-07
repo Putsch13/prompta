@@ -30,6 +30,11 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/cas-usage" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
+                  Cas d'usage
+                </Link>
+              </li>
+              <li>
                 <Link href="/aide" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
                   Aide & FAQ
                 </Link>

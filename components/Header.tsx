@@ -8,6 +8,7 @@ import { AuthNav } from "@/components/AuthNav";
 import { WalletBalanceBadge } from "@/components/wallet/WalletBalanceBadge";
 
 const NAV = [
+  { href: "/cas-usage", label: "Cas d'usage" },
   { href: "/pricing", label: "Tarifs" },
   { href: "/aide", label: "Aide" },
   { href: "/wallet", label: "Mon wallet", authOnly: true },

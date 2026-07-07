@@ -10,6 +10,8 @@ import {
   Check,
   Play,
   Send,
+  Code2,
+  ClipboardCopy,
 } from "lucide-react";
 import { AgentCanvas } from "@/components/builder/canvas/AgentCanvas";
 import { NodeInspector } from "@/components/builder/canvas/NodeInspector";
@@ -31,9 +33,12 @@ import {
   graphHasRepairableIssues,
   updateNode,
   validatePlanGraph,
+  graphToSteps,
+  stepsToGraph,
   type PlanGraph,
   type PlanNode,
 } from "@/lib/builder/plan-graph";
+import { AgentStepSchema, type AgentStep } from "@/lib/agent/schema";
 import { computeReadiness } from "@/lib/builder/agent-readiness";
 import { enrichComposioActions } from "@/lib/builder/enrich-composio-actions";
 import { KnowledgeBase } from "@/components/builder/canvas/KnowledgeBase";
@@ -163,7 +168,11 @@ export function GuidedBuilder({
   disconnectedConnectors,
   onGoToTest,
 }: Props) {
-  const [mode, setMode] = useState<"guided" | "manual">("guided");
+  const [mode, setMode] = useState<"guided" | "manual" | "code">("guided");
+  // Mode Code : édition directe du JSON des étapes (pour les profils techniques).
+  const [codeText, setCodeText] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeApplied, setCodeApplied] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -342,6 +351,21 @@ export function GuidedBuilder({
           >
             <PenLine className="h-3.5 w-3.5" /> Mode manuel
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCodeText(JSON.stringify(graphToSteps(graph, defaultModel), null, 2));
+              setCodeError(null);
+              setCodeApplied(false);
+              setMode("code");
+            }}
+            title="Édite le JSON des étapes directement — pour les profils techniques"
+            className={`flex items-center gap-1 px-3 py-1.5 text-xs ${
+              mode === "code" ? "bg-accent text-white" : "bg-card text-ink-soft"
+            }`}
+          >
+            <Code2 className="h-3.5 w-3.5" /> Code
+          </button>
         </div>
         <button
           type="button"
@@ -362,7 +386,99 @@ export function GuidedBuilder({
         )}
       </div>
 
-      {mode === "manual" ? (
+      {mode === "code" ? (
+        /* Mode CODE — le manifeste en JSON, éditable, validé par schéma. */
+        <div className="rounded-xl border border-line bg-card">
+          <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+            <p className="flex items-center gap-2 text-sm font-medium text-ink">
+              <Code2 className="h-4 w-4 text-accent" /> Code de l&apos;agent (JSON des étapes)
+            </p>
+            <button
+              type="button"
+              onClick={() => void navigator.clipboard.writeText(codeText).catch(() => undefined)}
+              className="inline-flex items-center gap-1 rounded border border-line px-2 py-1 text-[11px] text-ink-soft hover:bg-card2"
+            >
+              <ClipboardCopy className="h-3 w-3" /> Copier
+            </button>
+          </div>
+          <div className="p-3">
+            <p className="mb-2 text-[11px] text-ink-faint">
+              Chaque étape : <code className="rounded bg-line/60 px-1">type</code> (llm · tool · action ·
+              condition · approval · retrieve · parallel), <code className="rounded bg-line/60 px-1">outputKey</code> pour
+              référencer sa sortie via {"{{cle}}"}. Appliquer re-valide tout et met à jour l&apos;arborescence —
+              tes modifications visuelles et le copilote restent utilisables ensuite.
+            </p>
+            <textarea
+              value={codeText}
+              onChange={(e) => {
+                setCodeText(e.target.value);
+                setCodeError(null);
+                setCodeApplied(false);
+              }}
+              spellCheck={false}
+              rows={22}
+              className="w-full resize-y rounded-lg border border-line bg-[#0f1419] p-3 font-mono text-[12px] leading-relaxed text-emerald-100 outline-none focus:border-accent"
+            />
+            {codeError && (
+              <p className="mt-2 whitespace-pre-wrap rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {codeError}
+              </p>
+            )}
+            {codeApplied && !codeError && (
+              <p className="mt-2 flex items-center gap-1 text-xs text-emerald-700">
+                <Check className="h-3.5 w-3.5" /> Appliqué — l&apos;arborescence est à jour.
+              </p>
+            )}
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const parsed = JSON.parse(codeText) as unknown;
+                    if (!Array.isArray(parsed) || parsed.length === 0) {
+                      setCodeError("Le JSON doit être un TABLEAU d'étapes non vide.");
+                      return;
+                    }
+                    const steps: AgentStep[] = [];
+                    for (let i = 0; i < parsed.length; i++) {
+                      const res = AgentStepSchema.safeParse(parsed[i]);
+                      if (!res.success) {
+                        const issue = res.error.issues[0];
+                        setCodeError(
+                          `Étape ${i + 1} invalide — ${issue?.path?.join(".") || "?"} : ${issue?.message ?? "schéma non respecté"}`,
+                        );
+                        return;
+                      }
+                      steps.push(res.data);
+                    }
+                    const g = stepsToGraph(steps, graph.meta);
+                    onGraphChange(g);
+                    graphRef.current = g;
+                    setCodeError(null);
+                    setCodeApplied(true);
+                  } catch (e) {
+                    setCodeError(`JSON invalide : ${e instanceof Error ? e.message : e}`);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+              >
+                <Check className="h-4 w-4" /> Appliquer à l&apos;arborescence
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCodeText(JSON.stringify(graphToSteps(graph, defaultModel), null, 2));
+                  setCodeError(null);
+                  setCodeApplied(false);
+                }}
+                className="rounded-lg border border-line px-4 py-2 text-sm text-ink-soft hover:bg-card2"
+              >
+                Recharger depuis l&apos;arbo
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : mode === "manual" ? (
         <NodeInspector
           node={focusedNode}
           graph={graph}
