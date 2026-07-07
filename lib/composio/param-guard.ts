@@ -159,10 +159,16 @@ export async function guardComposioParams(
         return `« ${m.label} » (${m.key})${choices}`;
       })
       .join(", ");
-    // Pas d'instruction ici : le hint est ajouté une seule fois par error-map
-    // (sinon message dédoublé « … — Ouvrez l'étape… — Ouvrez l'étape… »).
+    // Cas fréquent et déroutant : parent_id Notion vide parce que la connexion
+    // n'a AUCUNE page partagée avec l'intégration (choix fait pendant l'OAuth).
+    const notionParentHint =
+      toolSlug.startsWith("NOTION_") && missing.some((m) => /parent/i.test(m.key))
+        ? " Si la recherche Notion ne renvoie aucune page : reconnecte Notion depuis Connexions et partage au moins une page ou base avec Prompta."
+        : "";
+    // Pas d'instruction générique ici : le hint est ajouté une seule fois par
+    // error-map (sinon message dédoublé « … — Ouvrez l'étape… — Ouvrez l'étape… »).
     throw new Error(
-      `missing_required_params: L'action ${toolSlug} requiert des champs non renseignés : ${list}.`,
+      `missing_required_params: L'action ${toolSlug} requiert des champs non renseignés : ${list}.${notionParentHint}`,
     );
   }
 
