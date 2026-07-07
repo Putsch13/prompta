@@ -68,7 +68,25 @@ function ConnexionsContent() {
     loadAll();
     const connected = searchParams.get("connected");
     const error = searchParams.get("error");
-    if (connected) showToast(`${connected} connecté`);
+    if (connected) {
+      showToast(`${connected} connecté — vérification de l'accès…`);
+      // Diagnostic AUTOMATIQUE post-OAuth : détecte tout de suite les
+      // connexions « actives mais vides » (aucune page/board/ressource
+      // partagée avec l'intégration) au lieu de laisser le 1er run échouer.
+      (async () => {
+        try {
+          const res = await fetch(`/api/connectors/${encodeURIComponent(connected)}/diagnose`, { method: "POST" });
+          const diag = await res.json();
+          if (diag?.ok) {
+            showToast(`${connected} connecté — accès vérifié ✓`);
+          } else if (diag?.message) {
+            showToast(`⚠️ ${connected} : ${diag.message}`);
+          }
+        } catch {
+          /* diagnostic best-effort */
+        }
+      })();
+    }
     // Message d'erreur réel (ex. app sans credentials gérés) plutôt qu'un
     // générique « Échec de connexion ».
     if (error) showToast(error.length > 12 ? error : "Échec de connexion");

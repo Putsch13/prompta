@@ -25,6 +25,7 @@ export interface DiagnoseResult {
     | "forbidden"
     | "not_found"
     | "inconclusive"
+    | "empty_access"
     | "error";
   message: string;
   scopesPresent?: string[];
@@ -92,7 +93,38 @@ export async function diagnoseConnectorAccess(
   }
 
   try {
-    await executeComposioTool(probe, userId, {}, { toolkitSlug: toolkit });
+    const probeOut = await executeComposioTool(probe, userId, {}, { toolkitSlug: toolkit });
+    // Succès技 mais accès VIDE : beaucoup d'apps répondent 200 avec un
+    // message explicatif (« aucune page partagée avec l'intégration »,
+    // workspace vide…). On le remonte dès la connexion au lieu de laisser
+    // l'utilisateur le découvrir au premier run.
+    try {
+      const parsed = JSON.parse(probeOut.output ?? "") as {
+        composio_execution_message?: unknown;
+        items?: unknown[];
+        results?: unknown[];
+        data?: unknown[];
+      };
+      const emptyList =
+        (Array.isArray(parsed.items) && parsed.items.length === 0) ||
+        (Array.isArray(parsed.results) && parsed.results.length === 0) ||
+        (Array.isArray(parsed.data) && parsed.data.length === 0);
+      const appMsg =
+        typeof parsed.composio_execution_message === "string"
+          ? parsed.composio_execution_message.trim()
+          : "";
+      if (appMsg && (emptyList || /no |aucun|empty|not.*shared|0 /i.test(appMsg))) {
+        return {
+          ok: false,
+          code: "empty_access",
+          message: `Connecté, mais aucune donnée accessible — ${appMsg.slice(0, 220)} Vérifie le partage/permissions côté app puis reconnecte si besoin.`,
+          scopesPresent,
+          scopesMissing,
+        };
+      }
+    } catch {
+      // sortie non-JSON — accès considéré OK
+    }
     return { ok: true, code: "ok", message: "Accès vérifié ✓", scopesPresent, scopesMissing };
   } catch (err) {
     if (err instanceof ComposioExecutionError) {
