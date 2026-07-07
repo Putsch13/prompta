@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Mail, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const supabase = createClient();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/dashboard";
 
@@ -34,8 +33,10 @@ export default function LoginPage() {
       return;
     }
 
-    router.push(redirect);
-    router.refresh();
+    // Navigation COMPLÈTE (pas router.push) : le cookie de session vient
+    // d'être posé côté client — le cache du routeur Next servirait encore
+    // l'état déconnecté et forçait un refresh manuel pour accéder.
+    window.location.assign(redirect);
   }
 
   async function handleGoogleLogin() {
