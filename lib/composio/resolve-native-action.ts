@@ -189,8 +189,12 @@ export function pickToolSlug(
     const requestedMutating = MUTATING.has(primary);
     if (requestedMutating && hasReadToken && !hasMutating) continue;
 
+    // files ≈ file : l'objet matche au singulier comme au pluriel.
+    const hasTokenOrPlural = (t: string) =>
+      tailToks.has(t) ||
+      tailToks.has(t.endsWith("s") ? t.slice(0, -1) : t + "s");
     const objectMatch =
-      objectToks.length === 0 || objectToks.every((t) => tailToks.has(t));
+      objectToks.length === 0 || objectToks.every(hasTokenOrPlural);
 
     let score = 0;
     if (tailNorm === verbNorm) score = 1000;
@@ -206,10 +210,10 @@ export function pickToolSlug(
     if (score <= 0) continue;
 
     // Le verbe EXACT demandé prime sur un synonyme ET sur un simple match
-    // d'objet : pour « create_spreadsheet », CREATE_GOOGLE_SHEET doit battre
-    // ADD_SHEET (synonyme court) et VALUES_APPEND (qui matche « spreadsheet »
-    // sans porter le verbe).
-    if (tailToks.has(primary)) score += 200;
+    // d'objet — mais seulement s'il est en TÊTE du slug (position du verbe
+    // dans les APIs REST) : « list » dans GET_LISTS_BOARD_BY_ID_LIST est un
+    // OBJET (une liste Trello), pas le verbe.
+    if (slugToks[0] === primary || tokens(tool.name)[0] === primary) score += 200;
 
 
     if (wantsTextWrite) {
@@ -237,7 +241,10 @@ export function pickToolSlug(
     // GET_MEMBERS_BOARDS ne change pas l'objet de l'action.
     const defaultedTokens = new Set<string>();
     for (const input of tool.inputs ?? []) {
-      if (input.defaultValue !== undefined || !input.required) {
+      // Uniquement les params avec un VRAI défaut (idMember = « me ») : un
+      // simple optionnel ne blanchit pas un piège (LIST_PERMISSIONS restait
+      // choisi pour list_files via ses params optionnels).
+      if (input.defaultValue !== undefined) {
         // Découpe camelCase (idMember → id, member) avant tokenisation.
         const snake = input.key.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
         for (const t of tokens(snake)) defaultedTokens.add(t);
@@ -261,7 +268,16 @@ export function pickToolSlug(
         extras += 1;
       }
     }
-    const rankScore = score - extras * 80 - traps * 400;
+    // Intention de LECTURE globale (list/get…) : un outil exigeant un ID
+    // précis sans défaut est à la mauvaise granularité (GET_…_BY_ID_LIST
+    // pour « lister mes boards ») — pénalisé au classement.
+    let requiredNoDefault = 0;
+    if (requestedReadOnly) {
+      for (const input of tool.inputs ?? []) {
+        if (input.required && input.defaultValue === undefined) requiredNoDefault += 1;
+      }
+    }
+    const rankScore = score - extras * 80 - traps * 400 - requiredNoDefault * 100;
 
     const len = tail.length;
     if (
