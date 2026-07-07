@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
   const { data: dueRuns } = await admin
     .from("scheduled_runs")
-    .select("id, user_id, listing_id, inputs, notify_email")
+    .select("id, user_id, listing_id, inputs, notify_email, cron_expression")
     .eq("active", true)
     .lte("next_run_at", now.toISOString());
 
@@ -37,7 +37,9 @@ export async function POST(request: NextRequest) {
       status: "pending",
     });
 
-    const nextRun = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const { parseScheduleToken, nextOccurrence } = await import("@/lib/agent/schedule-token");
+    const preset = parseScheduleToken((run as { cron_expression?: string }).cron_expression);
+    const nextRun = preset ? nextOccurrence(preset) : new Date(now.getTime() + 24 * 60 * 60 * 1000);
     await admin
       .from("scheduled_runs")
       .update({ last_run_at: now.toISOString(), next_run_at: nextRun.toISOString() })

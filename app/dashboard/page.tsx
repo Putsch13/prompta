@@ -78,6 +78,11 @@ export default async function DashboardPage() {
 
   if (!profile) redirect("/onboarding");
 
+  // Crédits de bienvenue (2 €) promis à l'inscription — idempotent
+  // (clé welcome_<userId>), crédité au premier passage sur le dashboard.
+  const { grantWelcomeCredits } = await import("@/lib/billing/entitlements");
+  await grantWelcomeCredits(user.id);
+
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const [

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import localFont from "next/font/local";
 import { SiteShell } from "@/components/SiteShell";
 import "./globals.css";
@@ -39,6 +40,15 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} font-body bg-bg text-ink antialiased`}
       >
         <SiteShell>{children}</SiteShell>
+        {/* Analytics privacy-first — actif seulement si le domaine est configuré. */}
+        {process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN && (
+          <Script
+            defer
+            data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN}
+            src="https://plausible.io/js/script.tagged-events.js"
+            strategy="afterInteractive"
+          />
+        )}
       </body>
     </html>
   );

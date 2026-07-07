@@ -1,62 +1,23 @@
-import { createAdminClient } from "@/lib/supabase/admin";
 import type { MetadataRoute } from "next";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Sitemap — pages MARKETING uniquement. Les agents, profils et catégories
+ * sont privés (plus de marketplace) : rien à indexer côté Google.
+ */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  const supabase = createAdminClient();
+  const now = new Date();
 
-  const entries: MetadataRoute.Sitemap = [
-    { url: baseUrl, lastModified: new Date(), changeFrequency: "daily", priority: 1 },
-    { url: `${baseUrl}/explore`, lastModified: new Date(), changeFrequency: "daily", priority: 0.9 },
+  return [
+    { url: baseUrl, lastModified: now, changeFrequency: "weekly", priority: 1 },
+    { url: `${baseUrl}/pricing`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    { url: `${baseUrl}/aide`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
+    { url: `${baseUrl}/cas-usage/veille-quotidienne`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/cas-usage/reporting-automatique`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/cas-usage/prospection-contenu`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/legal/terms`, lastModified: now, changeFrequency: "yearly", priority: 0.2 },
+    { url: `${baseUrl}/legal/privacy`, lastModified: now, changeFrequency: "yearly", priority: 0.2 },
   ];
-
-  const { data: listings } = await supabase
-    .from("listings")
-    .select("slug, updated_at")
-    .eq("status", "published");
-
-  if (listings) {
-    for (const l of listings) {
-      entries.push({
-        url: `${baseUrl}/listing/${l.slug}`,
-        lastModified: new Date(l.updated_at ?? Date.now()),
-        changeFrequency: "weekly",
-        priority: 0.8,
-      });
-    }
-  }
-
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("username, created_at");
-
-  if (profiles) {
-    for (const p of profiles) {
-      entries.push({
-        url: `${baseUrl}/u/${p.username}`,
-        lastModified: new Date(p.created_at ?? Date.now()),
-        changeFrequency: "weekly",
-        priority: 0.6,
-      });
-    }
-  }
-
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("slug");
-
-  if (categories) {
-    for (const c of categories) {
-      entries.push({
-        url: `${baseUrl}/c/${c.slug}`,
-        lastModified: new Date(),
-        changeFrequency: "weekly",
-        priority: 0.7,
-      });
-    }
-  }
-
-  return entries;
 }

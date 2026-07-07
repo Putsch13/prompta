@@ -71,3 +71,27 @@ test("stepsToGraph : étape parallèle dépliée en branches", () => {
   assert.ok(par);
   assert.equal((par as { branches: unknown[] }).branches.length, 2);
 });
+
+// ─── schedule-token ───────────────────────────────────────────────────────
+import { parseScheduleToken, formatScheduleToken, nextOccurrence, describeSchedule } from "@/lib/agent/schedule-token";
+
+test("schedule-token : round-trip daily/weekly + prochaine occurrence future", () => {
+  const daily = parseScheduleToken("daily@09:30")!;
+  assert.equal(daily.kind, "daily");
+  assert.equal(formatScheduleToken(daily), "daily@09:30");
+  assert.equal(describeSchedule(daily), "Chaque jour à 09:30");
+
+  const weekly = parseScheduleToken("weekly:1@08:00")!;
+  assert.equal(weekly.day, 1);
+  assert.match(describeSchedule(weekly), /lundi/);
+
+  assert.equal(parseScheduleToken("0 9 * * 1"), null); // vrai cron → non géré
+
+  const nextDaily = nextOccurrence(daily);
+  assert.ok(nextDaily.getTime() > Date.now(), "occurrence strictement future");
+  assert.ok(nextDaily.getTime() < Date.now() + 25 * 3600e3, "sous 25h");
+
+  const nextWeekly = nextOccurrence(weekly);
+  assert.ok(nextWeekly.getTime() > Date.now());
+  assert.ok(nextWeekly.getTime() < Date.now() + 8 * 24 * 3600e3, "sous 8 jours");
+});

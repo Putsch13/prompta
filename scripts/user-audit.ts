@@ -93,6 +93,10 @@ async function auditPublicPages() {
     ["/signup", /inscri|signup|email/i],
     ["/sitemap.xml", /urlset|sitemap/i],
     ["/robots.txt", /User-agent/i],
+    ["/aide", /Questions fréquentes/i],
+    ["/cas-usage/veille-quotidienne", /veille/i],
+    ["/cas-usage/reporting-automatique", /Sheets/i],
+    ["/cas-usage/prospection-contenu", /LinkedIn/i],
   ];
   for (const [path, expect] of pages) {
     try {
@@ -244,6 +248,35 @@ async function auditAgentLifecycle(cookies: Record<string, string>) {
       record("Cycle de vie", "préparer le lancement (run-version)", res.ok && !!data.versionId, res.ok ? "version prête" : `status ${res.status}: ${data.error}`, ms);
     } catch (e) {
       record("Cycle de vie", "run-version", false, `${e}`);
+    }
+
+    // Planification + webhook (P0 audité) : GET crée le trigger, POST planifie, DELETE nettoie.
+    try {
+      const [res, ms] = await timed(() => fetch(`${BASE_URL}/api/agents/${listingId}/schedule`, { headers: H }));
+      const data = (await res.json()) as { webhook?: { url?: string } };
+      record("Planification", "GET schedule (webhook créé)", res.ok && !!data.webhook?.url, res.ok ? `webhook ${data.webhook?.url?.slice(-20)}` : `status ${res.status}`, ms);
+    } catch (e) {
+      record("Planification", "GET schedule", false, `${e}`);
+    }
+    try {
+      const [res, ms] = await timed(() =>
+        fetch(`${BASE_URL}/api/agents/${listingId}/schedule`, {
+          method: "POST",
+          headers: H,
+          body: JSON.stringify({ kind: "daily", time: "09:00" }),
+        }),
+      );
+      const data = (await res.json()) as { schedule?: { label?: string; nextRunAt?: string }; error?: string };
+      const ok = res.ok && !!data.schedule?.nextRunAt;
+      record("Planification", "POST planning quotidien", ok, ok ? `${data.schedule?.label} → ${data.schedule?.nextRunAt}` : `status ${res.status}: ${data.error}`, ms);
+    } catch (e) {
+      record("Planification", "POST planning", false, `${e}`);
+    }
+    try {
+      const [res, ms] = await timed(() => fetch(`${BASE_URL}/api/agents/${listingId}/schedule`, { method: "DELETE", headers: H }));
+      record("Planification", "DELETE planning", res.ok, `status ${res.status}`, ms);
+    } catch (e) {
+      record("Planification", "DELETE planning", false, `${e}`);
     }
 
     try {

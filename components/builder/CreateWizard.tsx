@@ -65,6 +65,8 @@ const STEPS = STEP_META.map((s) => s.label);
 
 interface Props {
   categories: { id: string; name: string; slug: string }[];
+  /** Objectif prérempli (onboarding : /dashboard/new?objectif=…). */
+  initialObjective?: string;
   /** Mode édition : recharge un agent existant dans le builder (arbo + copilote).
    *  La sauvegarde crée une nouvelle version via /api/listings/update. */
   edit?: {
@@ -87,7 +89,7 @@ interface EnvField {
   paramKey?: string;
 }
 
-export function CreateWizard({ categories: _categories, edit }: Props) {
+export function CreateWizard({ categories: _categories, edit, initialObjective }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(edit ? 1 : 0);
   const [saving, setSaving] = useState(false);
@@ -111,7 +113,7 @@ export function CreateWizard({ categories: _categories, edit }: Props) {
   const [stepError, setStepError] = useState<string | null>(null);
   const [disconnectedConnectors, setDisconnectedConnectors] = useState<string[]>([]);
 
-  const [objectiveText, setObjectiveText] = useState("");
+  const [objectiveText, setObjectiveText] = useState(initialObjective ?? "");
   const [builderModel, setBuilderModel] = useState("gpt-5.4-mini");
   const [planLoading, setPlanLoading] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);

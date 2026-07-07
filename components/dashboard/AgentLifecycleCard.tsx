@@ -11,8 +11,10 @@ import {
   Rocket,
   ArrowRight,
   Trash2,
+  Clock,
 } from "lucide-react";
 import { StatusPill, statusTone } from "@/components/ui";
+import { AgentSchedulePanel } from "@/components/dashboard/AgentSchedulePanel";
 import type { AgentOverview } from "@/lib/library/agent-overview";
 
 const RUN_LABELS: Record<string, string> = {
@@ -47,6 +49,8 @@ export function AgentLifecycleCard({
   const [needsMask, setNeedsMask] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduleLabel, setScheduleLabel] = useState<string | null>(null);
 
   const inProduction = agent.status === "published";
   const last = agent.lastRun;
@@ -178,16 +182,31 @@ export function AgentLifecycleCard({
           <Pencil className="h-3.5 w-3.5" /> Modifier
         </Link>
         {inProduction && (
-          <button
-            type="button"
-            onClick={() => void quickLaunch()}
-            disabled={launching}
-            title="Démarre en tâche de fond — si l'agent a besoin d'infos, on te les demande."
-            className="inline-flex items-center gap-1.5 rounded-lg border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/5 disabled:opacity-50"
-          >
-            {launching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            Lancer
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => void quickLaunch()}
+              disabled={launching}
+              title="Démarre en tâche de fond — si l'agent a besoin d'infos, on te les demande."
+              className="inline-flex items-center gap-1.5 rounded-lg border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/5 disabled:opacity-50"
+            >
+              {launching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+              Lancer
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSchedule((v) => !v)}
+              title="Lancement automatique (chaque jour/semaine) et déclenchement par webhook"
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                showSchedule || scheduleLabel
+                  ? "border-accent bg-accent/5 text-accent"
+                  : "border-line text-ink-soft hover:border-accent hover:text-accent"
+              }`}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              {scheduleLabel ?? "Planifier"}
+            </button>
+          </>
         )}
         <Link
           href={`/dashboard/runs?agent=${agent.id}`}
@@ -196,6 +215,10 @@ export function AgentLifecycleCard({
           <History className="h-3.5 w-3.5" /> Historique
         </Link>
       </div>
+
+      {showSchedule && (
+        <AgentSchedulePanel agentId={agent.id} onScheduleChange={setScheduleLabel} />
+      )}
     </div>
   );
 }

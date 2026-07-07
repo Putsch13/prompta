@@ -9,6 +9,7 @@ import { WalletBalanceBadge } from "@/components/wallet/WalletBalanceBadge";
 
 const NAV = [
   { href: "/pricing", label: "Tarifs" },
+  { href: "/aide", label: "Aide" },
   { href: "/wallet", label: "Mon wallet", authOnly: true },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/admin", label: "Admin", adminOnly: true },

@@ -39,6 +39,43 @@ export async function GET(req: NextRequest) {
   const pendingProcessed = "queued (after)";
   const reaped = "queued (after)";
   after(async () => {
+    // ── Plannings UTILISATEUR (scheduled_runs) : insérés en pending ici même,
+    // puis traités par la passe juste en dessous — aucune dépendance à un
+    // cron Render séparé.
+    try {
+      const { parseScheduleToken, nextOccurrence } = await import("@/lib/agent/schedule-token");
+      const nowIso = new Date().toISOString();
+      const { data: dueSchedules } = await sb
+        .from("scheduled_runs")
+        .select("id, user_id, listing_id, inputs, cron_expression")
+        .eq("active", true)
+        .lte("next_run_at", nowIso);
+      for (const s of dueSchedules ?? []) {
+        const { data: listing } = await sb
+          .from("listings")
+          .select("current_version_id, status")
+          .eq("id", s.listing_id)
+          .single();
+        const preset = parseScheduleToken(s.cron_expression);
+        const next = preset ? nextOccurrence(preset) : new Date(Date.now() + 24 * 3600e3);
+        // Toujours replanifier (sinon boucle infinie sur un agent dépublié).
+        await sb
+          .from("scheduled_runs")
+          .update({ last_run_at: nowIso, next_run_at: next.toISOString() })
+          .eq("id", s.id);
+        if (!listing?.current_version_id || listing.status !== "published") continue;
+        await sb.from("listing_agent_runs").insert({
+          user_id: s.user_id,
+          listing_id: s.listing_id,
+          version_id: listing.current_version_id,
+          inputs: (s.inputs as Record<string, string>) ?? {},
+          status: "pending",
+        });
+      }
+    } catch (e) {
+      console.error("[cron:tick] scheduled runs failed:", e);
+    }
+
     const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
     await processPendingAgentRuns(5).catch((e) =>
       console.error("[cron:tick] pending runs failed:", e),

@@ -3,8 +3,11 @@ import { CreateWizard } from "@/components/builder/CreateWizard";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewListingPage() {
+export default async function NewListingPage(props: {
+  searchParams: Promise<{ objectif?: string }>;
+}) {
   const categories = await ensureCategories();
+  const { objectif } = await props.searchParams;
 
   return (
     <div>
@@ -21,7 +24,7 @@ export default async function NewListingPage() {
           au même endroit.
         </p>
       </div>
-      <CreateWizard categories={categories} />
+      <CreateWizard categories={categories} initialObjective={objectif} />
     </div>
   );
 }
