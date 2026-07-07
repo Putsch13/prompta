@@ -155,17 +155,61 @@ export async function processPendingAgentRuns(
         }
       }
 
-      // Un run de test builder est traité comme un run du créateur (mêmes
-      // paramètres billing que la route preview : owner + free).
-      const isFree = isPreview || (listing?.price_cents ?? 0) === 0;
-      const isOwner = isPreview || listing?.creator_id === claimed.user_id;
-      const billing = await resolveAgentRunKeys(
-        claimed.user_id,
-        manifest,
-        isOwner,
-        isFree,
-        { consumeFreeQuota: false }
-      );
+      // FACTURATION (post-marketplace) : la propriété n'exonère pas.
+      // used_credits === null  → run né ici (test builder, planifié, webhook,
+      //   QA) : le worker décide — BYOK = gratuit, clés plateforme = hold de
+      //   crédits (ou quota gratuit), admin illimité = exempté.
+      // used_credits === false → déjà autorisé par l'API (BYOK/quota) : on ne
+      //   résout que les clés, aucune re-facturation.
+      // used_credits === true  → hold déjà posé par l'API : settle en sortie.
+      const alreadyAuthorized = claimed.used_credits !== null && claimed.used_credits !== undefined;
+      let billing: Awaited<ReturnType<typeof resolveAgentRunKeys>>;
+      try {
+        billing = await resolveAgentRunKeys(
+          claimed.user_id,
+          manifest,
+          alreadyAuthorized, // true = clés seulement, pas de contrôle crédits
+          true,
+          { consumeFreeQuota: !alreadyAuthorized }
+        );
+      } catch (billErr) {
+        const msg = billErr instanceof Error ? billErr.message : "Crédits insuffisants";
+        await admin
+          .from("listing_agent_runs")
+          .update({ status: "failed", error_message: msg })
+          .eq("id", claimed.id);
+        continue;
+      }
+
+      if (!alreadyAuthorized) {
+        if (billing.usedCredits) {
+          const { holdAgentRunCredits } = await import("@/lib/billing/agent-run-billing");
+          const held = await holdAgentRunCredits(claimed.user_id, claimed.id, billing.estimatedMax);
+          if (!held) {
+            await admin
+              .from("listing_agent_runs")
+              .update({
+                status: "failed",
+                error_message: "Crédits insuffisants — recharge tes crédits ou configure tes clés BYOK.",
+              })
+              .eq("id", claimed.id);
+            continue;
+          }
+          await admin
+            .from("listing_agent_runs")
+            .update({ used_credits: true, credit_hold_estimate_cents: billing.estimatedMax })
+            .eq("id", claimed.id);
+          claimed.used_credits = true;
+          claimed.credit_hold_estimate_cents = billing.estimatedMax;
+        } else {
+          // Autorisé sans crédits (BYOK complet, quota gratuit ou admin).
+          await admin
+            .from("listing_agent_runs")
+            .update({ used_credits: false })
+            .eq("id", claimed.id);
+          claimed.used_credits = false;
+        }
+      }
 
       // Les clés techniques (__manifest…) ne sont pas des entrées d'agent.
       const inputs = Object.fromEntries(

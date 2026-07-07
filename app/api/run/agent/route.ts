@@ -195,6 +195,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Agent introuvable" }, { status: 404 });
   }
 
+  // Post-marketplace : être propriétaire ne dispense PLUS de payer l'IA.
+  // La facturation est décidée par resolveAgentRunKeys (BYOK → 0 crédit ;
+  // clés plateforme → crédits ; admin illimité → exempté). hasEntitlement ne
+  // sert plus qu'au contrôle d'ACCÈS des non-propriétaires (legacy).
   let hasEntitlement = isOwner;
 
   if (!isOwner) {
@@ -239,7 +243,7 @@ export async function POST(request: NextRequest) {
     billing = await resolveAgentRunKeys(
       user.id,
       parsedEnv.manifest,
-      hasEntitlement,
+      false, // la propriété n'exonère pas : BYOK ou crédits
       isFree
     );
   } catch (err) {
