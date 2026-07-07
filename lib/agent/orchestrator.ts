@@ -581,6 +581,20 @@ async function executeStep(
           await logStepSuccess(stepDbId, result.output.slice(0, 1000), undefined, stepStartedAt).catch(() => undefined);
         }
 
+        // Indice AMONT générique : beaucoup d'apps renvoient un
+        // composio_execution_message explicatif (« aucune page partagée avec
+        // l'intégration », « workspace vide »…) sur une réponse techniquement
+        // réussie. On le mémorise : si une étape AVAL échoue (param vide,
+        // ressource introuvable), il sera rattaché à l'erreur.
+        try {
+          const parsedOut = JSON.parse(result.output) as { composio_execution_message?: unknown };
+          if (typeof parsedOut?.composio_execution_message === "string" && parsedOut.composio_execution_message.trim()) {
+            vars.__exec_hint = `Indice (étape ${stepIndex + 1}, ${step.action}) : ${parsedOut.composio_execution_message.slice(0, 300)}`;
+          }
+        } catch {
+          // sortie non-JSON — pas d'indice
+        }
+
         return {
           content: result.output,
           usage: { inputTokens: 0, outputTokens: 0, connectorAction: step.action },
@@ -588,7 +602,15 @@ async function executeStep(
       } catch (err) {
         // P3.2 : mapping unifié vers AgentRuntimeError (codes + hints lisibles)
         const mapped = mapAgentError(err, { connector: step.connector, action: step.action });
-        const message = mapped.hint ? `${mapped.message} — ${mapped.hint}` : mapped.message;
+        let message = mapped.hint ? `${mapped.message} — ${mapped.hint}` : mapped.message;
+        // Rattache l'indice amont si l'échec ressemble à une donnée manquante :
+        // c'est souvent la VRAIE cause (connexion sans ressource partagée…).
+        if (
+          typeof vars.__exec_hint === "string" &&
+          /non renseigné|requiert des champs|invalid value|introuvable|not found|missing/i.test(message)
+        ) {
+          message = `${message}\n${vars.__exec_hint}`;
+        }
         if (executionId && runId && !simulated) {
           await failExecution(executionId, message).catch(() => undefined);
         }
