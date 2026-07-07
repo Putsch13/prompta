@@ -1610,8 +1610,8 @@ const PROD_TESTS: QaTest[] = [
     name: "prod_youtube_recherche_curation",
     goal: "YouTube : curation de 5 vidéos sur un sujet → email",
     manifest: { kind: "agent", steps: [
-      { type: "action", connector: "youtube", action: "youtube.search_videos", params: { query: "construire des agents IA tutoriel" }, outputKey: "videos" },
-      llm("Sélectionne les 5 meilleures vidéos de : {{videos}} — titre + chaîne + pourquoi la regarder (1 ligne).", "curation"),
+      { type: "action", connector: "youtube", action: "youtube.search_videos", params: { query: "agents IA", mine: "true" }, outputKey: "videos" },
+      llm("Voici les vidéos de ma chaîne (JSON) : {{videos}}\nFais un état des lieux : nombre de vidéos, titres, et 3 idées de prochaines vidéos sur les agents IA. Si la chaîne est vide, propose directement 5 idées de vidéos.", "curation"),
       { type: "action", connector: "gmail", action: "gmail.send", params: { from: SELF_EMAIL, to: SELF_EMAIL, subject: "▶️ Curation YouTube — agents IA", body: "{{curation}}" } },
     ] },
     expect: ["completed", "failed"], errorPattern: /connecté|autorisation|requiert|introuvable/i,
