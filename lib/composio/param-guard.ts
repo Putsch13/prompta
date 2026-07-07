@@ -116,6 +116,46 @@ export function missingRequiredComposioParams(
   return inputs.filter((i) => i.required && isBlank(args[i.key]));
 }
 
+/** Tokens alphabétiques d'une clé (snake, camel, kebab) — triés. */
+function keyTokens(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .sort()
+    .join("|");
+}
+
+/**
+ * Aligne les clés de params sur les clés du SCHÉMA par ensemble de tokens
+ * (ordre-insensible) : `board_id` ≡ `idBoard`, `spreadsheet_id` ≡
+ * `spreadsheetId`, `parent_id` ≡ `parentId`… Les plans générés écrivent en
+ * snake_case « objet_id » ; chaque API a sa propre casse — une seule règle
+ * couvre les 1000 apps au lieu d'alias codés en dur.
+ */
+export function alignParamKeysToSchema(
+  inputs: ToolInput[],
+  args: Record<string, string>,
+): Record<string, string> {
+  const out: Record<string, string> = { ...args };
+  const schemaKeys = new Set(inputs.map((i) => i.key));
+  const byTokens = new Map<string, string>();
+  for (const i of inputs) {
+    const t = keyTokens(i.key);
+    if (!byTokens.has(t)) byTokens.set(t, i.key);
+  }
+  for (const [k, v] of Object.entries(args)) {
+    if (schemaKeys.has(k) || isBlank(v)) continue;
+    const target = byTokens.get(keyTokens(k));
+    if (target && isBlank(out[target])) {
+      out[target] = v;
+      delete out[k];
+    }
+  }
+  return out;
+}
+
 export interface GuardResult {
   args: Record<string, string>;
   /** Types attendus par le schéma (clé → type) pour la coercition d'exécution. */
@@ -141,7 +181,8 @@ export async function guardComposioParams(
   }
   if (!entry) return { args };
 
-  const withDefaults = applyComposioSchemaDefaults(entry.inputs, args);
+  const aligned = alignParamKeysToSchema(entry.inputs, args);
+  const withDefaults = applyComposioSchemaDefaults(entry.inputs, aligned);
   const missing = missingRequiredComposioParams(entry.inputs, withDefaults);
 
   const argTypes: Record<string, ComposioArgType> = {};
