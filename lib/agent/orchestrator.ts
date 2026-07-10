@@ -1069,7 +1069,14 @@ export async function runAgent(
                 totalOutputBytes += content.length;
               }
               const lastOutput = branchOutputs[branchOutputs.length - 1] ?? "";
-              return { lastOutput, branchIdx, outputKey: branch.outputKey };
+              // Variables produites PAR la branche (outputKeys des sous-étapes,
+              // step_N_output…) : remontées au parent — sinon une étape de
+              // fusion aval ne voit jamais {{medecins}} / {{infirmiers}}.
+              const newVars: Record<string, string> = {};
+              for (const [k, v] of Object.entries(branchVars)) {
+                if (vars[k] !== v) newVars[k] = v;
+              }
+              return { lastOutput, branchIdx, outputKey: branch.outputKey, newVars };
             })
           );
 
@@ -1083,6 +1090,11 @@ export async function runAgent(
           for (const result of branchResults) {
             if (result.status === "fulfilled") {
               branchOutputsList.push(result.value.lastOutput);
+              // Propage les variables de la branche (fusion aval possible).
+              for (const [k, v] of Object.entries(result.value.newVars)) {
+                vars[k] = v;
+                if (!k.startsWith("step_")) outputs[k] = v;
+              }
               if (result.value.outputKey) {
                 vars[result.value.outputKey] = result.value.lastOutput;
                 outputs[result.value.outputKey] = result.value.lastOutput;
