@@ -360,7 +360,11 @@ async function executeStep(
       let content: string;
       switch (step.tool) {
         case "web_search":
-          content = await webSearch(interpolate(step.params.query ?? "", vars), ctx.apiKeys.serper);
+          content = await webSearch(
+            interpolate(step.params.query ?? "", vars),
+            ctx.apiKeys.serper,
+            Number(step.params.num) > 0 ? Number(step.params.num) : 10,
+          );
           break;
         case "http_fetch":
           content = await httpFetch(interpolate(step.params.url ?? "", vars));
@@ -429,6 +433,21 @@ async function executeStep(
         // Extraction d'ID depuis une URL collée (Doc/Sheet/dossier Drive…),
         // sauf pour les champs de contenu (où une URL est légitime).
         params[k] = isContentParamKey(k) ? interpolated : extractResourceId(interpolated);
+
+        // ID de ressource manifestement invalide (« med » comme spreadsheet_id) :
+        // on échoue AVANT l'appel API, avec un message humain — pas un dump
+        // d'erreur Google. Heuristique : clés *_id de ressources Google dont la
+        // valeur est trop courte pour être un vrai identifiant.
+        if (
+          /(spreadsheet|document|presentation|file|folder)_?id$/i.test(k) &&
+          params[k] &&
+          !params[k].includes("{{") &&
+          params[k].length < 15
+        ) {
+          throw new Error(
+            `« ${params[k]} » n'est pas un identifiant valide pour « ${k} » — choisis la ressource dans le masque de lancement (ou colle son URL complète), ou demande à l'agent de la créer lui-même.`,
+          );
+        }
       }
 
       // Remplissage par IA des paramètres en champ libre (avant défauts/validation).

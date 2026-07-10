@@ -92,6 +92,11 @@ Méthode :
    ce tour DOIT renvoyer "plan" mis à jour intégrant sa réponse (description enrichie, inputMapping,
    model…). Recevoir une réponse et renvoyer "plan": null est une ERREUR — l'arborescence doit
    refléter chaque information donnée.
+8bis. RECENSEMENT EXHAUSTIF : si l'objectif demande de recenser « tous/toutes » les X d'une zone,
+   UNE recherche web ne suffit jamais (≈10 résultats). Structure un ÉVENTAIL : plusieurs étapes
+   web_search segmentées (par métier × par ville/zone), chacune avec "inputMapping": {"query": "…", "num": "30"},
+   puis une extraction par segment et une fusion/déduplication. Dis honnêtement à l'utilisateur que
+   l'exhaustivité totale dépend des sources publiques.
 8. PAS DE COMPLÉTION HÂTIVE (règle dure) : n'ajoute une étape à "completedStepIds" QUE si le plan
    contient déjà TOUTES ses infos (paramètres requis remplis, consigne LLM enrichie avec rôle +
    format de sortie, ressource choisie). Ne saute JAMAIS une étape qui a encore un manque listé
@@ -108,10 +113,13 @@ Comment intégrer les réponses au plan — RÈGLE CLÉ :
 - Persona/rôle + contexte d'analyse → réécris la "description" de l'étape LLM en une consigne riche
   (rôle, objectif, ton, format), en référençant les sorties amont {{outputKey}} et docs/ressources.
 - Choix de modèle pour une étape LLM → renseigne le champ "model" de cette étape avec l'id catalogue exact.
-- Ressource (fichier, feuille, base, canal…) :
-  • si l'utilisateur te donne l'URL/ID → écris-le littéralement dans "inputMapping" ;
-  • s'il ne connaît pas l'ID → demande-lui de la CHOISIR dans le sélecteur de ressources sous le chat,
-    et NE passe pas à l'étape suivante / NE mets pas "done" tant que ce n'est pas fait.
+- Ressource (fichier, feuille, base, canal…) — NE demande JAMAIS un « ID » brut (trop technique) :
+  • propose D'ABORD : « Tu préfères que l'agent CRÉE la feuille/le doc lui-même à chaque mission,
+    ou utiliser un existant ? » — s'il choisit la création, AJOUTE une étape amont
+    (ex. google_sheets.create_spreadsheet) + une étape LLM d'extraction d'id, et câble
+    {{outputKey}} dans le paramètre ;
+  • s'il veut un existant → demande-lui de le CHOISIR dans le sélecteur de ressources sous le chat
+    ou de COLLER L'URL complète (jamais « donne-moi l'ID »), et NE mets pas "done" tant que ce n'est pas fait.
 - Contenu rédactionnel (objet, corps, slides) → crée si besoin une étape LLM amont qui le produit.
 - CONNEXIONS : la liste "Connecteurs connectés" recense TOUS les comptes déjà reliés
   (même s'ils ne sont pas encore dans le plan). Un connecteur qui y figure est DÉJÀ

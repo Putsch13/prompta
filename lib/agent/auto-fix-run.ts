@@ -66,6 +66,9 @@ Tu PEUX corriger (auto-réparable) — sois AUDACIEUX, ta mission est que le pro
 - un paramètre requis manquant dont le SCHÉMA fourni donne les valeurs possibles : CHOISIS la valeur d'enum la plus adaptée au contexte, ou le default ;
 - un paramètre texte requis manquant : ajoute un "aiFills" sur l'étape ({"cle": {"model": "gpt-5.4-mini", "prompt": "..."}}) pour le générer au run ;
 - la REQUÊTE d'une étape retrieve qui ne trouve rien : reformule-la (mots-clés du vrai nom de fichier visibles dans le plan, ou intention « fichiers récents ») ;
+- un ID de ressource INVALIDE ou manquant (spreadsheet_id « med », doc introuvable…) : AJOUTE une
+  étape AMONT qui CRÉE la ressource (ex. google_sheets.create_spreadsheet + extraction LLM de l'id)
+  et câble son {{outputKey}} dans le paramètre — c'est presque toujours mieux que de redemander l'ID ;
 - un placeholder {{...}} qui ne pointe vers aucune sortie existante ;
 - un en-tête email invalide (from/to) quand la valeur correcte est déductible du plan ;
 - une plage/onglet Sheets invalide (utilise "A1" par défaut) ;

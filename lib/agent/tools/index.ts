@@ -4,7 +4,7 @@ const PRIVATE_IP_PATTERNS = [
   /^https?:\/\/(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|127\.|0\.|169\.254\.|localhost|\[::1\])/i,
 ];
 
-export async function webSearch(query: string, apiKey?: string): Promise<string> {
+export async function webSearch(query: string, apiKey?: string, num = 10): Promise<string> {
   if (!apiKey) throw new Error("Clé Serper requise pour la recherche web");
 
   const res = await fetch("https://google.serper.dev/search", {
@@ -13,7 +13,8 @@ export async function webSearch(query: string, apiKey?: string): Promise<string>
       "X-API-KEY": apiKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ q: query, num: 5 }),
+    // num : profondeur de recherche (les recensements exhaustifs passent 30-50).
+    body: JSON.stringify({ q: query, num: Math.min(50, Math.max(1, num)) }),
   });
 
   if (!res.ok) {
