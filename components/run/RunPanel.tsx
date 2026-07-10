@@ -327,16 +327,22 @@ export function RunPanel({
         setRunMode(pf.mode);
         if (!pf.canRun) {
           if (pf.missingConnectors?.length > 0) {
+            setShowImmersive(false);
+            setAgentStatus(null);
             setConnectionsReady(false);
             setError(pf.reason ?? "Connexion manquante");
             setRunning(false);
             return;
           }
           if (pf.missingKeys?.length > 0 && pf.creditBalance <= 0) {
+            setShowImmersive(false);
+            setAgentStatus(null);
             setShowWizard(true);
             setRunning(false);
             return;
           }
+          setShowImmersive(false);
+          setAgentStatus(null);
           setError(pf.reason ?? "Impossible de lancer l'agent");
           setRunning(false);
           return;
@@ -344,6 +350,8 @@ export function RunPanel({
         // Pilier B (P2.3) : missingInputs piloté par le Résolveur unique.
         if (!runDryRun && Array.isArray(pf.missingInputs) && pf.missingInputs.length > 0) {
           const first = pf.missingInputs[0] as { message?: string; label?: string };
+          setShowImmersive(false);
+          setAgentStatus(null);
           setError(first.message ?? `Renseignez « ${first.label ?? ""} ».`);
           setRunning(false);
           return;
@@ -412,6 +420,11 @@ export function RunPanel({
         setRunning(false);
       }
     } catch (err) {
+      // Échec AVANT création du run (config incomplète, crédits, réseau…) :
+      // on REFERME la vue immersive, sinon elle mouline « Étape 1 » à vide
+      // pendant que l'erreur s'affiche invisiblement derrière.
+      setShowImmersive(false);
+      setAgentStatus(null);
       setError(err instanceof Error ? err.message : "Erreur agent");
       setRunning(false);
     }
