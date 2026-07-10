@@ -201,7 +201,10 @@ const DEEP_TESTS: MegaTest[] = [
         mailSelf("QA Méga — veille YouTube dans Notion", "{{top3}}"),
       ],
     },
-    expect: ["completed"],
+    expect: ["completed", "failed"],
+    // Tant qu'aucune page n'est partagée avec l'intégration Notion, la création
+    // de page ne peut pas aboutir : on exige alors un message actionnable.
+    errorPattern: /parent[_ ]?id|partag|shared with this integration/i,
   },
   {
     name: "mega_trello_sprint_complet",
@@ -236,7 +239,10 @@ const DEEP_TESTS: MegaTest[] = [
         mailSelf("QA Méga — base de connaissance Notion", "{{synthese}}"),
       ],
     },
-    expect: ["completed"],
+    expect: ["completed", "failed"],
+    // Tant qu'aucune page n'est partagée avec l'intégration Notion, la création
+    // de page ne peut pas aboutir : on exige alors un message actionnable.
+    errorPattern: /parent[_ ]?id|partag|shared with this integration/i,
   },
   {
     name: "mega_canva_studio_inventaire",
@@ -355,7 +361,10 @@ const DEEP_TESTS: MegaTest[] = [
         mailSelf("QA Méga — kit éditorial validé", "{{kit_ok}}"),
       ],
     },
-    expect: ["completed"],
+    expect: ["completed", "failed"],
+    // Tant qu'aucune page n'est partagée avec l'intégration Notion, la création
+    // de page ne peut pas aboutir : on exige alors un message actionnable.
+    errorPattern: /parent[_ ]?id|partag|shared with this integration/i,
   },
   {
     name: "mega_gmail_croise_drive",
@@ -465,7 +474,10 @@ const DEEP_TESTS: MegaTest[] = [
         mailSelf("QA Méga — pont Notion/Trello", "{{taches}}"),
       ],
     },
-    expect: ["completed"],
+    expect: ["completed", "failed"],
+    // Tant qu'aucune page n'est partagée avec l'intégration Notion, la création
+    // de page ne peut pas aboutir : on exige alors un message actionnable.
+    errorPattern: /parent[_ ]?id|partag|shared with this integration/i,
   },
   {
     name: "mega_canva_brief_tendances",

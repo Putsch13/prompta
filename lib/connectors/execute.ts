@@ -76,6 +76,16 @@ async function runComposioDynamic(
   userId: string,
   params: Record<string, string>,
 ): Promise<ExecuteResult | null> {
+  // Mapping curaté D'ABORD : les cas ambigus tranchés à la main (youtube.search,
+  // sheets.add_tab…) priment sur la résolution dynamique. Sans ce passage, les
+  // connecteurs sans registre natif (youtube, notion…) n'atteignaient jamais le
+  // mapping (branches 1bis/0bis) et retombaient sur le mauvais outil.
+  const curated = composioMappingFor(actionId);
+  if (curated) {
+    const mapped = curated.mapParams(params);
+    const expectedKeys = await getComposioToolInputKeys(curated.toolkitSlug, curated.toolSlug);
+    return runComposio(curated.toolSlug, userId, alignArgKeysToSchema(mapped, expectedKeys), curated.toolkitSlug);
+  }
   const resolvedSlug = await resolveComposioToolSlug(connectorId, actionId, {
     hasTextContent: hasTextContentParam(params),
   });
