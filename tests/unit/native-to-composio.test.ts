@@ -69,6 +69,22 @@ test("sheets.append — le défaut registre « A:Z » nu bascule sur l'ancre A1 
   assert.equal(m.mapParams({ spreadsheetId: "x", tab: "Feuille 1", values: "a;b" }).range, "Feuille 1!A:Z");
 });
 
+test("ajout d'onglet → GOOGLESHEETS_ADD_SHEET (jamais détourné vers l'ajout de ligne)", () => {
+  // « add_worksheet » matchait la famille « append » (token add) → VALUES_APPEND.
+  for (const alias of ["google_sheets.add_worksheet", "google_sheets.create_tab", "googlesheets.add_sheet", "sheets.add_tab", "google_sheets.nouvel_onglet"]) {
+    const m = composioMappingFor(alias);
+    assert.ok(m, `${alias} doit résoudre vers un mapping`);
+    assert.equal(m!.toolSlug, "GOOGLESHEETS_ADD_SHEET", alias);
+  }
+  const args = composioMappingFor("google_sheets.add_worksheet")!.mapParams({ spreadsheet_id: "1AbC", title: "Médecins" });
+  assert.deepEqual(args, { spreadsheet_id: "1AbC", title: "Médecins" });
+  // La création du DOCUMENT et l'ajout de LIGNE ne changent pas.
+  assert.equal(composioMappingFor("google_sheets.create_sheet")!.toolSlug, "GOOGLESHEETS_CREATE_GOOGLE_SHEET1");
+  assert.equal(composioMappingFor("google_sheets.append_row")!.toolSlug, "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND");
+  // La lecture d'un onglet ne doit PAS créer d'onglet.
+  assert.notEqual(composioMappingFor("google_sheets.read_tab")?.toolSlug, "GOOGLESHEETS_ADD_SHEET");
+});
+
 test("youtube.search et variantes → YOUTUBE_SEARCH_YOU_TUBE (jamais LIST_CHANNEL_VIDEOS)", () => {
   // La résolution dynamique préférait YOUTUBE_LIST_CHANNEL_VIDEOS (exige
   // channelId/mine) dès que l'id contenait « videos » : recherche impossible.

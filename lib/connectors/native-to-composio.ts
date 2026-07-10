@@ -121,6 +121,18 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
         value_input_option: "USER_ENTERED",
       }),
   },
+  // Ajout d'un ONGLET — curaté : « add_sheet / add_worksheet / create_tab »
+  // matchait la famille « append » (token « add ») et partait ajouter une
+  // LIGNE (VALUES_APPEND) au lieu de créer l'onglet.
+  "sheets.add_tab": {
+    toolSlug: "GOOGLESHEETS_ADD_SHEET",
+    toolkitSlug: "googlesheets",
+    mapParams: (p) =>
+      clean({
+        spreadsheet_id: sheetId(p),
+        title: pick(p, "title", "name", "tab", "onglet", "titre", "nom") ?? "Nouvel onglet",
+      }),
+  },
   // Recherche YouTube — curaté : la résolution dynamique préférait
   // YOUTUBE_LIST_CHANNEL_VIDEOS (exige channelId/mine) dès que l'id contenait
   // « videos » ; la recherche par mots-clés est YOUTUBE_SEARCH_YOU_TUBE.
@@ -226,6 +238,27 @@ export function composioMappingFor(actionId: string): ComposioActionMapping | un
   if (!conn) return undefined;
   const verbPhrase = rest.join("_");
   const verb = canonicalVerb(verbPhrase);
+
+  // Objet ONGLET + intention d'ajout → sheets.add_tab, AVANT la famille de
+  // verbe : « add_worksheet » matcherait « append » (token add) et ajouterait
+  // une ligne, « create_tab » raterait le garde-objet de sheets.create.
+  if (conn === "sheets") {
+    const toks = new Set(
+      verbPhrase
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean),
+    );
+    // « create_sheet / new_sheet » restent la création du DOCUMENT (historique) ;
+    // « add_sheet / insert_sheet » suivent la sémantique API (AddSheet = onglet).
+    const tabObject =
+      ["tab", "onglet", "worksheet"].some((t) => toks.has(t)) ||
+      (toks.has("sheet") && !toks.has("spreadsheet") && ["add", "insert", "ajouter"].some((t) => toks.has(t)));
+    const addIntent = ["add", "create", "new", "insert", "ajouter", "creer", "nouvel", "nouvelle"].some((t) => toks.has(t));
+    if (tabObject && addIntent) return NATIVE_TO_COMPOSIO["sheets.add_tab"];
+  }
 
   if (conn === "sheets" && verb === "create") {
     const toks = verbPhrase
