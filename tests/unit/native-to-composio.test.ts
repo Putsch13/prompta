@@ -58,6 +58,31 @@ test("sheets.append → GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND", () => {
   assert.equal(args.values, "[[\"a\",\"b\"]]");
 });
 
+test("sheets.append — le défaut registre « A:Z » nu bascule sur l'ancre A1 (rejeté par Composio)", () => {
+  const m = composioMappingFor("sheets.append")!;
+  // Sans plage explicite, applyActionParamDefaults injecte range="A:Z" : nu,
+  // l'API répond « Unable to parse range: 'A:Z' ». L'ancre A1 est universelle.
+  assert.equal(m.mapParams({ spreadsheetId: "x", range: "A:Z", values: "a;b" }).range, "A1");
+  assert.equal(m.mapParams({ spreadsheetId: "x", values: "a;b" }).range, "A1");
+  // Une plage explicite ou un onglet restent respectés.
+  assert.equal(m.mapParams({ spreadsheetId: "x", range: "B2:C9", values: "a;b" }).range, "B2:C9");
+  assert.equal(m.mapParams({ spreadsheetId: "x", tab: "Feuille 1", values: "a;b" }).range, "Feuille 1!A:Z");
+});
+
+test("youtube.search et variantes → YOUTUBE_SEARCH_YOU_TUBE (jamais LIST_CHANNEL_VIDEOS)", () => {
+  // La résolution dynamique préférait YOUTUBE_LIST_CHANNEL_VIDEOS (exige
+  // channelId/mine) dès que l'id contenait « videos » : recherche impossible.
+  for (const alias of ["youtube.search", "youtube.search_videos", "youtube.find_videos"]) {
+    const m = composioMappingFor(alias);
+    assert.ok(m, `${alias} doit résoudre vers un mapping`);
+    assert.equal(m!.toolSlug, "YOUTUBE_SEARCH_YOU_TUBE", alias);
+  }
+  const m = composioMappingFor("youtube.search_videos")!;
+  assert.deepEqual(m.mapParams({ query: "prospection IA" }), { q: "prospection IA" });
+  // list_playlists ne doit PAS matcher la famille search (résolution dynamique).
+  assert.equal(composioMappingFor("youtube.list_playlists"), undefined);
+});
+
 test("alias d'action générés par le builder → mapping canonique (anti faux 'pas dispo Composio')", () => {
   // Le builder émet parfois des ids hors registry : on doit quand même router.
   for (const alias of ["google_sheets.read_sheet", "googlesheets.read", "google_sheets.get_values"]) {

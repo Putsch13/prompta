@@ -21,6 +21,7 @@ export type AgentErrorCode =
   | "gmail_invalid_header"
   | "gmail_forbidden"
   | "rate_limit"
+  | "provider_quota"
   | "timeout"
   | "max_steps"
   | "max_tokens"
@@ -81,6 +82,16 @@ export function mapAgentError(
   }
   if (/approval[\s_-]*expired|validation humaine.*expir|approbation.*expir/i.test(raw)) {
     return { code: "approval_expired", message: "Validation humaine expirée.", hint: "Relancez l'agent.", raw };
+  }
+
+  // ─── Quotas côté service tiers (plan gratuit saturé, etc.) ─────────────
+  if (/workspaces?\s+are\s+full|board limit|too many boards/i.test(raw)) {
+    return {
+      code: "provider_quota",
+      message: "Votre espace Trello a atteint sa limite de tableaux (offre gratuite).",
+      hint: "Archivez ou supprimez d'anciens tableaux dans Trello (ou passez à un plan supérieur), puis relancez.",
+      raw, connector, action,
+    };
   }
 
   // ─── Recherche de données sans résultat ────────────────────────────────

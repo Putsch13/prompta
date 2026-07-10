@@ -108,12 +108,28 @@ export const NATIVE_TO_COMPOSIO: Record<string, ComposioActionMapping> = {
         spreadsheet_id: sheetId(p),
         // range requis par le schéma. « A:Z » nu est rejeté par le parseur
         // Composio ; « A1 » est l'ancre d'append standard, valide sans nom
-        // d'onglet (qui varie selon la langue : Sheet1 / Feuille 1).
-        range: pick(p, "range", "tab") ? composeRange(p) : "A1",
+        // d'onglet (qui varie selon la langue : Sheet1 / Feuille 1). Le défaut
+        // registre (defaultValue "A:Z") arrive ici via applyActionParamDefaults :
+        // on le neutralise aussi, sinon tout append sans plage explicite échoue.
+        range: (() => {
+          const r = pick(p, "range", "tab") ? composeRange(p) : "A1";
+          return r === "A:Z" ? "A1" : r;
+        })(),
         values: toSheetValues(pick(p, "values", "rows", "data") ?? ""),
         // Requis par l'outil : interprète les valeurs comme une saisie
         // utilisateur (formules/formats), le choix sûr par défaut.
         value_input_option: "USER_ENTERED",
+      }),
+  },
+  // Recherche YouTube — curaté : la résolution dynamique préférait
+  // YOUTUBE_LIST_CHANNEL_VIDEOS (exige channelId/mine) dès que l'id contenait
+  // « videos » ; la recherche par mots-clés est YOUTUBE_SEARCH_YOU_TUBE.
+  "youtube.search": {
+    toolSlug: "YOUTUBE_SEARCH_YOU_TUBE",
+    toolkitSlug: "youtube",
+    mapParams: (p) =>
+      clean({
+        q: pick(p, "q", "query", "search", "recherche", "sujet", "keywords"),
       }),
   },
   // Création d'une FEUILLE (le document) — curaté : la résolution dynamique
@@ -145,6 +161,7 @@ const CONNECTOR_ALIAS: Record<string, string> = {
   gmail: "gmail",
   google_mail: "gmail",
   slack: "slack",
+  youtube: "youtube",
 };
 
 /**
@@ -174,6 +191,9 @@ function canonicalVerb(verb: string): string {
   const tokens = new Set(folded.split(/[^a-z0-9]+/));
   const has = (...ws: string[]) => ws.some((w) => tokens.has(w));
   if (has("read", "get", "fetch", "list", "load", "lire", "lis", "recuperer")) return "read";
+  // « search » AVANT les familles d'écriture : search_videos / find_items sont
+  // des recherches par mots-clés, pas des listages de ressources possédées.
+  if (has("search", "find", "chercher", "rechercher", "recherche")) return "search";
   // « row »/« ligne » AVANT create : create_row = ajouter une ligne, pas créer la feuille.
   if (has("append", "add", "write", "insert", "ajouter", "ecrire", "ecris", "row", "ligne")) return "append";
   if (has("send", "email", "message", "notify", "envoyer", "envoie")) return "send";

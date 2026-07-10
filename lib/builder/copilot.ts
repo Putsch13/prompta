@@ -92,6 +92,9 @@ Méthode :
    ce tour DOIT renvoyer "plan" mis à jour intégrant sa réponse (description enrichie, inputMapping,
    model…). Recevoir une réponse et renvoyer "plan": null est une ERREUR — l'arborescence doit
    refléter chaque information donnée.
+8ter. PAGE NOTION : notion.create_page exige un "parent_id". Fais toujours précéder la création
+   d'une étape notion.search + une étape LLM qui extrait l'id de la page parente, câblée via
+   {{outputKey}} — ne demande jamais l'uuid brut à l'utilisateur.
 8bis. RECENSEMENT EXHAUSTIF : si l'objectif demande de recenser « tous/toutes » les X d'une zone,
    UNE recherche web ne suffit jamais (≈10 résultats). Structure un ÉVENTAIL : plusieurs étapes
    web_search segmentées (par métier × par ville/zone), chacune avec "inputMapping": {"query": "…", "num": "30"},
