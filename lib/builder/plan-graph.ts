@@ -140,7 +140,12 @@ function planStepToNode(
         step.actionSlug === "file_read"
           ? step.actionSlug
           : "web_search";
-      return { ...base, kind: "tool", toolId };
+      // Les params du tool (query, url…) DOIVENT survivre au graphe — sans
+      // eux, web_search partait avec une query vide sur tout agent du wizard.
+      const params = step.inputMapping
+        ? Object.fromEntries(Object.entries(step.inputMapping).map(([k, v]) => [k, String(v)]))
+        : undefined;
+      return { ...base, kind: "tool", toolId, params };
     }
     case "code":
       return { ...base, kind: "code", prompt: step.description };
@@ -314,7 +319,7 @@ function nodeToAgentStep(node: PlanNode, defaultModel: string): AgentStep {
       return {
         type: "tool",
         tool: node.toolId ?? "web_search",
-        params: {},
+        params: node.params ?? {},
         outputKey: node.outputKey,
       };
     case "code":
@@ -596,6 +601,20 @@ export function validatePlanGraph(
   }
 
   for (const n of graph.nodes) {
+    // Un outil sans sa donnée d'entrée = échec garanti au run (web_search
+    // « Missing query parameter ») : bloquant dès le build.
+    if (n.kind === "tool") {
+      const needed = n.toolId === "http_fetch" ? "url" : n.toolId === "file_read" ? "path" : "query";
+      const toolVal = n.params?.[needed] ?? n.params?.query ?? "";
+      if (!String(toolVal).trim()) {
+        issues.push({
+          nodeId: n.id,
+          level: "error",
+          message: `« ${n.name} » : renseigne ${needed === "url" ? "l'URL à lire" : needed === "path" ? "le fichier à lire" : "la requête de recherche"} (params.${needed}).`,
+        });
+      }
+    }
+
     if (!reachable.has(n.id)) {
       issues.push({
         nodeId: n.id,
@@ -967,6 +986,7 @@ function agentStepToNode(step: BaseAgentStep, id: string, index: number): PlanNo
         kind: "tool",
         name: `Outil ${step.tool}`,
         toolId: step.tool,
+        params: step.params,
       };
     case "action": {
       const native = step.connector ? getConnectorAction(step.connector, step.action) : undefined;

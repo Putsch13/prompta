@@ -95,3 +95,26 @@ test("schedule-token : round-trip daily/weekly + prochaine occurrence future", (
   assert.ok(nextWeekly.getTime() > Date.now());
   assert.ok(nextWeekly.getTime() < Date.now() + 8 * 24 * 3600e3, "sous 8 jours");
 });
+
+test("tool params (query) survivent au round-trip graphe et leur absence est bloquante", async () => {
+  const { planToGraph, validatePlanGraph } = await import("@/lib/builder/plan-graph");
+  const plan = {
+    kind: "agent", title: "t", description: "d", objective: "o",
+    variables: [], requiredConnectors: [], triggers: [], policies: {}, memory: {},
+    entryStepId: "s1",
+    steps: [
+      { id: "s1", type: "tool", name: "Recherche", description: "", actionSlug: "web_search",
+        inputMapping: { query: "infirmiers libéraux 13" }, outputKey: "r", riskLevel: "low", requiresApproval: false, next: [] },
+    ],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+  const g = planToGraph(plan, "gpt-5.4");
+  const back = graphToSteps(g, "gpt-5.4");
+  assert.equal((back[0] as { params?: Record<string, string> }).params?.query, "infirmiers libéraux 13");
+  assert.equal(validatePlanGraph(g, "gpt-5.4").filter((i) => i.level === "error").length, 0);
+
+  // Sans query → erreur bloquante au build
+  const g2 = stepsToGraph([{ type: "tool", tool: "web_search", params: {}, outputKey: "r" }]);
+  const errs = validatePlanGraph(g2, "gpt-5.4").filter((i) => i.level === "error");
+  assert.ok(errs.some((e) => /requête de recherche/.test(e.message)));
+});
