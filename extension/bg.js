@@ -38,6 +38,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(await api(`/api/run/agent/${encodeURIComponent(msg.runId)}`));
       } else if (msg?.type === "prompta:connections") {
         sendResponse(await api("/api/extension/connections"));
+      } else if (msg?.type === "prompta:models") {
+        sendResponse(await api("/api/extension/models"));
+      } else if (msg?.type === "prompta:history") {
+        sendResponse(await api("/api/extension/history"));
       } else if (msg?.type === "prompta:tabs") {
         // Vue d'ensemble : tous les onglets http(s) ouverts (titre + URL).
         const tabs = await chrome.tabs.query({});

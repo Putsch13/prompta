@@ -1,37 +1,45 @@
 /**
- * Prompta Everywhere — popup de la barre d'outils (pattern Joko).
+ * Prompta — assistant du quotidien (popup barre d'outils).
  *
- * Un clic sur l'icône Prompta ouvre ce popup. Il capture le contexte de
- * l'onglet actif via chrome.scripting (fonction injectée dans la page), puis
- * lance un agent instantané et affiche les étapes en direct — sans dépendre
- * du content script (fonctionne même si la page ne l'a pas chargé).
+ * Interface façon Cursor : choix du modèle (GPT/Claude/Gemini/Mistral),
+ * panneau « ce que je vois » (page active + onglets ciblables), fil de
+ * conversation (historique des missions), exécution live. Capture l'onglet
+ * actif via chrome.scripting, la liste des onglets via chrome.tabs.
  */
 
 let baseUrl = "https://prompta-sjtf.onrender.com";
 let pollTimer = null;
-let capturedPage = null;
 let launching = false;
+let activePage = null;   // capture de l'onglet actif
+let openTabs = [];       // [{title, url, checked}]
 
 const $ = (id) => document.getElementById(id);
+const feed = $("feed");
 const goalEl = $("goal");
 const sendBtn = $("send");
-const statusBox = $("status");
+const modelEl = $("model");
 const chipsBox = $("chips");
 const connsBox = $("conns");
+const tabsList = $("tabs-list");
+const tabsActions = $("tabs-actions");
+const ctxHead = $("ctx-head");
+const ctxSummary = $("ctx-summary");
+const alltabsEl = $("alltabs");
 const exploreEl = $("explore");
-const allTabsEl = $("alltabs");
 
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/** Réponse texte d'une mission simple : la clé "reponse" sinon le 1er output. */
+function extractAnswer(output) {
+  if (!output || typeof output !== "object") return null;
+  if (typeof output.reponse === "string") return output.reponse;
+  if (typeof output.result === "string") return output.result;
+  const vals = Object.entries(output).filter(([k, v]) => !k.startsWith("__") && !k.endsWith("_output") && typeof v === "string");
+  return vals.length ? vals[vals.length - 1][1] : null;
 }
+const send = (type, extra) => new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => res(r || { ok: false, status: 0, body: {} })));
 
-function send(type, extra) {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type, ...extra }, (r) => resolve(r || { ok: false, status: 0, body: {} }));
-  });
-}
-
-/** Fonction INJECTÉE dans la page active (contexte page, pas popup). */
+// ── Capture ─────────────────────────────────────────────────────────────────
 function pageCaptureFn(allowExplore, maxContent, maxLinks) {
   const isPdf = document.contentType === "application/pdf";
   let content;
@@ -42,8 +50,7 @@ function pageCaptureFn(allowExplore, maxContent, maxLinks) {
   } catch { content = ""; }
   let links;
   if (allowExplore && !isPdf) {
-    const seen = new Set();
-    links = [];
+    const seen = new Set(); links = [];
     for (const a of document.querySelectorAll("a[href]")) {
       if (links.length >= maxLinks) break;
       try {
@@ -55,175 +62,206 @@ function pageCaptureFn(allowExplore, maxContent, maxLinks) {
       } catch { /* href invalide */ }
     }
   }
-  return {
-    url: location.href,
-    title: document.title || "",
-    selection: String(window.getSelection() || "").trim().slice(0, 4000) || undefined,
-    content,
-    links,
-    isPdf,
-  };
+  return { url: location.href, title: document.title || "", selection: String(window.getSelection() || "").trim().slice(0, 4000) || undefined, content, links, isPdf };
 }
 
-/** Liste tous les onglets ouverts (titre + URL) — la « vue d'ensemble ». */
-async function collectOpenTabs() {
+async function captureActivePage() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const base = { url: tab?.url || "", title: tab?.title || "" };
+  if (!tab?.id || !/^https?:|^file:/.test(tab.url || "")) return { ...base, unsupported: true };
+  try {
+    const [inj] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: pageCaptureFn, args: [exploreEl.checked, 15000, 40] });
+    return inj?.result ?? { ...base, unsupported: true };
+  } catch { return { ...base, unsupported: true }; }
+}
+
+async function collectTabs() {
+  if (!alltabsEl.checked) return [];
   try {
     const tabs = await chrome.tabs.query({});
-    const seen = new Set();
-    const out = [];
+    const seen = new Set(); const out = [];
     for (const t of tabs) {
       const u = t.url || "";
-      if (!/^https?:/.test(u)) continue; // ignore chrome://, extensions, etc.
-      if (seen.has(u)) continue;
+      if (!/^https?:/.test(u) || seen.has(u)) continue;
       seen.add(u);
-      out.push({ title: t.title || "", url: u });
+      out.push({ title: t.title || "", url: u, checked: true });
       if (out.length >= 30) break;
     }
     return out;
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
-async function capturePage() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const base = { url: tab?.url || "", title: tab?.title || "" };
-  const openTabs = allTabsEl.checked ? await collectOpenTabs() : undefined;
-  if (!tab?.id || !/^https?:|^file:/.test(tab.url || "")) {
-    return { ...base, openTabs, unsupported: true };
-  }
-  try {
-    const [inj] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: pageCaptureFn,
-      args: [exploreEl.checked, 15000, 40],
-    });
-    return { ...(inj?.result ?? { ...base, unsupported: true }), openTabs };
-  } catch {
-    // chrome://, Web Store, PDF sans accès fichier, page restreinte
-    return { ...base, openTabs, unsupported: true };
-  }
-}
-
-function refreshChips() {
-  if (!capturedPage) {
-    chipsBox.innerHTML = `<span class="chip">capture de la page…</span>`;
-    return;
-  }
-  const p = capturedPage;
+// ── Rendu contexte ────────────────────────────────────────────────────────────
+function renderContext() {
+  const p = activePage;
+  const checked = openTabs.filter((t) => t.checked).length;
+  ctxSummary.textContent = `Ce que je vois${openTabs.length ? ` · ${checked}/${openTabs.length} onglets` : ""}`;
   chipsBox.innerHTML =
-    `<span class="chip">📄 ${esc((p.title || p.url || "page").slice(0, 42))}</span>` +
-    (p.isPdf ? `<span class="chip">PDF</span>` : "") +
-    (p.selection ? `<span class="chip">✂️ sélection (${p.selection.length} car.)</span>` : "") +
-    (p.openTabs?.length ? `<span class="chip">👁️ ${p.openTabs.length} onglets vus</span>` : "") +
-    (p.unsupported
-      ? `<span class="chip" style="color:#fbbf24">page active non lisible — j'utilise ${p.openTabs?.length ? "tes onglets + " : ""}ton ordre</span>`
-      : "");
+    (p ? `<span class="chip">📄 ${esc((p.title || p.url || "page active").slice(0, 40))}</span>` : "") +
+    (p?.isPdf ? `<span class="chip">PDF</span>` : "") +
+    (p?.selection ? `<span class="chip">✂️ sélection</span>` : "") +
+    (p?.unsupported ? `<span class="chip" style="color:var(--amber)">page active non lisible</span>` : "");
+  tabsActions.style.display = openTabs.length ? "flex" : "none";
+  tabsList.innerHTML = openTabs
+    .map((t, i) => `<div class="tab-row"><input type="checkbox" data-i="${i}" ${t.checked ? "checked" : ""}><label title="${esc(t.url)}">${esc(t.title || t.url)}</label></div>`)
+    .join("");
+  tabsList.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", (e) => { openTabs[+e.target.dataset.i].checked = e.target.checked; renderContext(); });
+  });
 }
 
-function renderRun(run, planned) {
-  const done = run.steps_completed ?? 0;
-  const steps = (planned || []).map((label, i) => {
-    const ic = i < done ? "✓" : i === done && (run.status === "running" || run.status === "pending") ? "▶" : "·";
-    return `<div class="step"><span class="ic ${i < done ? "ok" : ""}">${ic}</span><span>${esc(label)}</span></div>`;
-  }).join("");
-  let footer = "";
-  if (run.status === "awaiting_approval") {
-    footer = `<div class="warn">⏸ Validation requise — <a href="${baseUrl}/dashboard/validations" target="_blank" rel="noopener">valider dans Prompta</a></div>`;
-  } else if (run.status === "completed") {
-    footer = `<div class="ok">✅ Terminé — <a href="${baseUrl}/dashboard/runs/${esc(run.id)}" target="_blank" rel="noopener">voir le dossier de mission</a></div>`;
-  } else if (run.status === "failed") {
-    footer = `<div class="err">✗ ${esc(run.error_message || "Échec")}</div><a href="${baseUrl}/dashboard/runs/${esc(run.id)}" target="_blank" rel="noopener">détails</a>`;
+// ── Rendu conversation ──────────────────────────────────────────────────────
+function statusLabel(s) {
+  return { completed: "terminé", failed: "échec", awaiting_approval: "à valider", running: "en cours", pending: "en file" }[s] || s;
+}
+function msgCard(item, liveSteps) {
+  const model = item.model ? ` · ${esc(item.model)}` : "";
+  let body = "";
+  if (liveSteps) {
+    body = `<div class="steps">${liveSteps.map((label, i) => {
+      const done = item.stepsCompleted ?? 0;
+      const ic = i < done ? "✓" : i === done && (item.status === "running" || item.status === "pending") ? "▶" : "·";
+      return `<div class="step"><span class="ic ${i < done ? "ok" : ""}">${ic}</span><span>${esc(label)}</span></div>`;
+    }).join("")}</div>`;
   }
-  statusBox.innerHTML = steps + footer;
+  let footer = "";
+  if (item.answer) footer += `<div class="answer" style="margin-top:8px;color:var(--ink);white-space:pre-wrap">${esc(item.answer).slice(0, 4000)}</div>`;
+  if (item.status === "awaiting_approval") footer += `<div class="warn" style="margin-top:6px">⏸ <a href="${baseUrl}/dashboard/validations" target="_blank" rel="noopener">valider dans Prompta</a></div>`;
+  else if (item.status === "completed") footer += `<div style="margin-top:6px"><a href="${baseUrl}/dashboard/runs/${esc(item.runId)}" target="_blank" rel="noopener">voir le dossier ↗</a></div>`;
+  else if (item.status === "failed") footer += `<div class="err" style="margin-top:6px">✗ ${esc(item.error || "Échec")} — <a href="${baseUrl}/dashboard/runs/${esc(item.runId)}" target="_blank" rel="noopener">détails</a></div>`;
+  return `<div class="msg" data-run="${esc(item.runId)}">
+    <div class="goal">${esc(item.goal || item.title || "Mission")}</div>
+    ${body}${footer}
+    <div class="meta"><span class="dot s-${esc(item.status)}"></span>${statusLabel(item.status)}${model}</div>
+  </div>`;
+}
+let history = [];
+let current = null; // { runId, goal, model, status, stepsCompleted, error, planned }
+function renderFeed() {
+  const items = [...history];
+  const list = items.map((it) => msgCard(it)).join("");
+  const cur = current ? msgCard(current, current.planned) : "";
+  feed.innerHTML = (list + cur) || `<div class="empty">Ton assistant du quotidien.<br>Pose une question rapide<br>ou confie-lui une grosse mission.</div>`;
+  feed.scrollTop = feed.scrollHeight;
 }
 
-function stopPolling(restore) {
-  clearInterval(pollTimer);
-  pollTimer = null;
-  if (restore) { launching = false; sendBtn.disabled = false; sendBtn.textContent = "Lancer l'agent"; }
+async function loadHistory() {
+  const r = await send("prompta:history");
+  if (r?.ok && Array.isArray(r.body.items)) {
+    // Ordre chronologique (ancien → récent) pour un fil de conversation.
+    history = r.body.items.slice().reverse().filter((it) => !current || it.runId !== current.runId);
+    renderFeed();
+  }
 }
 
-function pollRun(runId, planned) {
-  stopPolling(false);
-  let errorStreak = 0;
+// ── Modèles ─────────────────────────────────────────────────────────────────
+async function loadModels() {
+  const r = await send("prompta:models");
+  const { promptaModel } = await chrome.storage.sync.get("promptaModel");
+  if (!r?.ok || !Array.isArray(r.body.models)) { modelEl.innerHTML = `<option value="">défaut</option>`; return; }
+  const models = r.body.models;
+  const firstUsable = models.find((m) => m.usable);
+  // Aucun modèle utilisable → option « défaut serveur » (value vide) pour ne
+  // jamais envoyer l'id d'un modèle désactivé (503 opaque garanti sinon).
+  const defaultOpt = firstUsable ? "" : `<option value="">Modèle par défaut</option>`;
+  modelEl.innerHTML = defaultOpt + models
+    .map((m) => `<option value="${esc(m.id)}" ${m.usable ? "" : "disabled"}>${esc(m.label)}${m.usable ? "" : " (clé requise)"}</option>`)
+    .join("");
+  const chosen = models.find((m) => m.id === promptaModel && m.usable) ? promptaModel : (firstUsable?.id ?? "");
+  modelEl.value = chosen;
+}
+modelEl.addEventListener("change", () => chrome.storage.sync.set({ promptaModel: modelEl.value }));
+
+// ── Connexions ──────────────────────────────────────────────────────────────
+async function loadConns() {
+  const r = await send("prompta:connections");
+  if (!r?.ok) { connsBox.innerHTML = `<span class="chip" style="color:var(--amber)">${r?.status === 401 ? "connecte-toi à Prompta" : "connexions indispo"}</span>`; return; }
+  const seen = new Set();
+  const usable = (r.body.connections || []).filter((c) => { const k = c.connectorId.toLowerCase().replace(/[^a-z0-9]/g, ""); if (seen.has(k)) return false; seen.add(k); return c.usable; });
+  connsBox.innerHTML = usable.map((c) => `<span class="conn"><span class="dot s-completed"></span>${esc(c.connectorId)}</span>`).join("")
+    + `<a href="${baseUrl}/dashboard/connexions" target="_blank" rel="noopener" class="conn" style="color:var(--accent)">+ connecter</a>`;
+}
+
+// ── Exécution ───────────────────────────────────────────────────────────────
+function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
+
+function pollRun() {
+  stopPolling();
+  let errStreak = 0;
   pollTimer = setInterval(async () => {
-    const r = await send("prompta:status", { runId });
+    const r = await send("prompta:status", { runId: current.runId });
     if (!r?.ok || !r.body) {
-      if (++errorStreak >= 5) {
-        stopPolling(true);
-        statusBox.innerHTML = `<div class="err">Suivi interrompu (${r?.status === 401 ? "session expirée" : "serveur injoignable"}). Le run continue : <a href="${baseUrl}/dashboard/runs/${esc(runId)}" target="_blank" rel="noopener">l'ouvrir</a>.</div>`;
-      }
+      if (++errStreak >= 5) { stopPolling(); current.status = "failed"; current.error = r?.status === 401 ? "session expirée" : "serveur injoignable"; renderFeed(); launching = false; sendBtn.disabled = false; }
       return;
     }
-    errorStreak = 0;
-    renderRun(r.body, r.body.planned_steps?.length ? r.body.planned_steps : planned);
-    if (["completed", "failed", "cancelled"].includes(r.body.status)) stopPolling(true);
+    errStreak = 0;
+    current.status = r.body.status;
+    current.stepsCompleted = r.body.steps_completed ?? 0;
+    current.planned = r.body.planned_steps?.length ? r.body.planned_steps : current.planned;
+    current.error = r.body.error_message;
+    current.answer = extractAnswer(r.body.output);
+    renderFeed();
+    if (["completed", "failed", "cancelled"].includes(r.body.status)) {
+      stopPolling(); launching = false; sendBtn.disabled = false;
+      loadHistory(); // le run terminé (et sa réponse) rejoint le fil
+    }
   }, 2500);
 }
 
 async function launch() {
-  // Anti ré-entrance : le raccourci Cmd/Ctrl+Entrée appelle launch() directement
-  // et court-circuiterait le bouton désactivé → double run facturé + suivi orphelin.
   if (launching) return;
   const goal = goalEl.value.trim();
-  if (goal.length < 5) { statusBox.innerHTML = `<div class="warn">Décris la mission (5 caractères minimum).</div>`; return; }
-  launching = true;
-  sendBtn.disabled = true;
-  sendBtn.textContent = "Création de l'agent…";
-  statusBox.innerHTML = `<div>🧠 Prompta conçoit l'agent…</div>`;
+  if (goal.length < 3) return;
+  launching = true; sendBtn.disabled = true;
 
-  // Re-capture au moment du lancement (sélection/contenu à jour).
-  const page = await capturePage();
-  capturedPage = page;
-  const r = await send("prompta:execute", { payload: { goal, page } });
+  activePage = await captureActivePage();
+  const page = { ...activePage };
+  const targeted = openTabs.filter((t) => t.checked).map((t) => ({ title: t.title, url: t.url }));
+  if (targeted.length) page.openTabs = targeted;
+  if (!exploreEl.checked) page.links = undefined;
+
+  current = { runId: "…", goal, model: modelEl.value || null, status: "pending", stepsCompleted: 0, planned: [] };
+  renderFeed();
+  goalEl.value = ""; goalEl.style.height = "auto";
+
+  const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined } });
   if (!r?.ok) {
-    launching = false;
-    stopPolling(true);
-    if (r?.status === 409 && r.body?.missingConnectors?.length) {
-      statusBox.innerHTML = `<div class="warn">⚠️ À connecter d'abord : ${esc(r.body.missingConnectors.join(", "))} — <a href="${baseUrl}/dashboard/connexions" target="_blank" rel="noopener">ouvrir Connexions</a>, puis relance.</div>`;
-      return;
-    }
-    const msg = r?.body?.message || (r?.status === 401 ? "Connecte-toi à Prompta dans un onglet, puis réessaie." : `Erreur (${r?.status || "réseau"})`);
-    statusBox.innerHTML = `<div class="err">${esc(msg)}</div>`;
+    launching = false; sendBtn.disabled = false;
+    if (r?.status === 409 && r.body?.missingConnectors?.length) { current.status = "failed"; current.error = `À connecter : ${r.body.missingConnectors.join(", ")}`; }
+    else current.status = "failed", current.error = r?.body?.message || (r?.status === 401 ? "Connecte-toi à Prompta." : `Erreur ${r?.status || "réseau"}`);
+    renderFeed();
     return;
   }
-  statusBox.innerHTML = `<div class="ok">🚀 « ${esc(r.body.title)} » — ${r.body.stepsPlanned} étapes</div><div>Exécution en cours…</div>`;
-  sendBtn.textContent = "Agent en cours…";
-  pollRun(r.body.runId, null);
+  current.runId = r.body.runId;
+  current.title = r.body.title;
+  current.status = "running";
+  renderFeed();
+  pollRun();
 }
 
+// ── Interactions ────────────────────────────────────────────────────────────
 sendBtn.addEventListener("click", launch);
-goalEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) launch();
-});
-// Recompte les onglets vus quand on (dé)coche « voir tout ce que j'ai ouvert ».
-allTabsEl.addEventListener("change", async () => {
-  capturedPage = await capturePage();
-  refreshChips();
-});
+goalEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); launch(); } });
+goalEl.addEventListener("input", () => { goalEl.style.height = "auto"; goalEl.style.height = Math.min(120, goalEl.scrollHeight) + "px"; });
 
-$("conns-toggle").addEventListener("click", async () => {
-  const open = connsBox.classList.toggle("open");
-  if (!open) return;
-  connsBox.innerHTML = `<span style="color:#9ca3af">chargement…</span>`;
-  const r = await send("prompta:connections");
-  if (!r?.ok) {
-    connsBox.innerHTML = `<span class="warn">${r?.status === 401 ? "Connecte-toi à Prompta dans un onglet." : "Connexions inaccessibles."}</span>`;
-    return;
-  }
-  const seen = new Set();
-  connsBox.innerHTML = (r.body.connections || [])
-    .filter((c) => { const k = c.connectorId.toLowerCase().replace(/[^a-z0-9]/g, ""); if (seen.has(k)) return false; seen.add(k); return true; })
-    .map((c) => `<span class="conn"><span class="led ${c.usable ? "on" : "off"}"></span>${esc(c.connectorId)}</span>`)
-    .join("") || `<span class="warn">Aucune app connectée.</span>`;
+ctxHead.addEventListener("click", () => {
+  const open = ctxHead.classList.toggle("open");
+  tabsList.classList.toggle("open", open);
+  connsBox.classList.toggle("open", open);
+  if (open) loadConns();
 });
+$("conns-btn").addEventListener("click", () => { ctxHead.click(); });
+$("tabs-all").addEventListener("click", () => { openTabs.forEach((t) => (t.checked = true)); renderContext(); });
+$("tabs-none").addEventListener("click", () => { openTabs.forEach((t) => (t.checked = false)); renderContext(); });
+alltabsEl.addEventListener("change", async () => { openTabs = await collectTabs(); renderContext(); });
 
-// Boot : base URL + capture immédiate pour afficher le contexte.
+// ── Boot ────────────────────────────────────────────────────────────────────
 (async () => {
   const b = await send("prompta:baseUrl");
   if (b?.baseUrl) baseUrl = b.baseUrl;
-  capturedPage = await capturePage();
-  refreshChips();
+  await Promise.all([loadModels(), loadHistory()]);
+  activePage = await captureActivePage();
+  openTabs = await collectTabs();
+  renderContext();
   goalEl.focus();
 })();

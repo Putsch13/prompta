@@ -3,49 +3,110 @@
 <head>
   <meta charset="utf-8" />
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      --bg: #0f1420; --panel: #161d2e; --panel2: #1e2740; --line: #2a3350;
+      --ink: #f3f5fb; --soft: #aab3cc; --faint: #6b7595;
+      --accent: #7c6cff; --accent2: #5b4fe0;
+      --green: #34d399; --amber: #fbbf24; --red: #f87171;
+    }
     * { box-sizing: border-box; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
     html, body { margin: 0; }
-    body { width: 380px; background: #111827; color: #e5e7eb; padding: 14px; }
-    .row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-    .brand { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,#7c3aed,#4f46e5); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 13px; }
-    .title { font-weight: 700; font-size: 14px; flex: 1; color: #fff; }
-    .dot-btn { background: none; border: 1px solid #4b5563; color: #9ca3af; border-radius: 8px; padding: 3px 8px; font-size: 11px; cursor: pointer; }
-    .dot-btn:hover { border-color: #7c3aed; color: #e5e7eb; }
-    textarea { width: 100%; min-height: 80px; resize: vertical; border-radius: 10px; border: 1px solid #4b5563; background: #1f2937; color: #f9fafb; padding: 10px; font-size: 13px; outline: none; }
-    textarea:focus { border-color: #7c3aed; }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: #9ca3af; margin: 8px 0; }
-    .chip { background: #1f2937; border: 1px solid #374151; border-radius: 999px; padding: 2px 9px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    label.opt { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #d1d5db; cursor: pointer; margin-bottom: 10px; }
-    .send { background: linear-gradient(135deg,#7c3aed,#4f46e5); color: #fff; border: none; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; }
-    .send:disabled { opacity: .5; cursor: default; }
-    .status { font-size: 12px; line-height: 1.5; max-height: 240px; overflow-y: auto; margin-top: 10px; }
-    .step { display: flex; gap: 7px; align-items: baseline; padding: 2px 0; }
-    .step .ic { width: 14px; text-align: center; }
-    .warn { color: #fbbf24; } .err { color: #f87171; white-space: pre-wrap; } .ok { color: #34d399; }
-    a { color: #a78bfa; text-decoration: none; }
-    .conns { display: none; flex-wrap: wrap; gap: 6px; font-size: 11px; margin-bottom: 10px; }
-    .conns.open { display: flex; }
-    .conn { display: flex; align-items: center; gap: 4px; background: #1f2937; border-radius: 999px; padding: 2px 8px; }
-    .led { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-    .led.on { background: #34d399; } .led.off { background: #f87171; }
-    .hint { font-size: 11px; color: #6b7280; margin-top: 8px; }
+    body { width: 420px; height: 600px; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); overflow: hidden; }
+
+    /* Header */
+    header { display: flex; align-items: center; gap: 8px; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .logo { width: 24px; height: 24px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: #fff; flex-shrink: 0; }
+    .brand b { font-size: 14px; }
+    .brand span { font-size: 11px; color: var(--faint); }
+    select#model { appearance: none; background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 5px 22px 5px 9px; font-size: 12px; cursor: pointer; max-width: 130px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3l3 3 3-3' stroke='%23aab3cc' fill='none' stroke-width='1.4'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 7px center; }
+    .icon-btn { background: none; border: 1px solid var(--line); color: var(--soft); border-radius: 8px; width: 28px; height: 28px; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .icon-btn:hover { border-color: var(--accent); color: var(--ink); }
+
+    /* Scroll area = conversation + history */
+    .feed { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+    .empty { color: var(--faint); font-size: 12px; text-align: center; margin: auto 0; line-height: 1.6; }
+    .msg { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--panel); }
+    .msg .goal { font-size: 13px; color: var(--ink); }
+    .msg .meta { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; color: var(--faint); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .s-completed { background: var(--green); } .s-failed { background: var(--red); }
+    .s-running, .s-pending { background: var(--amber); } .s-awaiting_approval { background: var(--accent); }
+    .steps { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+    .step { display: flex; gap: 7px; font-size: 12px; color: var(--soft); }
+    .step .ic { width: 13px; text-align: center; } .step .ic.ok { color: var(--green); }
+    .msg a { color: #a99bff; text-decoration: none; } .msg a:hover { text-decoration: underline; }
+    .msg .warn { color: var(--amber); } .msg .err { color: var(--red); white-space: pre-wrap; }
+
+    /* Context bar (ce que je vois) */
+    .context { border-top: 1px solid var(--line); padding: 8px 14px 0; }
+    .ctx-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--soft); cursor: pointer; user-select: none; }
+    .ctx-head .chev { transition: transform .15s; }
+    .ctx-head.open .chev { transform: rotate(90deg); }
+    .ctx-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+    .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--soft); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tabs-list { display: none; max-height: 130px; overflow-y: auto; margin: 4px 0 2px; border: 1px solid var(--line); border-radius: 8px; }
+    .tabs-list.open { display: block; }
+    .tab-row { display: flex; align-items: center; gap: 8px; padding: 5px 9px; font-size: 12px; border-bottom: 1px solid var(--line); }
+    .tab-row:last-child { border-bottom: none; }
+    .tab-row label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--soft); cursor: pointer; }
+    .tabs-actions { display: flex; gap: 10px; font-size: 11px; color: var(--faint); padding: 4px 2px; }
+    .tabs-actions button { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 11px; padding: 0; }
+    .conns-row { display: none; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
+    .conns-row.open { display: flex; }
+    .conn { display: flex; align-items: center; gap: 4px; background: var(--panel2); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--soft); }
+    .opt { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--soft); cursor: pointer; }
+    .opts { display: flex; gap: 14px; padding: 4px 0 2px; }
+
+    /* Composer */
+    .composer { padding: 8px 14px 14px; border-top: 1px solid var(--line); }
+    .composer-box { display: flex; gap: 8px; align-items: flex-end; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
+    .composer-box:focus-within { border-color: var(--accent); }
+    textarea { flex: 1; border: none; background: none; color: var(--ink); font-size: 13px; resize: none; outline: none; max-height: 120px; min-height: 20px; line-height: 1.4; }
+    .send { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: 9px; width: 34px; height: 34px; color: #fff; font-size: 15px; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .send:disabled { opacity: .45; cursor: default; }
+    .hint { font-size: 10px; color: var(--faint); margin-top: 6px; text-align: center; }
+    a { color: #a99bff; }
   </style>
 </head>
 <body>
-  <div class="row">
-    <span class="brand">P</span>
-    <span class="title">Prompta — mission instantanée</span>
-    <button class="dot-btn" id="conns-toggle">connexions</button>
+  <header>
+    <div class="brand">
+      <span class="logo">P</span>
+      <div style="min-width:0">
+        <b>Prompta</b> <span>· assistant</span>
+      </div>
+    </div>
+    <select id="model" title="Modèle qui répond"><option>…</option></select>
+    <button class="icon-btn" id="conns-btn" title="Apps connectées">🔌</button>
+  </header>
+
+  <div class="feed" id="feed"></div>
+
+  <div class="context">
+    <div class="ctx-head" id="ctx-head"><span class="chev">▸</span> <span id="ctx-summary">Ce que je vois</span></div>
+    <div class="conns-row" id="conns"></div>
+    <div class="ctx-chips" id="chips"></div>
+    <div class="tabs-actions" id="tabs-actions" style="display:none">
+      <button id="tabs-all">tout cocher</button>
+      <button id="tabs-none">tout décocher</button>
+    </div>
+    <div class="tabs-list" id="tabs-list"></div>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" id="alltabs" checked> voir mes onglets</label>
+      <label class="opt"><input type="checkbox" id="explore" checked> explorer les liens</label>
+    </div>
   </div>
-  <div class="conns" id="conns"></div>
-  <textarea id="goal" placeholder="Ex. : Compare les produits que j'ai ouverts et fais-moi un tableau dans un Google Sheets, puis envoie-le-moi."></textarea>
-  <div class="chips" id="chips"></div>
-  <label class="opt"><input type="checkbox" id="alltabs" checked> Voir tout ce que j'ai ouvert (tous mes onglets)</label>
-  <label class="opt"><input type="checkbox" id="explore" checked> Autoriser l'exploration des sites (suivre les liens utiles)</label>
-  <button class="send" id="send">Lancer l'agent</button>
-  <div class="status" id="status"></div>
-  <div class="hint">Cmd/Ctrl + Entrée pour lancer. Astuce : épinglez Prompta via l'icône puzzle 🧩 de Chrome.</div>
+
+  <div class="composer">
+    <div class="composer-box">
+      <textarea id="goal" rows="1" placeholder="Demande simple ou grosse mission… (⌘/Ctrl + ⏎)"></textarea>
+      <button class="send" id="send" title="Lancer">➤</button>
+    </div>
+    <div class="hint">Épingle Prompta via l'icône puzzle 🧩 de Chrome.</div>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>

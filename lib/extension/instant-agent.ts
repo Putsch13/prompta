@@ -71,6 +71,16 @@ const SENSITIVE_PARAM_RE = /^(token|access[_-]?token|refresh[_-]?token|id[_-]?to
 // Chemins d'authentification : on retire TOUTE la query (reset/magic links…).
 const SENSITIVE_PATH_RE = /(reset|verify|confirm|magic|callback|sso|oauth|token|auth|login|signin)/i;
 
+/** Réponse texte d'une mission (clé "reponse", sinon "result", sinon dernier output string). */
+export function extractRunAnswer(output: unknown): string | null {
+  if (!output || typeof output !== "object") return null;
+  const o = output as Record<string, unknown>;
+  if (typeof o.reponse === "string") return o.reponse;
+  if (typeof o.result === "string") return o.result;
+  const vals = Object.entries(o).filter(([k, v]) => !k.startsWith("__") && !k.endsWith("_output") && typeof v === "string");
+  return vals.length ? (vals[vals.length - 1][1] as string) : null;
+}
+
 /** Retire les secrets d'une URL avant de l'exposer au LLM / aux logs. */
 export function sanitizeUrlForContext(raw: string): string {
   try {
@@ -125,30 +135,36 @@ export function isSensitiveWriteStep(step: Step): boolean {
   return !READ_VERB_RE.test(verbPart);
 }
 
-/** Vrai si une étape (ou l'une des sous-étapes de ses branches) est sensible. */
+/** Vrai si une étape — ou une sous-étape à N'IMPORTE quelle profondeur — est sensible. */
 function stepTreeHasSensitiveWrite(step: Step): boolean {
   if (isSensitiveWriteStep(step)) return true;
   if (step.type === "parallel") {
-    return step.branches.some((b) => b.steps.some((s) => isSensitiveWriteStep(s as Step)));
+    return step.branches.some((b) => b.steps.some((s) => stepTreeHasSensitiveWrite(s as Step)));
   }
   return false;
 }
 
 /**
- * Insère une validation humaine avant la PREMIÈRE écriture sensible (y compris
- * imbriquée dans une branche parallèle) si le plan n'en a pas déjà une en amont.
- * Déterministe, ne fait confiance ni au LLM ni au contenu de page.
+ * Insère une validation humaine avant CHAQUE écriture sensible (y compris
+ * imbriquée dans une branche parallèle) non déjà couverte par une validation en
+ * amont. Une validation « couvre » une seule écriture sensible : deux envois
+ * distincts exigent deux validations. Déterministe, ne fait confiance ni au LLM
+ * ni au contenu de page.
  */
 export function ensureApprovalGuards(manifest: AgentManifest): AgentManifest {
   const steps = [...manifest.steps];
-  let approvalSeen = false;
+  let pendingApproval = false; // une validation en amont, pas encore consommée
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (step.type === "approval") {
-      approvalSeen = true;
+      pendingApproval = true;
       continue;
     }
-    if (stepTreeHasSensitiveWrite(step) && !approvalSeen) {
+    if (stepTreeHasSensitiveWrite(step)) {
+      if (pendingApproval) {
+        pendingApproval = false; // cette écriture consomme la validation existante
+        continue;
+      }
       const prevKey = [...steps.slice(0, i)].reverse().find((s) => "outputKey" in s && s.outputKey)?.outputKey;
       const label =
         step.type === "action"
@@ -158,10 +174,9 @@ export function ensureApprovalGuards(manifest: AgentManifest): AgentManifest {
         type: "approval",
         label: `Valider avant : ${label}`,
         payloadTemplate: prevKey ? `{{${prevKey}}}` : `L'agent s'apprête à exécuter « ${label} ». Confirmez.`,
-        outputKey: "validation_externe",
+        outputKey: `validation_externe_${i}`,
       } as Step);
-      approvalSeen = true;
-      i++;
+      i++; // sauter la validation insérée ; elle est consommée par cette écriture
     }
   }
   return { ...manifest, steps };
@@ -239,8 +254,10 @@ RÈGLES DURES :
 5. gmail.send : "from" ET "to" = EMAIL_UTILISATEUR par défaut (rapport à soi-même), sauf si l'ordre désigne explicitement un autre destinataire.
 6. notion.create_page exige parent_id : précède-la de notion.search + une étape llm d'extraction d'id.
 7. Étapes llm : prompts riches (rôle + tâche + format de sortie) référençant les {{outputKey}} amont. Pour des données tabulaires : lignes "val1;val2;val3", une par ligne, SANS texte autour.
-8. Termine par une étape de restitution : gmail.send à soi-même avec le lien/résumé du livrable, sauf si l'ordre dit le contraire.
-9. 3 à 12 étapes. Sois ambitieux mais exécutable.`;
+8. DEUX RÉGIMES selon l'ordre :
+   • SIMPLE / CONVERSATIONNEL (question, traduction, réécriture, explication, calcul, brainstorming, résumé d'un texte fourni) → réponds DIRECTEMENT : UNE seule étape llm dont l'outputKey est "reponse". N'ajoute NI email, NI action externe, NI validation. La réponse s'affiche à l'utilisateur.
+   • MISSION / AGENT (produire un livrable, écrire dans une app, envoyer, publier, recenser, croiser des pages) → enchaîne les étapes utiles ; termine par le livrable. N'ajoute un gmail.send de restitution QUE si l'ordre demande un envoi/rapport par email OU si le livrable est un lien (Sheets/Doc créé) à te transmettre — sinon la dernière étape llm "reponse" résume ce qui a été fait.
+9. Ne fabrique JAMAIS une étape d'envoi/action externe que l'ordre ne justifie pas (une simple question ne déclenche pas d'email). 1 étape pour le simple, jusqu'à 12 pour une grosse mission.`;
 
 export async function buildInstantAgent(params: {
   goal: string;

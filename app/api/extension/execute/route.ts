@@ -97,6 +97,11 @@ export async function POST(request: NextRequest) {
         __manifest: JSON.stringify(built.manifest),
         __source: "extension",
         __source_url: sanitizeUrlForContext(page.url ?? "").slice(0, 500),
+        // Historique conversationnel : l'ordre et le modèle choisis (l'objectif
+        // est saisi par l'utilisateur → pas de secret à filtrer).
+        __goal: goal.slice(0, 500),
+        __model: keyResult.resolved.catalogId,
+        __title: built.title.slice(0, 120),
       },
     })
     .select("id")

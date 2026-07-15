@@ -105,6 +105,19 @@ test("deny-by-default : une écriture au verbe inconnu (stripe.charge) est trait
   );
 });
 
+test("garde-fou : DEUX écritures sensibles distinctes → DEUX validations", () => {
+  const m = manifest([
+    { type: "llm", model: "gpt-5.4-mini", prompt: "a", outputKey: "a" },
+    { type: "action", connector: "gmail", action: "gmail.send", params: { to: "x@y.z", subject: "s", body: "{{a}}" } },
+    { type: "llm", model: "gpt-5.4-mini", prompt: "b", outputKey: "b" },
+    { type: "action", connector: "slack", action: "slack.send", params: { channel: "C", text: "{{b}}" } },
+  ]);
+  const guarded = ensureApprovalGuards(m);
+  const approvals = guarded.steps.filter((s) => s.type === "approval").length;
+  assert.equal(approvals, 2);
+  assert.ok(AgentManifestSchema.safeParse(guarded).success);
+});
+
 test("garde-fou : une écriture sensible DANS une branche parallèle est protégée", () => {
   const m = manifest([
     { type: "llm", model: "gpt-5.4-mini", prompt: "prépare", outputKey: "c" },

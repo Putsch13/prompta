@@ -24,10 +24,37 @@ interface Conn {
   usable: boolean;
 }
 
+interface Model {
+  id: string;
+  label: string;
+  provider: string;
+  usable: boolean;
+}
+
+interface HistoryItem {
+  runId: string;
+  goal: string;
+  title: string;
+  model: string | null;
+  answer: string | null;
+  status: string;
+  createdAt: string;
+}
+
+/** Réponse texte d'une mission simple : clé "reponse" sinon le dernier output. */
+function extractAnswer(output: unknown): string | null {
+  if (!output || typeof output !== "object") return null;
+  const o = output as Record<string, unknown>;
+  if (typeof o.reponse === "string") return o.reponse;
+  if (typeof o.result === "string") return o.result;
+  const vals = Object.entries(o).filter(([k, v]) => !k.startsWith("__") && !k.endsWith("_output") && typeof v === "string");
+  return vals.length ? (vals[vals.length - 1][1] as string) : null;
+}
+
 type RunState =
   | { phase: "idle" }
   | { phase: "planning" }
-  | { phase: "running"; runId: string; title: string; planned: string[]; stepsDone: number; status: string; error?: string | null }
+  | { phase: "running"; runId: string; title: string; planned: string[]; stepsDone: number; status: string; error?: string | null; answer?: string | null }
   | { phase: "error"; message: string; missing?: string[] };
 
 export default function QuickPage() {
@@ -39,6 +66,9 @@ export default function QuickPage() {
   const [conns, setConns] = useState<Conn[] | null>(null);
   const [showConns, setShowConns] = useState(false);
   const [authed, setAuthed] = useState<boolean | null>(null);
+  const [models, setModels] = useState<Model[]>([]);
+  const [model, setModel] = useState<string>("");
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const busyRef = useRef(false);
 
@@ -90,6 +120,28 @@ export default function QuickPage() {
       .catch(() => setAuthed(false));
   }, []);
 
+  // Modèles disponibles (sélecteur à la Cursor) + restauration du choix.
+  useEffect(() => {
+    fetch("/api/extension/models")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const ms: Model[] = d?.models ?? [];
+        setModels(ms);
+        const saved = typeof localStorage !== "undefined" ? localStorage.getItem("prompta_model") : null;
+        const chosen = ms.find((m) => m.id === saved && m.usable)?.id ?? ms.find((m) => m.usable)?.id ?? "";
+        setModel(chosen);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const loadHistory = useCallback(() => {
+    fetch("/api/extension/history")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setHistory(d.items ?? []))
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   const launch = useCallback(async () => {
@@ -115,7 +167,7 @@ export default function QuickPage() {
       res = await fetch("/api/extension/execute", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined } }),
+        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined }),
       });
     } catch {
       busyRef.current = false;
@@ -150,14 +202,16 @@ export default function QuickPage() {
         stepsDone: r.steps_completed ?? 0,
         status: r.status,
         error: r.error_message,
+        answer: extractAnswer(r.output),
       });
       if (["completed", "failed", "cancelled"].includes(r.status) && pollRef.current) {
         busyRef.current = false;
         clearInterval(pollRef.current);
         pollRef.current = null;
+        loadHistory(); // le run terminé rejoint le fil de conversation
       }
     }, 2500);
-  }, [goal, ctx, manualUrl, explore]);
+  }, [goal, ctx, manualUrl, explore, model, loadHistory]);
 
   const usableCount = conns?.filter((c) => c.usable).length ?? 0;
 
@@ -165,7 +219,21 @@ export default function QuickPage() {
     <div className="mx-auto flex min-h-screen max-w-md flex-col gap-3 p-5">
       <div className="flex items-center gap-2">
         <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">P</span>
-        <h1 className="flex-1 font-display text-base font-bold text-ink">Prompta — mission instantanée</h1>
+        <h1 className="flex-1 font-display text-base font-bold text-ink">Prompta — assistant</h1>
+        {models.length > 0 && (
+          <select
+            value={model}
+            onChange={(e) => { setModel(e.target.value); try { localStorage.setItem("prompta_model", e.target.value); } catch { /* quota */ } }}
+            title="Modèle qui répond"
+            className="max-w-[130px] rounded-lg border border-line bg-card2 px-2 py-1 text-xs text-ink"
+          >
+            {models.map((m) => (
+              <option key={m.id} value={m.id} disabled={!m.usable}>
+                {m.label}{m.usable ? "" : " (clé requise)"}
+              </option>
+            ))}
+          </select>
+        )}
         {authed && (
           <button onClick={() => setShowConns((s) => !s)} className="rounded-lg border border-line px-2 py-1 text-xs text-ink-soft">
             {usableCount} app{usableCount > 1 ? "s" : ""}
@@ -250,6 +318,9 @@ export default function QuickPage() {
         {state.phase === "running" && (
           <div className="space-y-1">
             <p className="font-medium text-ink">🚀 {state.title}</p>
+            {state.answer && (
+              <div className="my-2 whitespace-pre-wrap rounded-lg border border-line bg-card p-3 text-ink">{state.answer.slice(0, 6000)}</div>
+            )}
             {state.planned.map((label, i) => (
               <div key={i} className="flex items-baseline gap-2 text-ink-soft">
                 <span className={i < state.stepsDone ? "text-green-600" : ""}>
@@ -270,6 +341,31 @@ export default function QuickPage() {
           </div>
         )}
       </div>
+
+      {history.length > 0 && (
+        <div className="mt-2 border-t border-line pt-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Historique</p>
+          <div className="flex flex-col gap-1.5">
+            {history.map((h) => (
+              <div key={h.runId} className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-xs">
+                <a href={`/dashboard/runs/${h.runId}`} target="_blank" rel="noopener" className="flex items-center gap-2 text-ink-soft hover:text-ink">
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      h.status === "completed" ? "bg-green-500"
+                      : h.status === "failed" ? "bg-red-400"
+                      : h.status === "awaiting_approval" ? "bg-accent"
+                      : "bg-amber-400"
+                    }`}
+                  />
+                  <span className="flex-1 truncate">{h.goal || h.title}</span>
+                  {h.model && <span className="shrink-0 text-ink-faint">{h.model}</span>}
+                </a>
+                {h.answer && <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-ink">{h.answer}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
