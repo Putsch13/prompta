@@ -14,16 +14,23 @@ Exemples d'ordres, depuis n'importe quelle page :
 1. Ouvrir `chrome://extensions`
 2. Activer **Mode développeur** (interrupteur en haut à droite)
 3. **Charger l'extension non empaquetée** → sélectionner ce dossier `extension/`
-4. Être connecté à Prompta dans un onglet du même navigateur (la session est partagée)
+4. **Épingler Prompta** : cliquer l'icône puzzle 🧩 de la barre Chrome, puis la
+   punaise à côté de « Prompta Everywhere » → l'icône « P » reste visible en haut
+5. Être connecté à Prompta dans un onglet du même navigateur (session partagée)
 
 ## Utilisation
 
-- **Alt+P** ou clic sur l'icône de l'extension (ou le bouton flottant « P » en bas à droite)
+- **Clic sur l'icône « P »** de la barre d'outils Chrome → un popup s'ouvre
+  (comme Joko) : décris ta mission, clic sur « Lancer l'agent ». Le popup capture
+  automatiquement l'onglet actif (titre, sélection, contenu, liens)
+- **Alt+P** ou clic droit → **« Prompta : agir sur la sélection »** : ouvre une
+  barre superposée dans la page (entrées secondaires, pratiques pour une sélection)
 - Le bouton **connexions** montre l'état de chaque app (vert = utilisable)
 - La case **exploration du site** autorise l'agent à suivre les liens de la page
   (outil `web_fetch` côté serveur : HTML lisible, PDF, liens)
-- Clic droit sur une sélection → **« Prompta : agir sur la sélection »**
-- Sur un **PDF**, le contenu est lu côté serveur (l'URL est passée à l'agent)
+- Sur un **PDF**, le contenu est lu côté serveur (l'URL est passée à l'agent).
+  Pour les fichiers **locaux** (`file://`), activer « Autoriser l'accès aux URL de
+  fichier » dans les détails de l'extension
 
 ## Sécurité
 

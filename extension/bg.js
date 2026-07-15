@@ -57,8 +57,8 @@ function toggleBarInTab(tabId) {
   });
 }
 
-chrome.action.onClicked.addListener((tab) => toggleBarInTab(tab.id));
-
+// Le clic sur l'icône ouvre le popup (default_popup) : onClicked NE PAS gérer.
+// Entrées secondaires vers la barre in-page : raccourci Alt+P et menu contextuel.
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === "toggle-bar") toggleBarInTab(tab?.id);
 });
