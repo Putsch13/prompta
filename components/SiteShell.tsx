@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 
-const MINIMAL_CHROME_PREFIXES = ["/admin"];
+const MINIMAL_CHROME_PREFIXES = ["/admin", "/quick"];
 
 export function SiteShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

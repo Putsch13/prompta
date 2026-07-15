@@ -41,11 +41,11 @@ export async function POST(request: NextRequest) {
   if (!goal || goal.length < 5) {
     return NextResponse.json({ error: "invalid_goal", message: "Décrivez ce que l'agent doit faire (5 caractères minimum)." }, { status: 400 });
   }
-  if (!body?.page?.url) {
-    return NextResponse.json({ error: "invalid_page", message: "Contexte de page manquant." }, { status: 400 });
-  }
+  // La page est optionnelle : une mission mobile « sans page » (juste un ordre)
+  // est légitime. On normalise vers un contexte vide plutôt que de rejeter.
+  const page = body?.page ?? { url: "" };
 
-  const keyResult = await getBuilderApiKey(user.id, body.modelId ?? "gpt-5.4-mini");
+  const keyResult = await getBuilderApiKey(user.id, body?.modelId ?? "gpt-5.4-mini");
   if (!keyResult.ok) {
     return NextResponse.json({ error: "no_api_key", message: keyResult.error }, { status: 503 });
   }
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
   try {
     built = await buildInstantAgent({
       goal,
-      page: body.page,
+      page,
       userEmail: user.email,
       apiKey: keyResult.apiKey,
       resolved: keyResult.resolved,
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       inputs: {
         __manifest: JSON.stringify(built.manifest),
         __source: "extension",
-        __source_url: body.page.url.slice(0, 500),
+        __source_url: (page.url ?? "").slice(0, 500),
       },
     })
     .select("id")

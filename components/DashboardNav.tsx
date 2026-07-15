@@ -14,12 +14,14 @@ import {
   Bot,
   FileText,
   ClipboardCheck,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
   contenus: Bot,
+  quotidien: Sparkles,
   documents: FileText,
   connexions: Key,
   runs: History,
@@ -41,6 +43,7 @@ type NavItem = {
 const PRIMARY_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Aperçu", iconKey: "dashboard", exact: true },
   { href: "/dashboard/contenus", label: "Mes agents", iconKey: "contenus" },
+  { href: "/dashboard/ia-quotidien", label: "IA du quotidien", iconKey: "quotidien" },
   { href: "/dashboard/runs", label: "Runs & logs", iconKey: "runs" },
   { href: "/dashboard/connexions", label: "Connexions", iconKey: "connexions" },
   { href: "/dashboard/validations", label: "Validations", iconKey: "validations" },
