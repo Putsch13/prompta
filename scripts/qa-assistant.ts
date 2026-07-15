@@ -36,7 +36,19 @@ async function mintCookie(): Promise<string> {
   return out.join("; ");
 }
 
-interface Case { name: string; kind: "simple" | "contexte" | "onglets" | "validation"; goal: string; page?: Record<string, unknown>; expectApproval?: boolean; }
+interface Case { name: string; kind: "simple" | "contexte" | "onglets" | "validation" | "lecture"; goal: string; page?: Record<string, unknown>; expectApproval?: boolean; }
+
+// Contenu de page simulant une base de données / un tableau À L'ÉCRAN — l'agent
+// doit l'ANALYSER directement (pas appeler l'API Sheets avec un id inventé).
+const BDD_CONTENU = `Base clients — Produits
+ID | PRODUIT | STOCK | PRIX | STATUT
+1 | Clavier mécanique | 12 | 49€ | actif
+2 | Souris sans fil | -3 | 19€ | actif
+3 | Écran 27" | 7 | | actif
+4 | Casque | 15 | 89€ | ARCHIVÉ
+5 | Webcam HD | 9 | 59€ | actif
+5 | Webcam HD | 4 | 59€ | actif
+6 | Hub USB | 22 | 29€ | inconnu`;
 
 function buildCases(): Case[] {
   const cs: Case[] = [];
@@ -88,6 +100,24 @@ function buildCases(): Case[] {
           { title: "IANA example domains", url: "https://www.iana.org/help/example-domains" },
         ],
       },
+    });
+  }
+
+  // 20 LECTURE « comme mes yeux » : une bdd/tableau est À L'ÉCRAN (dans le
+  // contenu de page). L'agent doit l'analyser DIRECTEMENT — surtout PAS appeler
+  // google_sheets.get_values avec un id inventé (le bug signalé). Aucun email.
+  const lectures = [
+    "Lis cette bdd et dis-moi ce qui cloche.",
+    "Analyse ce tableau et liste les anomalies.",
+    "Regarde cette page et dis-moi les problèmes de données.",
+    "Qu'est-ce qui ne va pas dans ce que je vois à l'écran ?",
+    "Résume ce tableau et signale les incohérences.",
+  ];
+  for (let i = 0; i < 20; i++) {
+    cs.push({
+      name: `lecture_${i + 1}`, kind: "lecture",
+      goal: lectures[i % lectures.length],
+      page: { url: "https://mon-outil.example/bdd", title: "Base clients — Produits", content: BDD_CONTENU },
     });
   }
 

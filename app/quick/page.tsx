@@ -62,7 +62,7 @@ interface Live {
 const STATUS_DOT: Record<string, string> = {
   completed: "bg-emerald-500",
   failed: "bg-rose-400",
-  awaiting_approval: "bg-accent",
+  awaiting_approval: "bg-[#7c6cff]",
   running: "bg-amber-400",
   pending: "bg-amber-400",
 };
@@ -205,17 +205,17 @@ export default function QuickPage() {
   const liveShown = live && !history.some((h) => h.runId === live.runId) ? live : null;
 
   return (
-    <div className="flex h-screen flex-col bg-bg text-ink">
+    <div className="flex h-screen flex-col bg-[#0f1420] text-[#f3f5fb]">
       {/* Header */}
-      <header className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">P</span>
-        <span className="flex-1 font-display text-sm font-bold">Prompta <span className="font-normal text-ink-faint">· assistant</span></span>
+      <header className="flex items-center gap-2 border-b border-[#2a3350] px-4 py-3">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#7c6cff] text-sm font-bold text-white">P</span>
+        <span className="flex-1 font-display text-sm font-bold">Prompta <span className="font-normal text-[#6b7595]">· assistant</span></span>
         {models.length > 0 && (
           <select
             value={model}
             onChange={(e) => { setModel(e.target.value); try { localStorage.setItem("prompta_model", e.target.value); } catch { /* quota */ } }}
             title="Modèle qui répond"
-            className="max-w-[120px] rounded-lg border border-line bg-card px-2 py-1 text-xs"
+            className="max-w-[120px] rounded-lg border border-[#2a3350] bg-[#161d2e] px-2 py-1 text-xs"
           >
             {!models.some((m) => m.usable) && <option value="">Modèle par défaut</option>}
             {models.map((m) => <option key={m.id} value={m.id} disabled={!m.usable}>{m.label}{m.usable ? "" : " (clé requise)"}</option>)}
@@ -223,7 +223,7 @@ export default function QuickPage() {
         )}
         {authed && (
           <a href="/dashboard/connexions" target="_blank" rel="noopener" title="Apps connectées"
-             className="rounded-lg border border-line px-2 py-1 text-xs text-ink-soft hover:border-accent">
+             className="rounded-lg border border-[#2a3350] px-2 py-1 text-xs text-[#aab3cc] hover:border-[#7c6cff]">
             🔌 {usableCount}
           </a>
         )}
@@ -233,14 +233,14 @@ export default function QuickPage() {
       <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
           {authed === false && (
-            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+            <div className="rounded-xl border border-[#3a3320] bg-[#1c180a] p-4 text-sm text-[#fbbf24]">
               Connecte-toi à Prompta d&apos;abord. <a href="/login" className="font-semibold underline">Se connecter</a>
             </div>
           )}
 
           {thread.length === 0 && !liveShown && authed !== false && (
-            <div className="mt-10 text-center text-ink-faint">
-              <p className="text-lg font-medium text-ink-soft">Ton assistant du quotidien</p>
+            <div className="mt-10 text-center text-[#6b7595]">
+              <p className="text-lg font-medium text-[#aab3cc]">Ton assistant du quotidien</p>
               <p className="mt-1 text-sm">Pose une question simple, ou confie-lui une vraie mission sur tes apps.</p>
             </div>
           )}
@@ -257,7 +257,7 @@ export default function QuickPage() {
           )}
 
           {error && (
-            <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+            <div className="rounded-xl border border-[#3a2226] bg-[#1c1012] p-3 text-sm text-[#f87171]">
               {error.message}
               {error.missing && <> — <a href="/dashboard/connexions" target="_blank" rel="noopener" className="underline">ouvrir Connexions</a></>}
             </div>
@@ -266,29 +266,29 @@ export default function QuickPage() {
       </div>
 
       {/* Composer */}
-      <div className="border-t border-line bg-card/50 px-4 py-3">
+      <div className="border-t border-[#2a3350] bg-[#131a29] px-4 py-3">
         <div className="mx-auto max-w-2xl">
           {/* Ce que je vois */}
-          <button onClick={() => setShowContext((s) => !s)} className="mb-2 flex items-center gap-1.5 text-xs text-ink-soft">
+          <button onClick={() => setShowContext((s) => !s)} className="mb-2 flex items-center gap-1.5 text-xs text-[#aab3cc]">
             <span className={`transition-transform ${showContext ? "rotate-90" : ""}`}>▸</span>
             👁 Ce que je vois
-            {ctx && <span className="rounded-full border border-line px-2 py-0.5 text-ink-faint">📄 {(ctx.title || ctx.url || "cette page").slice(0, 32)}</span>}
+            {ctx && <span className="rounded-full border border-[#2a3350] px-2 py-0.5 text-[#6b7595]">📄 {(ctx.title || ctx.url || "cette page").slice(0, 32)}</span>}
           </button>
           {showContext && (
-            <div className="mb-2 space-y-2 rounded-xl border border-line bg-card p-3 text-xs text-ink-soft">
+            <div className="mb-2 space-y-2 rounded-xl border border-[#2a3350] bg-[#161d2e] p-3 text-xs text-[#aab3cc]">
               {ctx ? (
                 <div className="flex flex-wrap gap-1.5">
-                  <span className="rounded-full border border-line px-2 py-0.5">📄 {(ctx.title || ctx.url || "cette page").slice(0, 48)}</span>
-                  {ctx.isPdf && <span className="rounded-full border border-line px-2 py-0.5">PDF</span>}
-                  {ctx.selection && <span className="rounded-full border border-line px-2 py-0.5">✂️ sélection</span>}
+                  <span className="rounded-full border border-[#2a3350] px-2 py-0.5">📄 {(ctx.title || ctx.url || "cette page").slice(0, 48)}</span>
+                  {ctx.isPdf && <span className="rounded-full border border-[#2a3350] px-2 py-0.5">PDF</span>}
+                  {ctx.selection && <span className="rounded-full border border-[#2a3350] px-2 py-0.5">✂️ sélection</span>}
                 </div>
               ) : (
                 <input value={manualUrl} onChange={(e) => setManualUrl(e.target.value)} placeholder="Coller une URL à analyser (optionnel)"
-                       className="h-9 w-full rounded-lg border border-line bg-bg px-3 text-ink" />
+                       className="h-9 w-full rounded-lg border border-[#2a3350] bg-[#0f1420] px-3 text-[#f3f5fb]" />
               )}
-              <p className="text-ink-faint">
+              <p className="text-[#6b7595]">
                 Depuis une page web je ne vois que cette page. Pour que je voie <strong>tous tes onglets ouverts</strong>,{" "}
-                <a href="/dashboard/ia-quotidien" target="_blank" rel="noopener" className="text-accent underline">installe l&apos;extension</a>.
+                <a href="/dashboard/ia-quotidien" target="_blank" rel="noopener" className="text-[#a99bff] underline">installe l&apos;extension</a>.
                 Les logiciels/PDF ouverts hors navigateur ne sont pas accessibles.
               </p>
               <label className="flex items-center gap-2">
@@ -298,7 +298,7 @@ export default function QuickPage() {
             </div>
           )}
 
-          <div className="flex items-end gap-2 rounded-2xl border border-line bg-card p-2 focus-within:border-accent">
+          <div className="flex items-end gap-2 rounded-2xl border border-[#2a3350] bg-[#161d2e] p-2 focus-within:border-[#7c6cff]">
             <textarea
               ref={inputRef}
               value={goal}
@@ -306,12 +306,12 @@ export default function QuickPage() {
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); launch(); } }}
               rows={1}
               placeholder="Demande simple ou grosse mission…  (Entrée pour envoyer)"
-              className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-ink outline-none"
+              className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-[#f3f5fb] outline-none"
             />
             <button
               onClick={launch}
               disabled={busy || goal.trim().length < 3}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-white disabled:opacity-40"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#7c6cff] text-white disabled:opacity-40"
               title="Envoyer"
             >
               {busy ? "…" : "↑"}
@@ -342,20 +342,20 @@ function Message(props: {
     <div className="flex flex-col gap-2">
       {/* Demande (cliquable pour réutiliser) */}
       <button onClick={onReuse} title="Réutiliser cette demande"
-              className="group ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-left text-sm text-white">
+              className="group ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[#7c6cff] px-3.5 py-2 text-left text-sm text-white">
         {goal}
         <span className="ml-2 opacity-0 transition-opacity group-hover:opacity-70">↺</span>
       </button>
 
       {/* Réponse / mission */}
-      <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-line bg-card px-3.5 py-2.5 text-sm">
-        {answer && <div className="whitespace-pre-wrap text-ink">{answer.slice(0, 8000)}</div>}
+      <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-[#2a3350] bg-[#161d2e] px-3.5 py-2.5 text-sm">
+        {answer && <div className="whitespace-pre-wrap text-[#f3f5fb]">{answer.slice(0, 8000)}</div>}
 
         {isAgent && (planned.length > 0) && (
           <div className="mt-1 space-y-0.5">
             {planned.map((label, i) => (
-              <div key={i} className="flex items-baseline gap-2 text-ink-soft">
-                <span className={i < stepsDone ? "text-emerald-600" : "text-ink-faint"}>
+              <div key={i} className="flex items-baseline gap-2 text-[#aab3cc]">
+                <span className={i < stepsDone ? "text-emerald-600" : "text-[#6b7595]"}>
                   {i < stepsDone ? "✓" : i === stepsDone && (status === "running" || status === "pending") ? "▶" : "·"}
                 </span>
                 <span>{label}</span>
@@ -365,18 +365,18 @@ function Message(props: {
         )}
 
         {isAgent && planned.length === 0 && (status === "running" || status === "pending") && (
-          <div className="text-ink-soft">🧠 Prompta conçoit l&apos;agent…</div>
+          <div className="text-[#aab3cc]">🧠 Prompta conçoit l&apos;agent…</div>
         )}
 
         <div className="mt-2 flex items-center gap-2 text-xs">
           <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status] ?? "bg-ink-faint"} ${live && !["completed", "failed"].includes(status) ? "animate-pulse" : ""}`} />
-          <span className="text-ink-faint">
+          <span className="text-[#6b7595]">
             {status === "completed" ? "terminé" : status === "failed" ? "échec" : status === "awaiting_approval" ? "à valider" : status === "running" ? "en cours" : "en file"}
           </span>
-          {model && <span className="text-ink-faint">· {model}</span>}
-          {status === "awaiting_approval" && <a href="/dashboard/validations" target="_blank" rel="noopener" className="ml-auto text-accent underline">valider</a>}
-          {status === "completed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-accent underline">dossier ↗</a>}
-          {status === "failed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-accent underline">dossier ↗</a>}
+          {model && <span className="text-[#6b7595]">· {model}</span>}
+          {status === "awaiting_approval" && <a href="/dashboard/validations" target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">valider</a>}
+          {status === "completed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
+          {status === "failed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
         </div>
         {status === "failed" && error && <div className="mt-1 text-xs text-rose-600">{error.slice(0, 140)}</div>}
       </div>
