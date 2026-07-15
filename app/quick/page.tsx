@@ -1,11 +1,15 @@
 "use client";
 
 /**
- * /quick — barre de commande Prompta AUTONOME (hors extension).
+ * /quick — assistant Prompta AUTONOME (hors extension), en mode CHAT.
  *
- * Cible universelle : ouverte par le bookmarklet « Prompta partout » (qui lui
- * passe le contexte de la page par postMessage), épinglée à l'écran d'accueil
- * sur mobile (PWA), ou ouverte directement. Réutilise /api/extension/execute.
+ * Ouvert par le bookmarklet « Prompta partout » (contexte de page par
+ * postMessage/hash), épinglé à l'écran d'accueil sur mobile (PWA), ou en direct.
+ * Fil de conversation : l'historique est cliquable (réutiliser/modifier), les
+ * questions simples répondent inline, les missions montrent l'agent en live.
+ *
+ * Limite navigateur assumée : une page web ne peut pas lister les AUTRES onglets
+ * — seule l'extension le peut. On le dit clairement au lieu de faire semblant.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -19,24 +23,15 @@ interface PageCtx {
   isPdf?: boolean;
 }
 
-interface Conn {
-  connectorId: string;
-  usable: boolean;
-}
-
-interface Model {
-  id: string;
-  label: string;
-  provider: string;
-  usable: boolean;
-}
-
+interface Conn { connectorId: string; usable: boolean }
+interface Model { id: string; label: string; provider: string; usable: boolean }
 interface HistoryItem {
   runId: string;
   goal: string;
   title: string;
   model: string | null;
   answer: string | null;
+  error: string | null;
   status: string;
   createdAt: string;
 }
@@ -51,76 +46,75 @@ function extractAnswer(output: unknown): string | null {
   return vals.length ? (vals[vals.length - 1][1] as string) : null;
 }
 
-type RunState =
-  | { phase: "idle" }
-  | { phase: "planning" }
-  | { phase: "running"; runId: string; title: string; planned: string[]; stepsDone: number; status: string; error?: string | null; answer?: string | null }
-  | { phase: "error"; message: string; missing?: string[] };
+/** Run en cours de suivi. */
+interface Live {
+  runId: string;
+  goal: string;
+  model: string | null;
+  title: string;
+  planned: string[];
+  stepsDone: number;
+  status: string;
+  error?: string | null;
+  answer?: string | null;
+}
+
+const STATUS_DOT: Record<string, string> = {
+  completed: "bg-emerald-500",
+  failed: "bg-rose-400",
+  awaiting_approval: "bg-accent",
+  running: "bg-amber-400",
+  pending: "bg-amber-400",
+};
 
 export default function QuickPage() {
   const [ctx, setCtx] = useState<PageCtx | null>(null);
   const [manualUrl, setManualUrl] = useState("");
   const [goal, setGoal] = useState("");
   const [explore, setExplore] = useState(true);
-  const [state, setState] = useState<RunState>({ phase: "idle" });
-  const [conns, setConns] = useState<Conn[] | null>(null);
-  const [showConns, setShowConns] = useState(false);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [models, setModels] = useState<Model[]>([]);
   const [model, setModel] = useState<string>("");
+  const [conns, setConns] = useState<Conn[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [live, setLive] = useState<Live | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<{ message: string; missing?: string[] } | null>(null);
+  const [showContext, setShowContext] = useState(false);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const busyRef = useRef(false);
+  const threadRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Contexte compact (url/title/selection) transmis dans le hash — toujours
-  // présent, y compris si la popup a été bloquée (navigation même fenêtre).
+  // Contexte compact via hash (survit au blocage de popup).
   useEffect(() => {
     if (window.location.hash.length > 1) {
       try {
         const mini = JSON.parse(decodeURIComponent(window.location.hash.slice(1)));
         if (mini && typeof mini === "object" && mini.url) setCtx(mini as PageCtx);
-      } catch {
-        /* hash non-JSON : ignoré */
-      }
+      } catch { /* hash non-JSON */ }
     }
   }, []);
 
-  // Contexte COMPLET (contenu + liens) reçu du bookmarklet par postMessage.
+  // Contexte complet par postMessage (bookmarklet).
   useEffect(() => {
     function onMsg(e: MessageEvent) {
-      // Seule la fenêtre ouvrante (la page où le bookmarklet a tourné) peut
-      // pousser le contexte. Sans ouvreur, on refuse tout message (évite le cas
-      // e.source === null === window.opener qui laisserait passer une injection).
       if (!window.opener || e.source !== window.opener) return;
-      if (e.data && typeof e.data === "object" && e.data.type === "prompta:ctx" && e.data.ctx?.url) {
-        setCtx(e.data.ctx as PageCtx);
-      }
+      if (e.data && typeof e.data === "object" && e.data.type === "prompta:ctx" && e.data.ctx?.url) setCtx(e.data.ctx as PageCtx);
     }
     window.addEventListener("message", onMsg);
-    // Handshake « prêt » vers l'ouvreur. targetOrigin "*" : ce signal ne porte
-    // aucune donnée ; l'origine de l'ouvreur (page arbitraire) est inconnue ici.
-    if (window.opener) {
-      try {
-        window.opener.postMessage("prompta:ready", "*");
-      } catch {
-        /* ouvreur cross-origin sans accès : ignoré */
-      }
-    }
+    if (window.opener) { try { window.opener.postMessage("prompta:ready", "*"); } catch { /* cross-origin */ } }
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  // État de connexion + auth.
   useEffect(() => {
     fetch("/api/extension/connections")
-      .then((r) => {
-        setAuthed(r.ok);
-        return r.ok ? r.json() : null;
-      })
+      .then((r) => { setAuthed(r.ok); return r.ok ? r.json() : null; })
       .then((d) => d && setConns(d.connections ?? []))
       .catch(() => setAuthed(false));
   }, []);
 
-  // Modèles disponibles (sélecteur à la Cursor) + restauration du choix.
   useEffect(() => {
     fetch("/api/extension/models")
       .then((r) => (r.ok ? r.json() : null))
@@ -128,8 +122,7 @@ export default function QuickPage() {
         const ms: Model[] = d?.models ?? [];
         setModels(ms);
         const saved = typeof localStorage !== "undefined" ? localStorage.getItem("prompta_model") : null;
-        const chosen = ms.find((m) => m.id === saved && m.usable)?.id ?? ms.find((m) => m.usable)?.id ?? "";
-        setModel(chosen);
+        setModel(ms.find((m) => m.id === saved && m.usable)?.id ?? ms.find((m) => m.usable)?.id ?? "");
       })
       .catch(() => undefined);
   }, []);
@@ -144,23 +137,24 @@ export default function QuickPage() {
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
+  // Auto-scroll vers le bas quand le fil change.
+  useEffect(() => {
+    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
+  }, [history, live]);
+
+  const usableCount = conns.filter((c) => c.usable).length;
+
   const launch = useCallback(async () => {
-    // Anti ré-entrance (le raccourci Cmd/Ctrl+Entrée court-circuite le bouton
-    // désactivé) : ne pas lancer un 2e run ni fuiter l'interval du 1er.
     if (busyRef.current) return;
-
     const g = goal.trim();
-    if (g.length < 5) {
-      setState({ phase: "error", message: "Décris la mission (5 caractères minimum)." });
-      return;
-    }
-    busyRef.current = true;
+    if (g.length < 3) return;
+    busyRef.current = true; setBusy(true); setError(null);
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    setState({ phase: "planning" });
 
-    // Contexte : celui du bookmarklet, sinon une URL saisie (mobile).
-    const page: PageCtx =
-      ctx ?? (manualUrl.trim() ? { url: manualUrl.trim() } : { url: "", title: "Sans page" });
+    const page: PageCtx = ctx ?? (manualUrl.trim() ? { url: manualUrl.trim() } : { url: "" });
+    setLive({ runId: "…", goal: g, model, title: g, planned: [], stepsDone: 0, status: "pending" });
+    setGoal("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
 
     let res: Response;
     try {
@@ -170,202 +164,222 @@ export default function QuickPage() {
         body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined }),
       });
     } catch {
-      busyRef.current = false;
-      setState({ phase: "error", message: "Réseau indisponible." });
+      busyRef.current = false; setBusy(false); setLive(null);
+      setError({ message: "Réseau indisponible." });
       return;
     }
 
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      busyRef.current = false;
-      if (res.status === 409 && body.missingConnectors?.length) {
-        setState({ phase: "error", message: `À connecter d'abord : ${body.missingConnectors.join(", ")}.`, missing: body.missingConnectors });
-      } else if (res.status === 401) {
-        setState({ phase: "error", message: "Connecte-toi à Prompta, puis réessaie." });
-      } else {
-        setState({ phase: "error", message: body.message ?? `Erreur (${res.status}).` });
-      }
+      busyRef.current = false; setBusy(false); setLive(null);
+      if (res.status === 409 && body.missingConnectors?.length) setError({ message: `À connecter d'abord : ${body.missingConnectors.join(", ")}.`, missing: body.missingConnectors });
+      else if (res.status === 401) setError({ message: "Connecte-toi à Prompta, puis réessaie." });
+      else setError({ message: body.message ?? `Erreur (${res.status}).` });
       return;
     }
 
     const runId: string = body.runId;
-    setState({ phase: "running", runId, title: body.title ?? g, planned: [], stepsDone: 0, status: "pending" });
+    setLive((l) => l && { ...l, runId, title: body.title ?? g, status: "running" });
 
     pollRef.current = setInterval(async () => {
       const r = await fetch(`/api/run/agent/${runId}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
       if (!r) return;
-      setState({
-        phase: "running",
-        runId,
-        title: body.title ?? g,
-        planned: r.planned_steps ?? [],
-        stepsDone: r.steps_completed ?? 0,
-        status: r.status,
-        error: r.error_message,
-        answer: extractAnswer(r.output),
-      });
+      setLive((l) => l && { ...l, planned: r.planned_steps ?? [], stepsDone: r.steps_completed ?? 0, status: r.status, error: r.error_message, answer: extractAnswer(r.output) });
       if (["completed", "failed", "cancelled"].includes(r.status) && pollRef.current) {
-        busyRef.current = false;
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-        loadHistory(); // le run terminé rejoint le fil de conversation
+        clearInterval(pollRef.current); pollRef.current = null;
+        busyRef.current = false; setBusy(false);
+        loadHistory();
+        setTimeout(() => setLive(null), 400); // le run rejoint l'historique
       }
     }, 2500);
   }, [goal, ctx, manualUrl, explore, model, loadHistory]);
 
-  const usableCount = conns?.filter((c) => c.usable).length ?? 0;
+  function reuse(text: string) {
+    setGoal(text);
+    inputRef.current?.focus();
+    if (inputRef.current) { inputRef.current.style.height = "auto"; inputRef.current.style.height = Math.min(160, inputRef.current.scrollHeight) + "px"; }
+  }
+
+  // Fil = historique chronologique + run en cours (si pas encore dans l'historique).
+  const thread = [...history].reverse();
+  const liveShown = live && !history.some((h) => h.runId === live.runId) ? live : null;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col gap-3 p-5">
-      <div className="flex items-center gap-2">
+    <div className="flex h-screen flex-col bg-bg text-ink">
+      {/* Header */}
+      <header className="flex items-center gap-2 border-b border-line px-4 py-3">
         <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">P</span>
-        <h1 className="flex-1 font-display text-base font-bold text-ink">Prompta — assistant</h1>
+        <span className="flex-1 font-display text-sm font-bold">Prompta <span className="font-normal text-ink-faint">· assistant</span></span>
         {models.length > 0 && (
           <select
             value={model}
             onChange={(e) => { setModel(e.target.value); try { localStorage.setItem("prompta_model", e.target.value); } catch { /* quota */ } }}
             title="Modèle qui répond"
-            className="max-w-[130px] rounded-lg border border-line bg-card2 px-2 py-1 text-xs text-ink"
+            className="max-w-[120px] rounded-lg border border-line bg-card px-2 py-1 text-xs"
           >
-            {models.map((m) => (
-              <option key={m.id} value={m.id} disabled={!m.usable}>
-                {m.label}{m.usable ? "" : " (clé requise)"}
-              </option>
-            ))}
+            {!models.some((m) => m.usable) && <option value="">Modèle par défaut</option>}
+            {models.map((m) => <option key={m.id} value={m.id} disabled={!m.usable}>{m.label}{m.usable ? "" : " (clé requise)"}</option>)}
           </select>
         )}
         {authed && (
-          <button onClick={() => setShowConns((s) => !s)} className="rounded-lg border border-line px-2 py-1 text-xs text-ink-soft">
-            {usableCount} app{usableCount > 1 ? "s" : ""}
-          </button>
+          <a href="/dashboard/connexions" target="_blank" rel="noopener" title="Apps connectées"
+             className="rounded-lg border border-line px-2 py-1 text-xs text-ink-soft hover:border-accent">
+            🔌 {usableCount}
+          </a>
         )}
+      </header>
+
+      {/* Fil de conversation */}
+      <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="mx-auto flex max-w-2xl flex-col gap-4">
+          {authed === false && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+              Connecte-toi à Prompta d&apos;abord. <a href="/login" className="font-semibold underline">Se connecter</a>
+            </div>
+          )}
+
+          {thread.length === 0 && !liveShown && authed !== false && (
+            <div className="mt-10 text-center text-ink-faint">
+              <p className="text-lg font-medium text-ink-soft">Ton assistant du quotidien</p>
+              <p className="mt-1 text-sm">Pose une question simple, ou confie-lui une vraie mission sur tes apps.</p>
+            </div>
+          )}
+
+          {thread.map((h) => (
+            <Message key={h.runId} goal={h.goal || h.title} model={h.model} status={h.status} answer={h.answer}
+                     runId={h.runId} planned={[]} stepsDone={0} error={h.error} onReuse={() => reuse(h.goal || h.title)} />
+          ))}
+
+          {liveShown && (
+            <Message goal={liveShown.goal} model={liveShown.model} status={liveShown.status} answer={liveShown.answer ?? null}
+                     runId={liveShown.runId} planned={liveShown.planned} stepsDone={liveShown.stepsDone} error={liveShown.error}
+                     onReuse={() => reuse(liveShown.goal)} live />
+          )}
+
+          {error && (
+            <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+              {error.message}
+              {error.missing && <> — <a href="/dashboard/connexions" target="_blank" rel="noopener" className="underline">ouvrir Connexions</a></>}
+            </div>
+          )}
+        </div>
       </div>
 
-      {authed === false && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
-          Connecte-toi à Prompta d&apos;abord.{" "}
-          <a href="/login" className="font-semibold underline">Se connecter</a>
-        </div>
-      )}
+      {/* Composer */}
+      <div className="border-t border-line bg-card/50 px-4 py-3">
+        <div className="mx-auto max-w-2xl">
+          {/* Ce que je vois */}
+          <button onClick={() => setShowContext((s) => !s)} className="mb-2 flex items-center gap-1.5 text-xs text-ink-soft">
+            <span className={`transition-transform ${showContext ? "rotate-90" : ""}`}>▸</span>
+            👁 Ce que je vois
+            {ctx && <span className="rounded-full border border-line px-2 py-0.5 text-ink-faint">📄 {(ctx.title || ctx.url || "cette page").slice(0, 32)}</span>}
+          </button>
+          {showContext && (
+            <div className="mb-2 space-y-2 rounded-xl border border-line bg-card p-3 text-xs text-ink-soft">
+              {ctx ? (
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="rounded-full border border-line px-2 py-0.5">📄 {(ctx.title || ctx.url || "cette page").slice(0, 48)}</span>
+                  {ctx.isPdf && <span className="rounded-full border border-line px-2 py-0.5">PDF</span>}
+                  {ctx.selection && <span className="rounded-full border border-line px-2 py-0.5">✂️ sélection</span>}
+                </div>
+              ) : (
+                <input value={manualUrl} onChange={(e) => setManualUrl(e.target.value)} placeholder="Coller une URL à analyser (optionnel)"
+                       className="h-9 w-full rounded-lg border border-line bg-bg px-3 text-ink" />
+              )}
+              <p className="text-ink-faint">
+                Depuis une page web je ne vois que cette page. Pour que je voie <strong>tous tes onglets ouverts</strong>,{" "}
+                <a href="/dashboard/ia-quotidien" target="_blank" rel="noopener" className="text-accent underline">installe l&apos;extension</a>.
+                Les logiciels/PDF ouverts hors navigateur ne sont pas accessibles.
+              </p>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={explore} onChange={(e) => setExplore(e.target.checked)} />
+                Autoriser l&apos;exploration des liens de la page
+              </label>
+            </div>
+          )}
 
-      {showConns && conns && (
-        <div className="rounded-xl border border-line bg-card2 p-3">
-          <div className="flex flex-wrap gap-1.5">
-            {conns.length === 0 && <span className="text-xs text-ink-faint">Aucune app connectée.</span>}
-            {conns
-              .filter((c, i, a) => a.findIndex((x) => x.connectorId.toLowerCase().replace(/[^a-z0-9]/g, "") === c.connectorId.toLowerCase().replace(/[^a-z0-9]/g, "")) === i)
-              .map((c) => (
-                <span key={c.connectorId} className="flex items-center gap-1 rounded-full bg-card px-2 py-0.5 text-xs text-ink-soft">
-                  <span className={`h-1.5 w-1.5 rounded-full ${c.usable ? "bg-green-500" : "bg-red-400"}`} />
-                  {c.connectorId}
-                </span>
-              ))}
+          <div className="flex items-end gap-2 rounded-2xl border border-line bg-card p-2 focus-within:border-accent">
+            <textarea
+              ref={inputRef}
+              value={goal}
+              onChange={(e) => { setGoal(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(160, e.target.scrollHeight) + "px"; }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); launch(); } }}
+              rows={1}
+              placeholder="Demande simple ou grosse mission…  (Entrée pour envoyer)"
+              className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-ink outline-none"
+            />
+            <button
+              onClick={launch}
+              disabled={busy || goal.trim().length < 3}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-white disabled:opacity-40"
+              title="Envoyer"
+            >
+              {busy ? "…" : "↑"}
+            </button>
           </div>
-          <a href="/dashboard/connexions" target="_blank" rel="noopener" className="mt-2 inline-block text-xs font-medium text-accent underline">
-            + connecter une autre app
-          </a>
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
 
-      {ctx ? (
-        <div className="flex flex-wrap gap-1.5 text-xs text-ink-faint">
-          <span className="rounded-full border border-line px-2 py-0.5">📄 {(ctx.title || ctx.url || "page").slice(0, 44)}</span>
-          {ctx.isPdf && <span className="rounded-full border border-line px-2 py-0.5">PDF</span>}
-          {ctx.selection && <span className="rounded-full border border-line px-2 py-0.5">✂️ sélection ({ctx.selection.length} car.)</span>}
-        </div>
-      ) : (
-        <input
-          value={manualUrl}
-          onChange={(e) => setManualUrl(e.target.value)}
-          placeholder="URL à analyser (optionnel) — ex. https://un-site.com/produit"
-          className="h-10 rounded-lg border border-line bg-card px-3 text-sm text-ink"
-        />
-      )}
-
-      <textarea
-        value={goal}
-        onChange={(e) => setGoal(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) launch(); }}
-        placeholder="Ex. : Résume ce produit dans un Google Sheets sur mon Drive, puis envoie-moi le lien par email."
-        className="min-h-[96px] resize-y rounded-xl border border-line bg-card p-3 text-sm text-ink outline-none focus:border-accent"
-      />
-
-      {/* Toujours visible : même avec un contexte bookmarklet (qui porte des
-          liens), l'utilisateur doit pouvoir empêcher l'agent de les suivre. */}
-      <label className="flex items-center gap-2 text-xs text-ink-soft">
-        <input type="checkbox" checked={explore} onChange={(e) => setExplore(e.target.checked)} />
-        Autoriser l&apos;exploration des liens de la page
-      </label>
-
-      <button
-        onClick={launch}
-        disabled={state.phase === "planning" || state.phase === "running"}
-        className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-      >
-        {state.phase === "planning" ? "Création de l'agent…" : state.phase === "running" ? "Agent en cours…" : "Lancer l'agent"}
+/** Une entrée du fil : la demande + la réponse (simple) ou la mission (agent). */
+function Message(props: {
+  goal: string;
+  model: string | null;
+  status: string;
+  answer: string | null;
+  runId: string;
+  planned: string[];
+  stepsDone: number;
+  error?: string | null;
+  live?: boolean;
+  onReuse: () => void;
+}) {
+  const { goal, model, status, answer, runId, planned, stepsDone, error, live, onReuse } = props;
+  const isAgent = planned.length > 0 || (!answer && status !== "completed");
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Demande (cliquable pour réutiliser) */}
+      <button onClick={onReuse} title="Réutiliser cette demande"
+              className="group ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-left text-sm text-white">
+        {goal}
+        <span className="ml-2 opacity-0 transition-opacity group-hover:opacity-70">↺</span>
       </button>
 
-      <div className="text-sm">
-        {state.phase === "planning" && <p className="text-ink-soft">🧠 Prompta conçoit l&apos;agent…</p>}
-        {state.phase === "error" && (
-          <div className="text-red-600">
-            {state.message}
-            {state.missing && (
-              <> — <a href="/dashboard/connexions" target="_blank" rel="noopener" className="underline">ouvrir Connexions</a></>
-            )}
-          </div>
-        )}
-        {state.phase === "running" && (
-          <div className="space-y-1">
-            <p className="font-medium text-ink">🚀 {state.title}</p>
-            {state.answer && (
-              <div className="my-2 whitespace-pre-wrap rounded-lg border border-line bg-card p-3 text-ink">{state.answer.slice(0, 6000)}</div>
-            )}
-            {state.planned.map((label, i) => (
+      {/* Réponse / mission */}
+      <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-line bg-card px-3.5 py-2.5 text-sm">
+        {answer && <div className="whitespace-pre-wrap text-ink">{answer.slice(0, 8000)}</div>}
+
+        {isAgent && (planned.length > 0) && (
+          <div className="mt-1 space-y-0.5">
+            {planned.map((label, i) => (
               <div key={i} className="flex items-baseline gap-2 text-ink-soft">
-                <span className={i < state.stepsDone ? "text-green-600" : ""}>
-                  {i < state.stepsDone ? "✓" : i === state.stepsDone && (state.status === "running" || state.status === "pending") ? "▶" : "·"}
+                <span className={i < stepsDone ? "text-emerald-600" : "text-ink-faint"}>
+                  {i < stepsDone ? "✓" : i === stepsDone && (status === "running" || status === "pending") ? "▶" : "·"}
                 </span>
                 <span>{label}</span>
               </div>
             ))}
-            {state.status === "awaiting_approval" && (
-              <p className="text-amber-600">⏸ Validation requise — <a href="/dashboard/validations" target="_blank" rel="noopener" className="underline">valider</a></p>
-            )}
-            {state.status === "completed" && (
-              <p className="text-green-600">✅ Terminé — <a href={`/dashboard/runs/${state.runId}`} target="_blank" rel="noopener" className="underline">voir le dossier de mission</a></p>
-            )}
-            {state.status === "failed" && (
-              <p className="text-red-600">✗ {state.error ?? "Échec"} — <a href={`/dashboard/runs/${state.runId}`} target="_blank" rel="noopener" className="underline">détails</a></p>
-            )}
           </div>
         )}
-      </div>
 
-      {history.length > 0 && (
-        <div className="mt-2 border-t border-line pt-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Historique</p>
-          <div className="flex flex-col gap-1.5">
-            {history.map((h) => (
-              <div key={h.runId} className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-xs">
-                <a href={`/dashboard/runs/${h.runId}`} target="_blank" rel="noopener" className="flex items-center gap-2 text-ink-soft hover:text-ink">
-                  <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      h.status === "completed" ? "bg-green-500"
-                      : h.status === "failed" ? "bg-red-400"
-                      : h.status === "awaiting_approval" ? "bg-accent"
-                      : "bg-amber-400"
-                    }`}
-                  />
-                  <span className="flex-1 truncate">{h.goal || h.title}</span>
-                  {h.model && <span className="shrink-0 text-ink-faint">{h.model}</span>}
-                </a>
-                {h.answer && <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-ink">{h.answer}</p>}
-              </div>
-            ))}
-          </div>
+        {isAgent && planned.length === 0 && (status === "running" || status === "pending") && (
+          <div className="text-ink-soft">🧠 Prompta conçoit l&apos;agent…</div>
+        )}
+
+        <div className="mt-2 flex items-center gap-2 text-xs">
+          <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status] ?? "bg-ink-faint"} ${live && !["completed", "failed"].includes(status) ? "animate-pulse" : ""}`} />
+          <span className="text-ink-faint">
+            {status === "completed" ? "terminé" : status === "failed" ? "échec" : status === "awaiting_approval" ? "à valider" : status === "running" ? "en cours" : "en file"}
+          </span>
+          {model && <span className="text-ink-faint">· {model}</span>}
+          {status === "awaiting_approval" && <a href="/dashboard/validations" target="_blank" rel="noopener" className="ml-auto text-accent underline">valider</a>}
+          {status === "completed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-accent underline">dossier ↗</a>}
+          {status === "failed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-accent underline">dossier ↗</a>}
         </div>
-      )}
+        {status === "failed" && error && <div className="mt-1 text-xs text-rose-600">{error.slice(0, 140)}</div>}
+      </div>
     </div>
   );
 }
