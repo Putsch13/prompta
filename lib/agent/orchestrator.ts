@@ -367,8 +367,14 @@ async function executeStep(
           );
           break;
         case "http_fetch":
-          content = await httpFetch(interpolate(step.params.url ?? "", vars));
+        case "web_fetch": {
+          // alias : lecteur de page profond (HTML lisible, PDF, liens). On
+          // tolère que l'URL soit passée en « url » ou en « query », mais une
+          // valeur vide ne doit PAS masquer l'autre (|| et non ??).
+          const rawUrl = (step.params.url || step.params.query || "").trim();
+          content = await httpFetch(interpolate(rawUrl, vars));
           break;
+        }
         case "file_read":
           content = await fileRead(vars.file_content ?? "");
           break;

@@ -41,6 +41,7 @@ import {
 const TOOLS = [
   { id: "web_search" as const, label: "Recherche web" },
   { id: "http_fetch" as const, label: "HTTP fetch" },
+  { id: "web_fetch" as const, label: "Lecture de page (web/PDF)" },
   { id: "file_read" as const, label: "Lecture fichier" },
 ];
 

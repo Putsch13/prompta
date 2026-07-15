@@ -73,6 +73,7 @@ function groupLabel(key: string): string {
     ia: "Génération IA",
     web_search: "Recherche web",
     http_fetch: "HTTP",
+    web_fetch: "Lecture de page",
     file_read: "Fichiers",
     validation: "Validations humaines",
     googlesheets: "Google Sheets",

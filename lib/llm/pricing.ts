@@ -45,6 +45,7 @@ export const COMPOSIO_TOOL_CALL_CENTS = 0.03;
 export const TOOL_PRICING: Record<string, number> = {
   web_search: 1,
   http_fetch: 0,
+  web_fetch: 0,
   file_read: 0,
   "gmail.send": 0,
   "gmail.read": 0,

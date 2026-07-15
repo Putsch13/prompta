@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Prompta Everywhere",
+  "description": "Une barre de commande sur toutes vos pages : décrivez une mission, Prompta crée l'agent et l'exécute immédiatement.",
+  "version": "0.1.0",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Ouvrir la barre Prompta (Alt+P)"
+  },
+  "commands": {
+    "toggle-bar": {
+      "suggested_key": {
+        "default": "Alt+P",
+        "mac": "Alt+P"
+      },
+      "description": "Ouvrir / fermer la barre Prompta"
+    }
+  },
+  "background": {
+    "service_worker": "bg.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*", "file://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["storage", "contextMenus"],
+  "host_permissions": ["https://prompta-sjtf.onrender.com/*"]
+}

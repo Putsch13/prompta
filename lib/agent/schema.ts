@@ -23,7 +23,7 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("tool"),
-    tool: z.enum(["web_search", "http_fetch", "file_read"]),
+    tool: z.enum(["web_search", "http_fetch", "web_fetch", "file_read"]),
     params: z.record(z.string(), z.string()).default({}),
     outputKey: z.string().optional(),
   }),

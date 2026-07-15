@@ -20,7 +20,7 @@ export function stepDisplayLabel(step: StepLike, index: number): string {
     case "tool":
       return step.tool === "web_search"
         ? "Recherche web"
-        : step.tool === "http_fetch"
+        : step.tool === "http_fetch" || step.tool === "web_fetch"
           ? "Lecture d'une page web"
           : `Outil ${step.tool ?? ""}`.trim();
     case "action":

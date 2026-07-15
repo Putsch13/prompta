@@ -31,7 +31,7 @@ export interface BuildManifestParams {
   provisioningMode?: "manual" | "assisted" | "managed";
 }
 
-const LONG_TOOLS = new Set(["http_fetch", "file_read"]);
+const LONG_TOOLS = new Set(["http_fetch", "web_fetch", "file_read"]);
 
 /**
  * Limites dimensionnées sur le contenu réel de l'agent.

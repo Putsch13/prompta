@@ -44,7 +44,7 @@ export interface PlanNode {
   connectorLabel?: string;
   /** Snapshot du schéma d'entrées (outils Composio hors registre natif). */
   actionInputs?: ActionInput[];
-  toolId?: "web_search" | "http_fetch" | "file_read";
+  toolId?: "web_search" | "http_fetch" | "web_fetch" | "file_read";
   expression?: string;
   /** Étape retrieve (RAG) : source de connaissance + requête. */
   dataSource?: DataSourceKind;
@@ -137,6 +137,7 @@ function planStepToNode(
       const toolId =
         step.actionSlug === "web_search" ||
         step.actionSlug === "http_fetch" ||
+        step.actionSlug === "web_fetch" ||
         step.actionSlug === "file_read"
           ? step.actionSlug
           : "web_search";
@@ -604,7 +605,7 @@ export function validatePlanGraph(
     // Un outil sans sa donnée d'entrée = échec garanti au run (web_search
     // « Missing query parameter ») : bloquant dès le build.
     if (n.kind === "tool") {
-      const needed = n.toolId === "http_fetch" ? "url" : n.toolId === "file_read" ? "path" : "query";
+      const needed = n.toolId === "http_fetch" || n.toolId === "web_fetch" ? "url" : n.toolId === "file_read" ? "path" : "query";
       const toolVal = n.params?.[needed] ?? n.params?.query ?? "";
       if (!String(toolVal).trim()) {
         issues.push({
