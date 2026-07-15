@@ -241,7 +241,9 @@ async function launch() {
 
 // ── Interactions ────────────────────────────────────────────────────────────
 sendBtn.addEventListener("click", launch);
-goalEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); launch(); } });
+// Entrée = envoyer, Shift+Entrée = nouvelle ligne (même convention que la barre
+// flottante et /quick — cohérence entre les surfaces).
+goalEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); launch(); } });
 goalEl.addEventListener("input", () => { goalEl.style.height = "auto"; goalEl.style.height = Math.min(120, goalEl.scrollHeight) + "px"; });
 
 ctxHead.addEventListener("click", () => {
