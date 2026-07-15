@@ -10,6 +10,8 @@
 let baseUrl = "https://prompta-sjtf.onrender.com";
 let pollTimer = null;
 let launching = false;
+let pendingClarify = null; // { goal } en attente de précisions
+let clarifyQ = null;       // questions à afficher
 let activePage = null;   // capture de l'onglet actif
 let openTabs = [];       // [{title, url, checked}]
 
@@ -141,7 +143,10 @@ function renderFeed() {
   const items = [...history];
   const list = items.map((it) => msgCard(it)).join("");
   const cur = current ? msgCard(current, current.planned) : "";
-  feed.innerHTML = (list + cur) || `<div class="empty">Ton assistant du quotidien.<br>Pose une question rapide<br>ou confie-lui une grosse mission.</div>`;
+  const clar = clarifyQ && clarifyQ.length
+    ? `<div class="msg"><div class="goal" style="font-weight:600">Quelques précisions pour bien faire :</div><ul style="margin:6px 0 0;padding-left:18px;color:var(--soft)">${clarifyQ.map((q) => `<li>${esc(q)}</li>`).join("")}</ul><div style="color:var(--faint);font-size:11px;margin-top:6px">Réponds ci-dessous, je m'occupe du reste.</div></div>`
+    : "";
+  feed.innerHTML = (list + cur + clar) || `<div class="empty">Ton assistant du quotidien.<br>Pose une question rapide<br>ou confie-lui une grosse mission.</div>`;
   feed.scrollTop = feed.scrollHeight;
 }
 
@@ -210,8 +215,9 @@ function pollRun() {
 
 async function launch() {
   if (launching) return;
-  const goal = goalEl.value.trim();
+  let goal = goalEl.value.trim();
   if (goal.length < 3) return;
+  if (pendingClarify) { goal = `${pendingClarify.goal}\n\nPrécisions de l'utilisateur : ${goal}`; pendingClarify = null; clarifyQ = null; }
   launching = true; sendBtn.disabled = true;
 
   activePage = await captureActivePage();
@@ -225,6 +231,11 @@ async function launch() {
   goalEl.value = ""; goalEl.style.height = "auto";
 
   const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined } });
+  if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
+    launching = false; sendBtn.disabled = false;
+    pendingClarify = { goal }; clarifyQ = r.body.clarify; current = null;
+    renderFeed(); goalEl.focus(); return;
+  }
   if (!r?.ok) {
     launching = false; sendBtn.disabled = false;
     if (r?.status === 409 && r.body?.missingConnectors?.length) { current.status = "failed"; current.error = `À connecter : ${r.body.missingConnectors.join(", ")}`; }

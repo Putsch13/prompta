@@ -70,6 +70,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // L'agent demande des précisions avant de bâtir un plan (mission complexe /
+  // ordre ambigu) : pas de run, on renvoie les questions à l'interface.
+  if (built.kind === "clarify") {
+    return NextResponse.json({ clarify: built.questions });
+  }
+
   // Connecteur requis non connecté → on ne crée PAS de run mort-né (le worker
   // le ferait échouer d'emblée). On renvoie la liste pour que l'extension
   // propose de connecter l'app, sans consommer de run.

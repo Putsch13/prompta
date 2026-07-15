@@ -80,6 +80,7 @@ export default function QuickPage() {
   const [live, setLive] = useState<Live | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; missing?: string[] } | null>(null);
+  const [clarify, setClarify] = useState<{ goal: string; questions: string[] } | null>(null);
   const [showContext, setShowContext] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -146,9 +147,11 @@ export default function QuickPage() {
 
   const launch = useCallback(async () => {
     if (busyRef.current) return;
-    const g = goal.trim();
+    let g = goal.trim();
     if (g.length < 3) return;
-    busyRef.current = true; setBusy(true); setError(null);
+    // Si l'agent avait demandé des précisions, on recolle l'ordre initial + la réponse.
+    if (clarify) g = `${clarify.goal}\n\nPrécisions de l'utilisateur : ${g}`;
+    busyRef.current = true; setBusy(true); setError(null); setClarify(null);
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
 
     const page: PageCtx = ctx ?? (manualUrl.trim() ? { url: manualUrl.trim() } : { url: "" });
@@ -170,6 +173,14 @@ export default function QuickPage() {
     }
 
     const body = await res.json().catch(() => ({}));
+    // L'agent demande des précisions : on affiche les questions, la prochaine
+    // réponse de l'utilisateur sera recollée à l'ordre initial.
+    if (res.ok && Array.isArray(body.clarify) && body.clarify.length > 0) {
+      busyRef.current = false; setBusy(false); setLive(null);
+      setClarify({ goal: g, questions: body.clarify });
+      inputRef.current?.focus();
+      return;
+    }
     if (!res.ok) {
       busyRef.current = false; setBusy(false); setLive(null);
       if (res.status === 409 && body.missingConnectors?.length) setError({ message: `À connecter d'abord : ${body.missingConnectors.join(", ")}.`, missing: body.missingConnectors });
@@ -192,7 +203,7 @@ export default function QuickPage() {
         setTimeout(() => setLive(null), 400); // le run rejoint l'historique
       }
     }, 2500);
-  }, [goal, ctx, manualUrl, explore, model, loadHistory]);
+  }, [goal, ctx, manualUrl, explore, model, loadHistory, clarify]);
 
   function reuse(text: string) {
     setGoal(text);
@@ -256,6 +267,16 @@ export default function QuickPage() {
                      onReuse={() => reuse(liveShown.goal)} live />
           )}
 
+          {clarify && (
+            <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-[#7c6cff]/40 bg-[#161d2e] px-3.5 py-2.5 text-sm">
+              <p className="mb-1.5 font-medium text-[#f3f5fb]">Quelques précisions pour bien faire :</p>
+              <ul className="list-disc space-y-1 pl-4 text-[#aab3cc]">
+                {clarify.questions.map((q, i) => <li key={i}>{q}</li>)}
+              </ul>
+              <p className="mt-2 text-xs text-[#6b7595]">Réponds ci-dessous, je m&apos;occupe du reste.</p>
+            </div>
+          )}
+
           {error && (
             <div className="rounded-xl border border-[#3a2226] bg-[#1c1012] p-3 text-sm text-[#f87171]">
               {error.message}
@@ -305,7 +326,7 @@ export default function QuickPage() {
               onChange={(e) => { setGoal(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(160, e.target.scrollHeight) + "px"; }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); launch(); } }}
               rows={1}
-              placeholder="Demande simple ou grosse mission…  (Entrée pour envoyer)"
+              placeholder={clarify ? "Ta réponse aux précisions…  (Entrée)" : "Demande simple ou grosse mission…  (Entrée pour envoyer)"}
               className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-[#f3f5fb] outline-none"
             />
             <button

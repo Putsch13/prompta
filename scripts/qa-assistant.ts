@@ -36,7 +36,7 @@ async function mintCookie(): Promise<string> {
   return out.join("; ");
 }
 
-interface Case { name: string; kind: "simple" | "contexte" | "onglets" | "validation" | "lecture"; goal: string; page?: Record<string, unknown>; expectApproval?: boolean; }
+interface Case { name: string; kind: "simple" | "contexte" | "onglets" | "validation" | "lecture" | "clarify"; goal: string; page?: Record<string, unknown>; expectApproval?: boolean; }
 
 // Contenu de page simulant une base de données / un tableau À L'ÉCRAN — l'agent
 // doit l'ANALYSER directement (pas appeler l'API Sheets avec un id inventé).
@@ -132,6 +132,19 @@ function buildCases(): Case[] {
   for (let i = 0; i < 20; i++) {
     cs.push({ name: `validation_${i + 1}`, kind: "validation", goal: valid[i % valid.length], expectApproval: true });
   }
+
+  // 10 CLARIFY : missions volontairement ambiguës (info critique manquante) sans
+  // page fournie → l'agent DEVRAIT poser une question plutôt qu'exécuter à l'aveugle.
+  const ambigus = [
+    "Compare-le avec ma base et fais-moi un récap.",
+    "Envoie ça à la bonne personne.",
+    "Mets à jour le fichier avec les nouvelles données.",
+    "Fais le rapport comme d'habitude.",
+    "Croise les deux et sors-moi un visuel.",
+  ];
+  for (let i = 0; i < 10; i++) {
+    cs.push({ name: `clarify_${i + 1}`, kind: "clarify", goal: ambigus[i % ambigus.length] });
+  }
   return cs;
 }
 
@@ -165,6 +178,11 @@ async function main() {
       res = await fetch(`${BASE}/api/extension/execute`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify({ goal: c.goal, page: c.page ?? { url: "" }, modelId: model ?? undefined }) });
     } catch (e) { return { ...base, status: "network", verdict: "ÉCHEC", error: String(e), ms: Date.now() - started }; }
     const body = await res.json().catch(() => ({}));
+    // L'agent a demandé des précisions (mission ambiguë) : outcome légitime.
+    if (res.ok && Array.isArray(body.clarify) && body.clarify.length) {
+      // L'agent pose des questions : outcome légitime (surtout pour "clarify").
+      return { ...base, status: "clarify", verdict: "OK", error: body.clarify.join(" | ").slice(0, 120), ms: Date.now() - started };
+    }
     if (!res.ok) {
       // 409 connecteur manquant = message actionnable (toléré pour les tests d'apps non connectées).
       const flou = !(body.message || body.error);

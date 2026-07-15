@@ -21,6 +21,8 @@
   let openTabs = [];      // [{title,url,checked}]
   let history = [];       // items serveur
   let current = null;     // run en cours
+  let pendingClarify = null; // { goal } en attente de précisions
+  let clarifyQ = null;    // questions à afficher
   const send = (type, extra) => new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => res(r || { ok: false, status: 0, body: {} })));
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   function extractAnswer(o) {
@@ -177,12 +179,15 @@
     const live = current && !history.some((h) => h.runId === current.runId) ? current : null;
     // Signature : on ne reconstruit le DOM que si quelque chose a VRAIMENT changé
     // (sinon un tick de poll identique effacerait la sélection de texte de l'user).
-    const sig = items.map((h) => h.runId + h.status).join("|") + "#" + (live ? `${live.runId}:${live.status}:${live.stepsCompleted}:${(live.answer || "").length}:${(live.planned || []).length}` : "");
+    const sig = items.map((h) => h.runId + h.status).join("|") + "#" + (live ? `${live.runId}:${live.status}:${live.stepsCompleted}:${(live.answer || "").length}:${(live.planned || []).length}` : "") + "?" + (clarifyQ ? clarifyQ.join("|") : "");
     if (sig === lastFeedSig) return;
     lastFeedSig = sig;
     // Ne pas ré-ancrer en bas si l'utilisateur a scrollé vers le haut pour lire.
     const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 90;
-    const html = items.map((it) => card(it)).join("") + (live ? card(live, true) : "");
+    const clarifyHtml = clarifyQ && clarifyQ.length
+      ? `<div class="res" style="border-color:#7c6cff66"><div style="color:#f3f5fb;font-weight:600;margin-bottom:4px">Quelques précisions pour bien faire :</div><ul style="margin:0;padding-left:18px;color:#aab3cc">${clarifyQ.map((q) => `<li>${esc(q)}</li>`).join("")}</ul><div style="color:#6b7595;font-size:11px;margin-top:6px">Réponds ci-dessous, je m'occupe du reste.</div></div>`
+      : "";
+    const html = items.map((it) => card(it)).join("") + (live ? card(live, true) : "") + clarifyHtml;
     feed.innerHTML = html || `<div class="empty">Ton assistant du quotidien.<br>Pose une question, ou confie-lui une mission<br>sur tes onglets et tes apps.</div>`;
     feed.querySelectorAll("[data-reuse]").forEach((b) => b.addEventListener("click", () => { goalEl.value = b.dataset.reuse; goalEl.focus(); }));
     if (nearBottom) feed.scrollTop = feed.scrollHeight;
@@ -233,8 +238,10 @@
   }
   async function launch() {
     if (launching) return;
-    const goal = goalEl.value.trim();
+    let goal = goalEl.value.trim();
     if (goal.length < 3) return;
+    // Réponse à une demande de précisions : on recolle l'ordre initial.
+    if (pendingClarify) { goal = `${pendingClarify.goal}\n\nPrécisions de l'utilisateur : ${goal}`; pendingClarify = null; clarifyQ = null; }
     launching = true; sendBtn.disabled = true;
     const page = capturePage(exploreEl.checked);
     const targeted = openTabs.filter((t) => t.checked).map((t) => ({ title: t.title, url: t.url }));
@@ -242,6 +249,12 @@
     current = { runId: "…", goal, model: modelEl.value || null, status: "pending", planned: [], stepsCompleted: 0 };
     renderFeed(); goalEl.value = ""; goalEl.style.height = "auto";
     const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined } });
+    // L'agent demande des précisions : on affiche les questions, pas de run.
+    if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
+      launching = false; sendBtn.disabled = false;
+      pendingClarify = { goal }; clarifyQ = r.body.clarify; current = null;
+      renderFeed(); goalEl.focus(); return;
+    }
     if (!r?.ok) {
       launching = false; sendBtn.disabled = false;
       current.status = "failed";
