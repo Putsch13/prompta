@@ -180,16 +180,21 @@ export default function QuickPage() {
       )}
 
       {showConns && conns && (
-        <div className="flex flex-wrap gap-1.5 rounded-xl border border-line bg-card2 p-3">
-          {conns.length === 0 && <span className="text-xs text-ink-faint">Aucune app connectée.</span>}
-          {conns
-            .filter((c, i, a) => a.findIndex((x) => x.connectorId.replace(/[^a-z0-9]/gi, "") === c.connectorId.replace(/[^a-z0-9]/gi, "")) === i)
-            .map((c) => (
-              <span key={c.connectorId} className="flex items-center gap-1 rounded-full bg-card px-2 py-0.5 text-xs text-ink-soft">
-                <span className={`h-1.5 w-1.5 rounded-full ${c.usable ? "bg-green-500" : "bg-red-400"}`} />
-                {c.connectorId}
-              </span>
-            ))}
+        <div className="rounded-xl border border-line bg-card2 p-3">
+          <div className="flex flex-wrap gap-1.5">
+            {conns.length === 0 && <span className="text-xs text-ink-faint">Aucune app connectée.</span>}
+            {conns
+              .filter((c, i, a) => a.findIndex((x) => x.connectorId.replace(/[^a-z0-9]/gi, "") === c.connectorId.replace(/[^a-z0-9]/gi, "")) === i)
+              .map((c) => (
+                <span key={c.connectorId} className="flex items-center gap-1 rounded-full bg-card px-2 py-0.5 text-xs text-ink-soft">
+                  <span className={`h-1.5 w-1.5 rounded-full ${c.usable ? "bg-green-500" : "bg-red-400"}`} />
+                  {c.connectorId}
+                </span>
+              ))}
+          </div>
+          <a href="/dashboard/connexions" target="_blank" rel="noopener" className="mt-2 inline-block text-xs font-medium text-accent underline">
+            + connecter une autre app
+          </a>
         </div>
       )}
 

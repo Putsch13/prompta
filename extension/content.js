@@ -261,10 +261,15 @@
     }
     sendBtn.disabled = true;
     sendBtn.textContent = "Création de l'agent…";
-    statusBox.innerHTML = `<div>🧠 Prompta conçoit l'agent à partir de la page…</div>`;
+    statusBox.innerHTML = `<div>🧠 Prompta conçoit l'agent à partir de tes onglets…</div>`;
 
-    const payload = { goal, page: capturePage(exploreCheck.checked) };
-    chrome.runtime.sendMessage({ type: "prompta:execute", payload }, (r) => {
+    const page = capturePage(exploreCheck.checked);
+    // Vue d'ensemble : demande la liste des onglets ouverts au service worker
+    // (un content script n'a pas accès à chrome.tabs directement).
+    chrome.runtime.sendMessage({ type: "prompta:tabs" }, (t) => {
+      if (t?.ok && Array.isArray(t.tabs)) page.openTabs = t.tabs;
+      const payload = { goal, page };
+      chrome.runtime.sendMessage({ type: "prompta:execute", payload }, (r) => {
       if (!r?.ok) {
         sendBtn.disabled = false;
         sendBtn.textContent = "Lancer l'agent";
@@ -281,6 +286,7 @@
       statusBox.innerHTML = `<div class="ok">🚀 « ${esc(title)} » — ${stepsPlanned} étapes</div><div>Exécution en cours…</div>`;
       sendBtn.textContent = "Agent en cours…";
       pollRun(runId, null);
+      });
     });
   });
 })();

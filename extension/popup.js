@@ -18,6 +18,7 @@ const statusBox = $("status");
 const chipsBox = $("chips");
 const connsBox = $("conns");
 const exploreEl = $("explore");
+const allTabsEl = $("alltabs");
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -63,11 +64,32 @@ function pageCaptureFn(allowExplore, maxContent, maxLinks) {
   };
 }
 
+/** Liste tous les onglets ouverts (titre + URL) — la « vue d'ensemble ». */
+async function collectOpenTabs() {
+  try {
+    const tabs = await chrome.tabs.query({});
+    const seen = new Set();
+    const out = [];
+    for (const t of tabs) {
+      const u = t.url || "";
+      if (!/^https?:/.test(u)) continue; // ignore chrome://, extensions, etc.
+      if (seen.has(u)) continue;
+      seen.add(u);
+      out.push({ title: t.title || "", url: u });
+      if (out.length >= 30) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 async function capturePage() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const base = { url: tab?.url || "", title: tab?.title || "" };
+  const openTabs = allTabsEl.checked ? await collectOpenTabs() : undefined;
   if (!tab?.id || !/^https?:|^file:/.test(tab.url || "")) {
-    return { ...base, unsupported: true };
+    return { ...base, openTabs, unsupported: true };
   }
   try {
     const [inj] = await chrome.scripting.executeScript({
@@ -75,10 +97,10 @@ async function capturePage() {
       func: pageCaptureFn,
       args: [exploreEl.checked, 15000, 40],
     });
-    return inj?.result ?? { ...base, unsupported: true };
+    return { ...(inj?.result ?? { ...base, unsupported: true }), openTabs };
   } catch {
     // chrome://, Web Store, PDF sans accès fichier, page restreinte
-    return { ...base, unsupported: true };
+    return { ...base, openTabs, unsupported: true };
   }
 }
 
@@ -92,7 +114,8 @@ function refreshChips() {
     `<span class="chip">📄 ${esc((p.title || p.url || "page").slice(0, 42))}</span>` +
     (p.isPdf ? `<span class="chip">PDF</span>` : "") +
     (p.selection ? `<span class="chip">✂️ sélection (${p.selection.length} car.)</span>` : "") +
-    (p.unsupported ? `<span class="chip" style="color:#fbbf24">page non lisible — je travaillerai depuis ton ordre seul</span>` : "");
+    (p.openTabs?.length ? `<span class="chip">👁️ ${p.openTabs.length} onglets vus</span>` : "") +
+    (p.unsupported ? `<span class="chip" style="color:#fbbf24">page active non lisible — j'utilise tes onglets + ton ordre</span>` : "");
 }
 
 function renderRun(run, planned) {
@@ -165,6 +188,11 @@ async function launch() {
 sendBtn.addEventListener("click", launch);
 goalEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) launch();
+});
+// Recompte les onglets vus quand on (dé)coche « voir tout ce que j'ai ouvert ».
+allTabsEl.addEventListener("change", async () => {
+  capturedPage = await capturePage();
+  refreshChips();
 });
 
 $("conns-toggle").addEventListener("click", async () => {

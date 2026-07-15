@@ -38,6 +38,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(await api(`/api/run/agent/${encodeURIComponent(msg.runId)}`));
       } else if (msg?.type === "prompta:connections") {
         sendResponse(await api("/api/extension/connections"));
+      } else if (msg?.type === "prompta:tabs") {
+        // Vue d'ensemble : tous les onglets http(s) ouverts (titre + URL).
+        const tabs = await chrome.tabs.query({});
+        const seen = new Set();
+        const out = [];
+        for (const t of tabs) {
+          const u = t.url || "";
+          if (!/^https?:/.test(u) || seen.has(u)) continue;
+          seen.add(u);
+          out.push({ title: t.title || "", url: u });
+          if (out.length >= 30) break;
+        }
+        sendResponse({ ok: true, tabs: out });
       } else if (msg?.type === "prompta:baseUrl") {
         sendResponse({ ok: true, baseUrl: await baseUrl() });
       } else {

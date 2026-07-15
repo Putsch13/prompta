@@ -127,3 +127,23 @@ test("contexte de page : encadré comme donnée non fiable, sélection prioritai
   assert.ok(block.includes("https://exemple.fr/tarifs"));
   assert.ok(block.indexOf("DÉBUT CONTEXTE") < block.indexOf("FIN CONTEXTE"));
 });
+
+test("contexte : les onglets ouverts sont listés (l'assistant voit tout ce qui est ouvert)", () => {
+  const block = buildPageContextBlock({
+    url: "https://a.fr",
+    title: "A",
+    openTabs: [
+      { title: "Offre 1", url: "https://a.fr/offre1" },
+      { title: "Offre 2", url: "https://b.fr/offre2" },
+    ],
+  });
+  assert.ok(block.includes("TOUT CE QUE L'UTILISATEUR A OUVERT"));
+  assert.ok(block.includes("2 onglets"));
+  assert.ok(block.includes("https://a.fr/offre1"));
+  assert.ok(block.includes("https://b.fr/offre2"));
+});
+
+test("contexte : sans onglets, aucune section « ouvert » parasite", () => {
+  const block = buildPageContextBlock({ url: "https://a.fr", title: "A" });
+  assert.ok(!block.includes("A OUVERT"));
+});
