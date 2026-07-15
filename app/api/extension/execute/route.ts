@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getBuilderApiKey } from "@/lib/builder/api-key";
 import { builderRateLimit } from "@/lib/builder/rate-limit";
 import { listUserConnections } from "@/lib/connections";
-import { buildInstantAgent, type PageContext } from "@/lib/extension/instant-agent";
+import { buildInstantAgent, sanitizeUrlForContext, type PageContext } from "@/lib/extension/instant-agent";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       inputs: {
         __manifest: JSON.stringify(built.manifest),
         __source: "extension",
-        __source_url: (page.url ?? "").slice(0, 500),
+        __source_url: sanitizeUrlForContext(page.url ?? "").slice(0, 500),
       },
     })
     .select("id")

@@ -59,8 +59,9 @@ export default function QuickPage() {
   useEffect(() => {
     function onMsg(e: MessageEvent) {
       // Seule la fenêtre ouvrante (la page où le bookmarklet a tourné) peut
-      // pousser le contexte — un autre onglet/iframe ne peut pas l'injecter.
-      if (e.source !== window.opener) return;
+      // pousser le contexte. Sans ouvreur, on refuse tout message (évite le cas
+      // e.source === null === window.opener qui laisserait passer une injection).
+      if (!window.opener || e.source !== window.opener) return;
       if (e.data && typeof e.data === "object" && e.data.type === "prompta:ctx" && e.data.ctx?.url) {
         setCtx(e.data.ctx as PageCtx);
       }
@@ -184,7 +185,7 @@ export default function QuickPage() {
           <div className="flex flex-wrap gap-1.5">
             {conns.length === 0 && <span className="text-xs text-ink-faint">Aucune app connectée.</span>}
             {conns
-              .filter((c, i, a) => a.findIndex((x) => x.connectorId.replace(/[^a-z0-9]/gi, "") === c.connectorId.replace(/[^a-z0-9]/gi, "")) === i)
+              .filter((c, i, a) => a.findIndex((x) => x.connectorId.toLowerCase().replace(/[^a-z0-9]/g, "") === c.connectorId.toLowerCase().replace(/[^a-z0-9]/g, "")) === i)
               .map((c) => (
                 <span key={c.connectorId} className="flex items-center gap-1 rounded-full bg-card px-2 py-0.5 text-xs text-ink-soft">
                   <span className={`h-1.5 w-1.5 rounded-full ${c.usable ? "bg-green-500" : "bg-red-400"}`} />
@@ -221,12 +222,12 @@ export default function QuickPage() {
         className="min-h-[96px] resize-y rounded-xl border border-line bg-card p-3 text-sm text-ink outline-none focus:border-accent"
       />
 
-      {!ctx && (
-        <label className="flex items-center gap-2 text-xs text-ink-soft">
-          <input type="checkbox" checked={explore} onChange={(e) => setExplore(e.target.checked)} />
-          Autoriser l&apos;exploration du site (suivre les liens utiles)
-        </label>
-      )}
+      {/* Toujours visible : même avec un contexte bookmarklet (qui porte des
+          liens), l'utilisateur doit pouvoir empêcher l'agent de les suivre. */}
+      <label className="flex items-center gap-2 text-xs text-ink-soft">
+        <input type="checkbox" checked={explore} onChange={(e) => setExplore(e.target.checked)} />
+        Autoriser l&apos;exploration des liens de la page
+      </label>
 
       <button
         onClick={launch}

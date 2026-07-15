@@ -21,6 +21,12 @@ test("isPrivateIp : IPv6 loopback / ULA / link-local / IPv4-mappé bloqués", ()
   assert.equal(isPrivateIp("2001:4860:4860::8888"), false); // Google DNS public
 });
 
+test("isPrivateIp : IPv4-mappé en hexadécimal et NAT64 bloqués (contournements)", () => {
+  assert.equal(isPrivateIp("::ffff:7f00:1"), true);   // = 127.0.0.1 en hex
+  assert.equal(isPrivateIp("::ffff:a00:1"), true);    // = 10.0.0.1 en hex
+  assert.equal(isPrivateIp("64:ff9b::7f00:1"), true); // NAT64
+});
+
 test("isPrivateIp : entrée non-IP refusée par prudence", () => {
   assert.equal(isPrivateIp("pas-une-ip"), true);
   assert.equal(isPrivateIp("999.999.999.999"), true);

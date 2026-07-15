@@ -124,7 +124,8 @@
       <div class="conns" data-role="conns"></div>
       <textarea placeholder="Ex. : Résume leur produit dans un Google Sheets déposé sur mon Drive, puis envoie-moi le lien par email."></textarea>
       <div class="chips" data-role="chips"></div>
-      <label class="opt"><input type="checkbox" checked data-role="explore"> Autoriser l'exploration du site (suivre les liens utiles)</label>
+      <label class="opt"><input type="checkbox" checked data-role="alltabs"> Voir tout ce que j'ai ouvert (tous mes onglets)</label>
+      <label class="opt"><input type="checkbox" checked data-role="explore"> Autoriser l'exploration des sites (suivre les liens utiles)</label>
       <button class="send">Lancer l'agent</button>
       <div class="status" data-role="status"></div>
     </div>
@@ -138,6 +139,7 @@
   const chipsBox = root.querySelector('[data-role="chips"]');
   const connsBox = root.querySelector('[data-role="conns"]');
   const exploreCheck = root.querySelector('[data-role="explore"]');
+  const allTabsCheck = root.querySelector('[data-role="alltabs"]');
 
   function esc(s) {
     return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -185,7 +187,7 @@
       const seen = new Set();
       connsBox.innerHTML = (r.body.connections || [])
         .filter((c) => {
-          const k = c.connectorId.replace(/[^a-z0-9]/g, "");
+          const k = c.connectorId.toLowerCase().replace(/[^a-z0-9]/g, "");
           if (seen.has(k)) return false;
           seen.add(k);
           return true;
@@ -261,13 +263,20 @@
     }
     sendBtn.disabled = true;
     sendBtn.textContent = "Création de l'agent…";
-    statusBox.innerHTML = `<div>🧠 Prompta conçoit l'agent à partir de tes onglets…</div>`;
+    statusBox.innerHTML = `<div>🧠 Prompta conçoit l'agent…</div>`;
 
     const page = capturePage(exploreCheck.checked);
     // Vue d'ensemble : demande la liste des onglets ouverts au service worker
-    // (un content script n'a pas accès à chrome.tabs directement).
-    chrome.runtime.sendMessage({ type: "prompta:tabs" }, (t) => {
-      if (t?.ok && Array.isArray(t.tabs)) page.openTabs = t.tabs;
+    // (un content script n'a pas accès à chrome.tabs directement) — SEULEMENT
+    // si l'utilisateur a laissé la case cochée (respect du choix de confidentialité).
+    const withTabs = (cb) => {
+      if (!allTabsCheck.checked) return cb();
+      chrome.runtime.sendMessage({ type: "prompta:tabs" }, (t) => {
+        if (t?.ok && Array.isArray(t.tabs)) page.openTabs = t.tabs;
+        cb();
+      });
+    };
+    withTabs(() => {
       const payload = { goal, page };
       chrome.runtime.sendMessage({ type: "prompta:execute", payload }, (r) => {
       if (!r?.ok) {
@@ -275,7 +284,7 @@
         sendBtn.textContent = "Lancer l'agent";
         // 409 : connecteurs manquants — aucun run créé, on propose de connecter.
         if (r?.status === 409 && r.body?.missingConnectors?.length) {
-          statusBox.innerHTML = `<div class="warn">⚠️ À connecter d'abord : ${esc(r.body.missingConnectors.join(", "))} — <a href="${baseUrl}/dashboard/connections" target="_blank" rel="noopener">ouvrir Connexions</a>, puis relancez.</div>`;
+          statusBox.innerHTML = `<div class="warn">⚠️ À connecter d'abord : ${esc(r.body.missingConnectors.join(", "))} — <a href="${baseUrl}/dashboard/connexions" target="_blank" rel="noopener">ouvrir Connexions</a>, puis relancez.</div>`;
           return;
         }
         const msg = r?.body?.message || (r?.status === 401 ? "Connectez-vous à Prompta dans un onglet, puis réessayez." : `Erreur (${r?.status || "réseau"})`);

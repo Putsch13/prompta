@@ -2,16 +2,17 @@
 const nextConfig = {
   // instrumentation.ts est activé par défaut depuis Next 15 (init Sentry serveur).
   async headers() {
+    // Interdiction d'iframe sur toutes les surfaces authentifiées et sensibles :
+    // /quick (contexte par postMessage) ET tout /dashboard — la page de
+    // validation humaine (/dashboard/validations) est le garde-fou qui autorise
+    // les écritures ; un clic volé par clickjacking le contournerait.
+    const antiFrame = [
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+    ];
     return [
-      {
-        // /quick reçoit le contexte de page par postMessage : interdire son
-        // embarquement en iframe ferme le vecteur clickjacking / injection.
-        source: "/quick",
-        headers: [
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
-        ],
-      },
+      { source: "/quick", headers: antiFrame },
+      { source: "/dashboard/:path*", headers: antiFrame },
     ];
   },
 };

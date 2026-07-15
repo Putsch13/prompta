@@ -44,7 +44,7 @@ export default function IaQuotidienPage() {
     setOs(detectOS());
     fetch("/api/extension/connections")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setConns(d.connections ?? []))
+      .then((d) => setConns(d?.connections ?? [])) // non-ok → [] (pas de spinner infini)
       .catch(() => setConns([]));
   }, []);
 
@@ -56,7 +56,7 @@ export default function IaQuotidienPage() {
 
   const isMobile = os === "ios" || os === "android";
   const usable = (conns ?? []).filter((c, i, a) =>
-    c.usable && a.findIndex((x) => x.connectorId.replace(/[^a-z0-9]/gi, "") === c.connectorId.replace(/[^a-z0-9]/gi, "")) === i,
+    c.usable && a.findIndex((x) => x.connectorId.toLowerCase().replace(/[^a-z0-9]/g, "") === c.connectorId.toLowerCase().replace(/[^a-z0-9]/g, "")) === i,
   );
 
   return (
@@ -103,8 +103,9 @@ export default function IaQuotidienPage() {
             <p className="font-semibold text-ink">Il voit ce que tu as ouvert</p>
           </div>
           <p className="text-sm text-ink-soft">
-            Avec l&apos;extension, il a la vue d&apos;ensemble de tous tes onglets et peut lire n&apos;importe
-            lequel à la demande. Rien n&apos;est lu tant que tu ne lui confies pas une mission.
+            Avec l&apos;extension, il a la vue d&apos;ensemble de tous tes onglets (désactivable d&apos;un clic) et
+            peut lire n&apos;importe lequel à la demande. Rien n&apos;est lu tant que tu ne lui confies pas une mission,
+            et les <strong>secrets dans les URLs</strong> (jetons, liens de connexion) sont retirés avant tout traitement.
           </p>
         </div>
         <div className="rounded-xl border border-line bg-card p-4">

@@ -10,6 +10,7 @@
 let baseUrl = "https://prompta-sjtf.onrender.com";
 let pollTimer = null;
 let capturedPage = null;
+let launching = false;
 
 const $ = (id) => document.getElementById(id);
 const goalEl = $("goal");
@@ -115,7 +116,9 @@ function refreshChips() {
     (p.isPdf ? `<span class="chip">PDF</span>` : "") +
     (p.selection ? `<span class="chip">✂️ sélection (${p.selection.length} car.)</span>` : "") +
     (p.openTabs?.length ? `<span class="chip">👁️ ${p.openTabs.length} onglets vus</span>` : "") +
-    (p.unsupported ? `<span class="chip" style="color:#fbbf24">page active non lisible — j'utilise tes onglets + ton ordre</span>` : "");
+    (p.unsupported
+      ? `<span class="chip" style="color:#fbbf24">page active non lisible — j'utilise ${p.openTabs?.length ? "tes onglets + " : ""}ton ordre</span>`
+      : "");
 }
 
 function renderRun(run, planned) {
@@ -138,7 +141,7 @@ function renderRun(run, planned) {
 function stopPolling(restore) {
   clearInterval(pollTimer);
   pollTimer = null;
-  if (restore) { sendBtn.disabled = false; sendBtn.textContent = "Lancer l'agent"; }
+  if (restore) { launching = false; sendBtn.disabled = false; sendBtn.textContent = "Lancer l'agent"; }
 }
 
 function pollRun(runId, planned) {
@@ -160,8 +163,12 @@ function pollRun(runId, planned) {
 }
 
 async function launch() {
+  // Anti ré-entrance : le raccourci Cmd/Ctrl+Entrée appelle launch() directement
+  // et court-circuiterait le bouton désactivé → double run facturé + suivi orphelin.
+  if (launching) return;
   const goal = goalEl.value.trim();
   if (goal.length < 5) { statusBox.innerHTML = `<div class="warn">Décris la mission (5 caractères minimum).</div>`; return; }
+  launching = true;
   sendBtn.disabled = true;
   sendBtn.textContent = "Création de l'agent…";
   statusBox.innerHTML = `<div>🧠 Prompta conçoit l'agent…</div>`;
@@ -171,9 +178,10 @@ async function launch() {
   capturedPage = page;
   const r = await send("prompta:execute", { payload: { goal, page } });
   if (!r?.ok) {
+    launching = false;
     stopPolling(true);
     if (r?.status === 409 && r.body?.missingConnectors?.length) {
-      statusBox.innerHTML = `<div class="warn">⚠️ À connecter d'abord : ${esc(r.body.missingConnectors.join(", "))} — <a href="${baseUrl}/dashboard/connections" target="_blank" rel="noopener">ouvrir Connexions</a>, puis relance.</div>`;
+      statusBox.innerHTML = `<div class="warn">⚠️ À connecter d'abord : ${esc(r.body.missingConnectors.join(", "))} — <a href="${baseUrl}/dashboard/connexions" target="_blank" rel="noopener">ouvrir Connexions</a>, puis relance.</div>`;
       return;
     }
     const msg = r?.body?.message || (r?.status === 401 ? "Connecte-toi à Prompta dans un onglet, puis réessaie." : `Erreur (${r?.status || "réseau"})`);
@@ -206,7 +214,7 @@ $("conns-toggle").addEventListener("click", async () => {
   }
   const seen = new Set();
   connsBox.innerHTML = (r.body.connections || [])
-    .filter((c) => { const k = c.connectorId.replace(/[^a-z0-9]/g, ""); if (seen.has(k)) return false; seen.add(k); return true; })
+    .filter((c) => { const k = c.connectorId.toLowerCase().replace(/[^a-z0-9]/g, ""); if (seen.has(k)) return false; seen.add(k); return true; })
     .map((c) => `<span class="conn"><span class="led ${c.usable ? "on" : "off"}"></span>${esc(c.connectorId)}</span>`)
     .join("") || `<span class="warn">Aucune app connectée.</span>`;
 });

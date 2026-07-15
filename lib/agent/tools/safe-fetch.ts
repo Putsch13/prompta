@@ -34,9 +34,17 @@ export function isPrivateIp(ip: string): boolean {
     const lower = ip.toLowerCase().replace(/^\[|\]$/g, "");
     if (lower === "::1" || lower === "::") return true;
     if (lower.startsWith("fe80") || lower.startsWith("fc") || lower.startsWith("fd")) return true; // link-local / ULA
-    // IPv4-mappé (::ffff:127.0.0.1) : valide l'IPv4 embarquée
+    if (lower.startsWith("64:ff9b:") || lower.startsWith("64:ff9b::")) return true; // NAT64 (embarque une IPv4)
+    // IPv4-mappé en notation pointée : ::ffff:127.0.0.1
     const mapped = lower.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
     if (mapped) return isPrivateIp(mapped[1]);
+    // IPv4-mappé en hexadécimal : ::ffff:7f00:1  → reconstruit l'IPv4
+    const hex = lower.match(/::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (hex) {
+      const hi = parseInt(hex[1], 16);
+      const lo = parseInt(hex[2], 16);
+      return isPrivateIp(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
+    }
     return false;
   }
   return true; // pas une IP reconnue → refus prudent
