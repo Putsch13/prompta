@@ -1,10 +1,10 @@
 /**
  * Prompta — assistant du quotidien (popup barre d'outils).
  *
- * Interface façon Cursor : choix du modèle (GPT/Claude/Gemini/Mistral),
- * panneau « ce que je vois » (page active + onglets ciblables), fil de
- * conversation (historique des missions), exécution live. Capture l'onglet
- * actif via chrome.scripting, la liste des onglets via chrome.tabs.
+ * UN cerveau, DEUX régimes (mêmes que la barre in-page) :
+ *  - TAC AU TAC : réponse streamée token par token (port SSE via le worker) ;
+ *  - MISSION : bascule automatique → capture des onglets cochés AVEC session,
+ *    plan agent, run live, validations humaines, re-planification auto.
  */
 
 let baseUrl = "https://prompta-sjtf.onrender.com";
@@ -14,6 +14,7 @@ let pendingClarify = null; // { goal } en attente de précisions
 let clarifyQ = null;       // questions à afficher
 let activePage = null;   // capture de l'onglet actif
 let openTabs = [];       // [{title, url, checked}]
+let session = [];        // échanges instantanés terminés (cette session popup)
 
 const $ = (id) => document.getElementById(id);
 const feed = $("feed");
@@ -114,7 +115,7 @@ function renderContext() {
 
 // ── Rendu conversation ──────────────────────────────────────────────────────
 function statusLabel(s) {
-  return { completed: "terminé", failed: "échec", awaiting_approval: "à valider", running: "en cours", pending: "en file" }[s] || s;
+  return { completed: "terminé", failed: "échec", awaiting_approval: "à valider", running: "en cours", pending: "en file", streaming: "répond…" }[s] || s;
 }
 function msgCard(item, liveSteps) {
   const model = item.model ? ` · ${esc(item.model)}` : "";
@@ -122,15 +123,18 @@ function msgCard(item, liveSteps) {
   // runId placeholder « … » : aucun lien dossier ne doit pointer dessus.
   const hasRun = item.runId && item.runId !== "…";
   let body = "";
-  if (liveSteps) {
-    body = `<div class="steps">${liveSteps.map((label, i) => {
+  if (item.status === "streaming" && !item.answer) body += `<div class="think"><span class="orb"></span> Prompta réfléchit…</div>`;
+  if (liveSteps && liveSteps.length) {
+    body += `<div class="steps">${liveSteps.map((label, i) => {
       const done = item.stepsCompleted ?? 0;
       const ic = i < done ? "✓" : i === done && (item.status === "running" || item.status === "pending") ? "▶" : "·";
       return `<div class="step"><span class="ic ${i < done ? "ok" : ""}">${ic}</span><span>${esc(label)}</span></div>`;
     }).join("")}</div>`;
+  } else if (liveSteps && (item.status === "running" || item.status === "pending")) {
+    body += `<div class="think"><span class="orb"></span> Prompta conçoit l'agent…</div>`;
   }
   let footer = "";
-  if (item.answer) footer += `<div class="answer" style="margin-top:8px;color:var(--ink);white-space:pre-wrap">${esc(item.answer).slice(0, 4000)}</div>`;
+  if (item.answer) footer += `<div class="answer" style="margin-top:8px;color:var(--ink);white-space:pre-wrap">${esc(item.answer).slice(0, 12000)}${item.status === "streaming" ? '<span class="caret"></span>' : ""}</div>`;
   if (item.status === "awaiting_approval") {
     const validateUrl = item.approvalId
       ? `${baseUrl}/dashboard/validations?focus=${esc(item.approvalId)}`
@@ -143,28 +147,33 @@ function msgCard(item, liveSteps) {
     footer += `<div class="err" style="margin-top:6px">✗ ${esc(item.error || "Échec")}${connectLink}${detailLink}</div>`;
   }
   const cancelBtn = liveSteps && hasRun && (item.status === "running" || item.status === "pending")
-    ? `<button data-cancel="${esc(item.runId)}" style="margin-left:auto;background:none;border:1px solid var(--line);color:var(--soft);border-radius:6px;font-size:10px;padding:1px 7px;cursor:pointer">■ stop</button>`
+    ? `<button class="mact" data-cancel="${esc(item.runId)}" style="margin-left:auto">■ stop</button>`
     : "";
-  return `<div class="msg" data-run="${esc(item.runId)}">
+  const saveBtn = hasRun && item.status === "completed" && (item.stepsCompleted ?? 0) > 1 && !item.instant && !item.savedAgent
+    ? `<button class="mact" data-save="${esc(item.runId)}">💾 garder comme agent</button>` : "";
+  const savedNote = item.savedAgent ? `<a href="${esc(item.savedAgent)}" target="_blank" rel="noopener">agent enregistré ↗</a>` : "";
+  return `<div class="msg" data-run="${esc(item.runId || "")}">
     <div class="goal">${esc(item.goal || item.title || "Mission")}</div>
     ${body}${footer}
-    <div class="meta"><span class="dot s-${esc(item.status)}"></span>${statusLabel(item.status)}${model}${cancelBtn}</div>
+    <div class="meta"><span class="dot s-${esc(item.status)}"></span>${statusLabel(item.status)}${model}${saveBtn}${savedNote}${cancelBtn}</div>
   </div>`;
 }
 let history = [];
-let current = null; // { runId, goal, model, status, stepsCompleted, error, planned }
+let current = null; // { kind, runId, goal, model, status, stepsCompleted, error, planned, answer }
 const SUGGESTIONS = [
   "Résume cette page en 5 points",
   "Compare mes onglets ouverts",
   "Rédige un email pro à partir de ma sélection",
 ];
 function emptyState() {
-  return `<div class="empty">Ton assistant du quotidien.<br>Pose une question rapide<br>ou confie-lui une grosse mission.<br><br>${SUGGESTIONS.map((s) => `<button data-suggest="${esc(s)}" style="display:block;margin:6px auto 0;background:var(--panel);border:1px solid var(--line);color:var(--soft);border-radius:999px;font-size:11px;padding:5px 12px;cursor:pointer">${esc(s)}</button>`).join("")}</div>`;
+  return `<div class="empty"><span style="font-size:14px;color:var(--soft);font-weight:600">Ton assistant, partout.</span><br>Réponse immédiate aux questions,<br>agent complet pour les missions.<br><br>${SUGGESTIONS.map((s) => `<button class="sugg" data-suggest="${esc(s)}">${esc(s)}</button>`).join("")}</div>`;
 }
 function renderFeed() {
-  const items = [...history];
+  const seen = new Set(history.map((h) => (h.goal || "").slice(0, 200)));
+  const localItems = session.filter((s) => !seen.has((s.goal || "").slice(0, 200)));
+  const items = [...history, ...localItems];
   const list = items.map((it) => msgCard(it)).join("");
-  const cur = current ? msgCard(current, current.planned) : "";
+  const cur = current ? msgCard(current, current.kind === "mission" ? (current.planned || []) : null) : "";
   const clar = clarifyQ && clarifyQ.length
     ? `<div class="msg"><div class="goal" style="font-weight:600">Quelques précisions pour bien faire :</div><ul style="margin:6px 0 0;padding-left:18px;color:var(--soft)">${clarifyQ.map((q) => `<li>${esc(q)}</li>`).join("")}</ul><div style="color:var(--faint);font-size:11px;margin-top:6px">Réponds ci-dessous, je m'occupe du reste.</div></div>`
     : "";
@@ -173,6 +182,15 @@ function renderFeed() {
   feed.querySelectorAll("[data-cancel]").forEach((b) => b.addEventListener("click", async () => {
     b.disabled = true;
     await send("prompta:cancel", { runId: b.dataset.cancel });
+  }));
+  feed.querySelectorAll("[data-save]").forEach((b) => b.addEventListener("click", async () => {
+    b.disabled = true; b.textContent = "…";
+    const r = await send("prompta:save-agent", { runId: b.dataset.save });
+    if (r?.ok && r.body?.url) {
+      const target = [...history, ...session, current].find((x) => x && x.runId === b.dataset.save);
+      if (target) target.savedAgent = baseUrl + r.body.url;
+      renderFeed();
+    } else { b.disabled = false; b.textContent = "💾 garder comme agent"; }
   }));
   feed.scrollTop = feed.scrollHeight;
 }
@@ -243,22 +261,18 @@ function pollRun() {
   }, 2500);
 }
 
-async function launch() {
-  if (launching) return;
-  let goal = goalEl.value.trim();
-  if (goal.length < 3) return;
-  if (pendingClarify) { goal = `${pendingClarify.goal}\n\nPrécisions de l'utilisateur : ${goal}`; pendingClarify = null; clarifyQ = null; }
-  launching = true; sendBtn.disabled = true;
-
+/** Bascule mission : capture des onglets cochés (session incluse) puis pipeline agent. */
+async function launchMission(goal) {
+  current = { kind: "mission", runId: "…", goal, model: modelEl.value || null, status: "pending", stepsCompleted: 0, planned: [] };
+  renderFeed();
   activePage = await captureActivePage();
   const page = { ...activePage };
-  const targeted = openTabs.filter((t) => t.checked).map((t) => ({ title: t.title, url: t.url }));
-  if (targeted.length) page.openTabs = targeted;
   if (!exploreEl.checked) page.links = undefined;
-
-  current = { runId: "…", goal, model: modelEl.value || null, status: "pending", stepsCompleted: 0, planned: [] };
-  renderFeed();
-  goalEl.value = ""; goalEl.style.height = "auto";
+  const targeted = openTabs.filter((t) => t.checked).map((t) => ({ title: t.title, url: t.url }));
+  if (targeted.length) {
+    const cap = await send("prompta:tabcontents", { urls: targeted.map((t) => t.url), maxTabs: 8, maxChars: 8000 });
+    page.openTabs = (cap?.ok && Array.isArray(cap.tabs) ? cap.tabs : targeted).filter((t) => t.url !== page.url);
+  }
 
   const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined } });
   if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
@@ -284,6 +298,54 @@ async function launch() {
   current.status = "running";
   renderFeed();
   pollRun();
+}
+
+/** Tac au tac streamé ; bascule automatiquement en mission si le modèle le décide. */
+function launchInstant(goal, page) {
+  current = { kind: "instant", goal, model: modelEl.value || null, status: "streaming", answer: "" };
+  renderFeed();
+  const hist = [];
+  for (const it of [...history, ...session].slice(-6)) {
+    if (it.goal && it.answer && it.status === "completed") {
+      hist.push({ role: "user", content: it.goal }, { role: "assistant", content: it.answer });
+    }
+  }
+  const port = chrome.runtime.connect({ name: "prompta:instant" });
+  let closed = false;
+  const finish = (fail, msg) => {
+    if (closed) return; closed = true;
+    try { port.disconnect(); } catch { /* déjà fermé */ }
+    launching = false; sendBtn.disabled = false;
+    if (fail) { current.status = "failed"; current.error = msg || "Réponse interrompue."; }
+    else if (current.answer) { current.status = "completed"; session.push(current); current = null; }
+    else { current = null; }
+    renderFeed();
+  };
+  port.onMessage.addListener((m) => {
+    if (m?.delta) { current.answer += m.delta; renderFeed(); }
+    else if (m?.mission) { closed = true; try { port.disconnect(); } catch { /* */ } launchMission(goal); }
+    else if (m?.done) finish(false);
+    else if (m?.error) finish(true, m.error + (m.status === 401 ? " — connecte-toi à Prompta." : ""));
+    else if (m?.closed && !closed) finish(current.answer ? false : true, "Connexion interrompue.");
+  });
+  port.onDisconnect.addListener(() => { if (!closed) finish(current?.answer ? false : true, "Connexion interrompue."); });
+  port.postMessage({ type: "start", payload: { goal, page, modelId: modelEl.value || undefined, history: hist.slice(-6) } });
+}
+
+async function launch() {
+  if (launching) return;
+  let goal = goalEl.value.trim();
+  if (goal.length < 2) return;
+  launching = true; sendBtn.disabled = true;
+  goalEl.value = ""; goalEl.style.height = "auto";
+  if (pendingClarify) {
+    goal = `${pendingClarify.goal}\n\nPrécisions de l'utilisateur : ${goal}`;
+    pendingClarify = null; clarifyQ = null;
+    launchMission(goal); return;
+  }
+  activePage = activePage && !activePage.unsupported ? activePage : await captureActivePage();
+  const page = { url: activePage.url, title: activePage.title, selection: activePage.selection, content: activePage.content, isPdf: activePage.isPdf };
+  launchInstant(goal, page);
 }
 
 // ── Interactions ────────────────────────────────────────────────────────────

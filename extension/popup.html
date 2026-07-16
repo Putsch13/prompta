@@ -25,19 +25,29 @@
     .icon-btn:hover { border-color: var(--accent); color: var(--ink); }
 
     /* Scroll area = conversation + history */
-    .feed { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
-    .empty { color: var(--faint); font-size: 12px; text-align: center; margin: auto 0; line-height: 1.6; }
-    .msg { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--panel); }
-    .msg .goal { font-size: 13px; color: var(--ink); }
-    .msg .meta { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; color: var(--faint); }
+    .feed { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+    .feed::-webkit-scrollbar { width: 6px; } .feed::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+    .empty { color: var(--faint); font-size: 12px; text-align: center; margin: auto 0; line-height: 1.65; }
+    .sugg { display: block; margin: 7px auto 0; background: var(--panel); border: 1px solid var(--line); color: var(--soft); border-radius: 999px; font-size: 11.5px; padding: 6px 14px; cursor: pointer; transition: border-color .15s, color .15s, transform .12s; }
+    .sugg:hover { border-color: var(--accent); color: var(--ink); transform: translateY(-1px); }
+    .msg { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; background: var(--panel); }
+    .msg .goal { font-size: 13px; color: var(--ink); line-height: 1.45; }
+    .msg .meta { display: flex; align-items: center; gap: 7px; margin-top: 7px; font-size: 11px; color: var(--faint); flex-wrap: wrap; }
     .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
     .s-completed { background: var(--green); } .s-failed { background: var(--red); }
-    .s-running, .s-pending { background: var(--amber); } .s-awaiting_approval { background: var(--accent); }
+    .s-running, .s-pending, .s-streaming { background: var(--amber); } .s-awaiting_approval { background: var(--accent); }
     .steps { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }
     .step { display: flex; gap: 7px; font-size: 12px; color: var(--soft); }
     .step .ic { width: 13px; text-align: center; } .step .ic.ok { color: var(--green); }
     .msg a { color: #a99bff; text-decoration: none; } .msg a:hover { text-decoration: underline; }
     .msg .warn { color: var(--amber); } .msg .err { color: var(--red); white-space: pre-wrap; }
+    .think { display: flex; align-items: center; gap: 8px; color: var(--soft); font-size: 12.5px; margin-top: 6px; }
+    .orb { width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(from 0deg, var(--accent), var(--accent2), var(--accent)); animation: pspin 1.1s linear infinite; }
+    @keyframes pspin { to { transform: rotate(360deg); } }
+    .caret { display: inline-block; width: 7px; height: 14px; background: var(--accent); border-radius: 2px; vertical-align: -2px; animation: pblink .9s steps(1) infinite; }
+    @keyframes pblink { 50% { opacity: 0; } }
+    .mact { background: none; border: 1px solid var(--line); color: var(--soft); border-radius: 7px; font-size: 10.5px; padding: 2px 8px; cursor: pointer; transition: border-color .15s, color .15s; }
+    .mact:hover { border-color: var(--accent); color: var(--ink); }
 
     /* Context bar (ce que je vois) */
     .context { border-top: 1px solid var(--line); padding: 8px 14px 0; }

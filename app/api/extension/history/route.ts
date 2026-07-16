@@ -52,6 +52,9 @@ export async function GET() {
       answer: status === "completed" ? (extractRunAnswer(r.output)?.slice(0, 4000) ?? null) : null,
       status,
       stepsCompleted: r.steps_completed ?? 0,
+      // Tac au tac (pas de plan d'agent) vs mission : l'UI n'affiche le bouton
+      // « garder comme agent » que sur les vraies missions multi-étapes.
+      instant: inputs.__instant === "1",
       error: r.error_message,
       createdAt: r.created_at,
     };

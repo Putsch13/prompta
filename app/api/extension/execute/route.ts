@@ -91,6 +91,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Contenus d'onglets capturés PAR le navigateur (session utilisateur) :
+  // injectés comme variables {{tab_N}} — même numérotation que le contexte
+  // montré au planificateur. C'est ce qui permet de croiser des pages derrière
+  // login sans web_fetch (qui n'a pas la session).
+  const tabVars: Record<string, string> = {};
+  if (page.content?.trim()) tabVars.page_active = page.content.slice(0, 15_000);
+  (page.openTabs ?? []).slice(0, 30).forEach((t, i) => {
+    if (t.content?.trim()) tabVars[`tab_${i + 1}`] = t.content.slice(0, 12_000);
+  });
+
   const admin = createAdminClient();
   const { data: run, error: insertError } = await admin
     .from("listing_agent_runs")
@@ -100,6 +110,7 @@ export async function POST(request: NextRequest) {
       status: "pending",
       dry_run: false,
       inputs: {
+        ...tabVars,
         __manifest: JSON.stringify(built.manifest),
         __source: "extension",
         __source_url: sanitizeUrlForContext(page.url ?? "").slice(0, 500),

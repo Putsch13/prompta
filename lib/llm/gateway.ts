@@ -316,3 +316,136 @@ export async function* streamModel(
   }
   return result;
 }
+
+// ─── Vrai streaming (SSE fournisseur → deltas) ───────────────────────────────
+
+/** Lit un flux SSE et yield chaque champ `data:` (hors [DONE]). */
+async function* sseData(res: Response): AsyncGenerator<string> {
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("Flux de streaming indisponible");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (payload && payload !== "[DONE]") yield payload;
+    }
+  }
+}
+
+/**
+ * Streaming RÉEL des deltas de texte depuis le fournisseur. Utilisé par le
+ * mode « réponse instantanée » (tac au tac) — le run agent reste en callModel.
+ * Yield les fragments de texte ; retourne le contenu complet à la fin.
+ */
+export async function* streamModelDeltas(
+  params: CallModelParams
+): AsyncGenerator<string, { content: string }, undefined> {
+  const { provider, model, messages, apiKey, maxTokens = 4096, tokenParam } = params;
+  let full = "";
+
+  if (provider === "openai" || provider === "mistral") {
+    const url =
+      provider === "openai"
+        ? "https://api.openai.com/v1/chat/completions"
+        : "https://api.mistral.ai/v1/chat/completions";
+    const tokenConfig =
+      provider === "openai"
+        ? openAITokenConfig(tokenParam ?? inferOpenAITokenParam(model), maxTokens)
+        : { max_tokens: maxTokens };
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages, stream: true, ...tokenConfig }),
+    });
+    if (!res.ok) throw parseProviderError(provider === "openai" ? "OpenAI" : "Mistral", res.status, await res.text());
+    for await (const data of sseData(res)) {
+      try {
+        const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
+        if (typeof delta === "string" && delta) {
+          full += delta;
+          yield delta;
+        }
+      } catch {
+        /* fragment non-JSON : ignoré */
+      }
+    }
+    return { content: full };
+  }
+
+  if (provider === "anthropic") {
+    const system = messages.find((m) => m.role === "system")?.content;
+    const chatMessages = messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: m.content }));
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: chatMessages, stream: true }),
+    });
+    if (!res.ok) throw parseProviderError("Anthropic", res.status, await res.text());
+    for await (const data of sseData(res)) {
+      try {
+        const evt = JSON.parse(data);
+        if (evt?.type === "content_block_delta" && typeof evt.delta?.text === "string") {
+          full += evt.delta.text;
+          yield evt.delta.text;
+        }
+      } catch {
+        /* fragment non-JSON : ignoré */
+      }
+    }
+    return { content: full };
+  }
+
+  if (provider === "google") {
+    const contents = messages
+      .filter((m) => m.role !== "system")
+      .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
+    const systemInstruction = messages.find((m) => m.role === "system")?.content;
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+          contents,
+          generationConfig: { maxOutputTokens: maxTokens },
+        }),
+      },
+    );
+    if (!res.ok) throw parseProviderError("Google", res.status, await res.text());
+    for await (const data of sseData(res)) {
+      try {
+        const parts = JSON.parse(data)?.candidates?.[0]?.content?.parts;
+        if (Array.isArray(parts)) {
+          for (const p of parts) {
+            if (typeof p?.text === "string" && p.text) {
+              full += p.text;
+              yield p.text;
+            }
+          }
+        }
+      } catch {
+        /* fragment non-JSON : ignoré */
+      }
+    }
+    return { content: full };
+  }
+
+  // Fournisseur sans chemin streaming : réponse en un bloc (dégradé propre).
+  const result = await callModel(params);
+  full = result.content;
+  yield result.content;
+  return { content: full };
+}

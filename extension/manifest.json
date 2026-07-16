@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Prompta Everywhere",
-  "description": "Une barre de commande sur toutes vos pages : décrivez une mission, Prompta crée l'agent et l'exécute immédiatement.",
-  "version": "0.2.1",
+  "description": "L'assistant qui voit vos pages et agit sur vos apps : réponse instantanée, ou agent complet avec validations pour les vraies missions.",
+  "version": "0.3.0",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

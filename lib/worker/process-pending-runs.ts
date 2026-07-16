@@ -262,6 +262,68 @@ export async function processPendingAgentRuns(
         clearInterval(heartbeatTimer);
       }
 
+      // ── Re-planification (Prompta partout) ─────────────────────────────
+      // Une étape a échoué sur un run de l'extension : avant d'abandonner, le
+      // réparateur propose une nouvelle suite de plan (2 tentatives max). En
+      // cas de succès le run repart en pending avec le manifeste réparé — le
+      // hold de crédits reste posé (settle/release au dénouement final).
+      if (result.status === "failed" && isPreview && !claimed.dry_run) {
+        const rawInputs = (claimed.inputs as Record<string, string>) ?? {};
+        const repairsDone = Number(rawInputs.__repairs ?? 0);
+        if (rawInputs.__source === "extension" && repairsDone < 2 && result.error) {
+          try {
+            const { replanAfterFailure, MAX_REPAIRS_PER_RUN } = await import("@/lib/extension/replan");
+            if (repairsDone < MAX_REPAIRS_PER_RUN) {
+              const { listUserConnections } = await import("@/lib/connections");
+              const connections = await listUserConnections(claimed.user_id);
+              const usable = new Set(connections.filter((c) => c.usable).map((c) => c.connectorId));
+              const replan = await replanAfterFailure({
+                goal: rawInputs.__goal ?? "",
+                manifest,
+                failedStepIndex: result.stepsCompleted,
+                errorMessage: result.error,
+                outputs: result.output,
+                modelId: rawInputs.__model ?? "gpt-5.4-mini",
+                apiKeys: billing.apiKeys,
+                usableConnectors: usable,
+              });
+              if (replan?.kind === "repaired") {
+                await admin
+                  .from("listing_agent_runs")
+                  .update({
+                    status: "pending",
+                    resume_from_step: result.stepsCompleted,
+                    steps_completed: result.stepsCompleted,
+                    output: result.output,
+                    error_message: null,
+                    inputs: {
+                      ...rawInputs,
+                      __manifest: JSON.stringify(replan.manifest),
+                      __repairs: String(repairsDone + 1),
+                    },
+                    heartbeat_at: new Date().toISOString(),
+                  })
+                  .eq("id", claimed.id);
+                console.info("[worker] run repaired, resuming", {
+                  runId: claimed.id,
+                  fromStep: result.stepsCompleted,
+                  repair: repairsDone + 1,
+                });
+                // Reprise immédiate ciblée (profondeur bornée par __repairs).
+                await processPendingAgentRuns(1, { runId: claimed.id });
+                processed++;
+                continue;
+              }
+              if (replan?.kind === "abort") {
+                result.error = `${replan.reason}\n(Erreur d'origine : ${result.error.slice(0, 200)})`;
+              }
+            }
+          } catch (replanErr) {
+            console.warn("[worker] replan failed:", replanErr instanceof Error ? replanErr.message : replanErr);
+          }
+        }
+      }
+
       if (claimed.used_credits && claimed.credit_hold_estimate_cents != null) {
         if (result.status === "completed" && result.usage) {
           await settleAgentRunCredits(

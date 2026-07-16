@@ -1,13 +1,27 @@
-# Prompta Everywhere — extension Chrome
+# Prompta partout — extension Chrome
 
-Une barre de commande disponible sur **toutes** vos pages (web, PDF, fichiers locaux) :
-décrivez une mission en langage naturel, Prompta crée l'agent et l'exécute immédiatement,
-avec suivi des étapes en direct dans le panneau.
+UN cerveau, DEUX régimes, sur **toutes** vos pages (web, PDF, fichiers locaux) :
+
+- **Tac au tac** : question, résumé, analyse de la page affichée → la réponse
+  arrive **en streaming**, en moins d'une seconde, directement dans le panneau.
+- **Mission** : dès que l'ordre exige d'agir (apps, livrables, croiser des
+  onglets), l'assistant bascule tout seul sur un agent complet — plan, exécution
+  live, **validations humaines**, et **re-planification automatique** si une
+  étape échoue.
+
+Ce que l'extension voit : la page active (même derrière votre login), votre
+sélection, et le **contenu réel de tous les onglets cochés** — capturé par le
+navigateur avec votre session (dashboards, CRM, mails ouverts…).
 
 Exemples d'ordres, depuis n'importe quelle page :
-- « Résume leur produit dans un Google Sheets déposé sur mon Drive, et envoie-moi le lien. »
+- « Résume cette page en 5 points. » *(réponse instantanée)*
+- « Lis la bdd affichée, compare-la avec le doc “budget 2026” de mon Drive, fais-moi une prez Canva et envoie-la-moi. »
 - « Explore leur site (pages produits) et fais-moi un comparatif dans un Doc. »
 - « Ajoute tous les produits de ce PDF sur mon Shopify » *(passera par une validation humaine avant l'écriture).*
+
+Une mission réussie peut être **enregistrée comme agent réutilisable** (bouton
+« garder comme agent » sur la carte de mission) : elle devient un brouillon
+privé éditable dans le builder, relançable à volonté.
 
 ## Installation (mode développeur)
 

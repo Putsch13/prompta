@@ -33,6 +33,8 @@ interface HistoryItem {
   answer: string | null;
   error: string | null;
   status: string;
+  stepsCompleted?: number;
+  instant?: boolean;
   createdAt: string;
 }
 
@@ -46,7 +48,7 @@ function extractAnswer(output: unknown): string | null {
   return vals.length ? (vals[vals.length - 1][1] as string) : null;
 }
 
-/** Run en cours de suivi. */
+/** Run en cours de suivi (mission) ou réponse instantanée en streaming. */
 interface Live {
   runId: string;
   goal: string;
@@ -58,6 +60,8 @@ interface Live {
   error?: string | null;
   answer?: string | null;
   approvalId?: string | null;
+  /** Tac au tac streamé (pas de run agent). */
+  instant?: boolean;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -66,6 +70,7 @@ const STATUS_DOT: Record<string, string> = {
   awaiting_approval: "bg-[#7c6cff]",
   running: "bg-amber-400",
   pending: "bg-amber-400",
+  streaming: "bg-amber-400",
 };
 
 export default function QuickPage() {
@@ -146,19 +151,9 @@ export default function QuickPage() {
 
   const usableCount = conns.filter((c) => c.usable).length;
 
-  const launch = useCallback(async () => {
-    if (busyRef.current) return;
-    let g = goal.trim();
-    if (g.length < 3) return;
-    // Si l'agent avait demandé des précisions, on recolle l'ordre initial + la réponse.
-    if (clarify) g = `${clarify.goal}\n\nPrécisions de l'utilisateur : ${g}`;
-    busyRef.current = true; setBusy(true); setError(null); setClarify(null);
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-
-    const page: PageCtx = ctx ?? (manualUrl.trim() ? { url: manualUrl.trim() } : { url: "" });
+  /** Pipeline MISSION : plan agent → run live → validations humaines. */
+  const launchMission = useCallback(async (g: string, page: PageCtx) => {
     setLive({ runId: "…", goal: g, model, title: g, planned: [], stepsDone: 0, status: "pending" });
-    setGoal("");
-    if (inputRef.current) inputRef.current.style.height = "auto";
 
     let res: Response;
     try {
@@ -210,7 +205,80 @@ export default function QuickPage() {
         setTimeout(() => setLive(null), 400); // le run rejoint l'historique
       }
     }, 2500);
-  }, [goal, ctx, manualUrl, explore, model, loadHistory, clarify]);
+  }, [explore, model, loadHistory]);
+
+  const launch = useCallback(async () => {
+    if (busyRef.current) return;
+    let g = goal.trim();
+    if (g.length < 2) return;
+    busyRef.current = true; setBusy(true); setError(null);
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    setGoal("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
+
+    const page: PageCtx = ctx ?? (manualUrl.trim() ? { url: manualUrl.trim() } : { url: "" });
+
+    // Réponse à une demande de précisions : c'est une mission — direct au pipeline.
+    if (clarify) {
+      g = `${clarify.goal}\n\nPrécisions de l'utilisateur : ${g}`;
+      setClarify(null);
+      await launchMission(g, page);
+      return;
+    }
+
+    // TAC AU TAC streamé d'abord ; le modèle bascule lui-même en mission.
+    setLive({ runId: "instant", goal: g, model, title: g, planned: [], stepsDone: 0, status: "streaming", answer: "", instant: true });
+    try {
+      const res = await fetch("/api/extension/instant", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          goal: g,
+          page: { url: page.url, title: page.title, selection: page.selection, content: page.content, isPdf: page.isPdf },
+          modelId: model || undefined,
+          history: [...history].reverse().slice(-3).flatMap((h) =>
+            h.goal && h.answer ? [{ role: "user" as const, content: h.goal }, { role: "assistant" as const, content: h.answer }] : [],
+          ),
+        }),
+      });
+      if (!res.ok || !res.body) {
+        const body = await res.json().catch(() => ({}));
+        busyRef.current = false; setBusy(false); setLive(null);
+        setError({ message: body.message ?? (res.status === 401 ? "Connecte-toi à Prompta, puis réessaie." : `Erreur (${res.status}).`) });
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let mission = false;
+      let failed: string | null = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith("data:")) continue;
+          let evt: { delta?: string; mission?: boolean; done?: boolean; error?: string };
+          try { evt = JSON.parse(t.slice(5).trim()); } catch { continue; }
+          if (evt.delta) setLive((l) => l && { ...l, answer: (l.answer ?? "") + evt.delta });
+          else if (evt.mission) { mission = true; }
+          else if (evt.error) { failed = evt.error; }
+        }
+        if (mission || failed) break;
+      }
+      if (mission) { await launchMission(g, page); return; }
+      busyRef.current = false; setBusy(false);
+      if (failed) { setLive(null); setError({ message: failed }); return; }
+      setLive((l) => l && { ...l, status: "completed" });
+      loadHistory(); // la réponse instantanée est persistée côté serveur
+    } catch {
+      busyRef.current = false; setBusy(false); setLive(null);
+      setError({ message: "Réseau indisponible." });
+    }
+  }, [goal, ctx, manualUrl, model, clarify, history, launchMission, loadHistory]);
 
   function reuse(text: string) {
     setGoal(text);
@@ -226,7 +294,16 @@ export default function QuickPage() {
 
   // Fil = historique chronologique + run en cours (si pas encore dans l'historique).
   const thread = [...history].reverse();
-  const liveShown = live && !history.some((h) => h.runId === live.runId) ? live : null;
+  const liveShown =
+    live &&
+    !history.some(
+      (h) =>
+        h.runId === live.runId ||
+        // Réponse instantanée terminée déjà persistée côté serveur : ne pas doubler.
+        (live.instant && live.status === "completed" && h.goal === live.goal && !!h.answer),
+    )
+      ? live
+      : null;
 
   return (
     <div className="flex h-screen flex-col bg-[#0f1420] text-[#f3f5fb]">
@@ -353,7 +430,7 @@ export default function QuickPage() {
             />
             <button
               onClick={launch}
-              disabled={busy || goal.trim().length < 3}
+              disabled={busy || goal.trim().length < 2}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#7c6cff] text-white disabled:opacity-40"
               title="Envoyer"
             >
@@ -382,7 +459,7 @@ function Message(props: {
   onCancel?: () => void;
 }) {
   const { goal, model, status, answer, runId, planned, stepsDone, error, approvalId, live, onReuse, onCancel } = props;
-  const isAgent = planned.length > 0 || (!answer && status !== "completed");
+  const isAgent = status !== "streaming" && (planned.length > 0 || (!answer && status !== "completed"));
   return (
     <div className="flex flex-col gap-2">
       {/* Demande (cliquable pour réutiliser) */}
@@ -394,7 +471,13 @@ function Message(props: {
 
       {/* Réponse / mission */}
       <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-[#2a3350] bg-[#161d2e] px-3.5 py-2.5 text-sm">
-        {answer && <div className="whitespace-pre-wrap text-[#f3f5fb]">{answer.slice(0, 8000)}</div>}
+        {answer && (
+          <div className="whitespace-pre-wrap text-[#f3f5fb]">
+            {answer.slice(0, 12000)}
+            {status === "streaming" && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-[#7c6cff] align-middle" />}
+          </div>
+        )}
+        {status === "streaming" && !answer && <div className="animate-pulse text-[#aab3cc]">Prompta réfléchit…</div>}
 
         {isAgent && (planned.length > 0) && (
           <div className="mt-1 space-y-0.5">
@@ -416,15 +499,15 @@ function Message(props: {
         <div className="mt-2 flex items-center gap-2 text-xs">
           <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status] ?? "bg-ink-faint"} ${live && !["completed", "failed"].includes(status) ? "animate-pulse" : ""}`} />
           <span className="text-[#6b7595]">
-            {status === "completed" ? "terminé" : status === "failed" ? "échec" : status === "awaiting_approval" ? "à valider" : status === "running" ? "en cours" : "en file"}
+            {status === "completed" ? "terminé" : status === "failed" ? "échec" : status === "awaiting_approval" ? "à valider" : status === "running" ? "en cours" : status === "streaming" ? "répond…" : "en file"}
           </span>
           {model && <span className="text-[#6b7595]">· {model}</span>}
           {status === "awaiting_approval" && (
             <a href={approvalId ? `/dashboard/validations?focus=${approvalId}` : "/dashboard/validations"}
                target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">valider</a>
           )}
-          {status === "completed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
-          {status === "failed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
+          {status === "completed" && runId !== "…" && runId !== "instant" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
+          {status === "failed" && runId !== "…" && runId !== "instant" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
           {live && onCancel && runId !== "…" && (status === "running" || status === "pending") && (
             <button onClick={onCancel} title="Arrêter la mission"
                     className="ml-auto rounded-md border border-[#2a3350] px-2 py-0.5 text-[10px] text-[#aab3cc] hover:border-[#f87171] hover:text-[#f87171]">
