@@ -55,17 +55,17 @@ const USE_WAYS = [
   {
     icon: Puzzle,
     title: "Clic sur l'icône P",
-    desc: "Ouvre le popup (comme une mini-app). L'onglet actif est capturé automatiquement — page, sélection, contenu.",
+    desc: "Un panneau glisse depuis la droite (pleine hauteur), sur la page où tu es. Re-clique pour le fermer.",
   },
   {
     icon: Keyboard,
     title: "Alt + P",
-    desc: "Ouvre la barre flottante directement dans la page. Idéal pour agir sans quitter ce que tu regardes.",
+    desc: "Même panneau latéral, sans quitter le clavier. Idéal pour enchaîner pendant que tu lis.",
   },
   {
     icon: MousePointerClick,
     title: "Clic droit sur une sélection",
-    desc: "« Prompta : agir sur la sélection » — la barre s'ouvre avec ta sélection déjà prise en compte.",
+    desc: "« Prompta : agir sur la sélection » — le panneau s'ouvre avec ta sélection déjà prise en compte.",
   },
 ];
 

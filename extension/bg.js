@@ -282,15 +282,27 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-function toggleBarInTab(tabId) {
+async function toggleBarInTab(tabId) {
   if (!tabId) return;
-  chrome.tabs.sendMessage(tabId, { type: "prompta:toggle" }).catch(() => {
-    /* page sans content script (chrome://, Web Store…) : rien à faire */
-  });
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "prompta:toggle" });
+  } catch {
+    // Content script absent (page fraîche, PDF viewer…) : injecter puis rouvrir.
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+      await chrome.tabs.sendMessage(tabId, { type: "prompta:toggle" });
+    } catch {
+      /* chrome://, Web Store, page système : pas d'injection possible */
+    }
+  }
 }
 
-// Le clic sur l'icône ouvre le popup (default_popup) : onClicked NE PAS gérer.
-// Entrées secondaires vers la barre in-page : raccourci Alt+P et menu contextuel.
+// Clic sur l'icône P (barre d'outils) = panneau latéral à droite, comme Joko.
+// Pas de default_popup : sinon onClicked ne se déclenche jamais.
+chrome.action.onClicked.addListener((tab) => {
+  toggleBarInTab(tab?.id);
+});
+
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === "toggle-bar") toggleBarInTab(tab?.id);
 });
@@ -309,6 +321,6 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "prompta-selection" && tab?.id) {
-    chrome.tabs.sendMessage(tab.id, { type: "prompta:toggle", withSelection: true }).catch(() => {});
+    toggleBarInTab(tab.id);
   }
 });

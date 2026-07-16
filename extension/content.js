@@ -1,18 +1,15 @@
 /**
- * Prompta partout — barre flottante d'assistant (content script).
+ * Prompta partout — panneau latéral droit (content script), style « Joko ».
+ *
+ * Clic sur l'icône P de la barre Chrome → le panneau glisse depuis la droite
+ * sur la page courante (partout sauf chrome://). Alt+P et le menu contextuel
+ * font la même chose.
  *
  * UN cerveau, DEUX régimes :
- *  - TAC AU TAC : la réponse arrive en streaming (SSE relayé par le service
- *    worker) — question, résumé, analyse de la page → réponse en < 1 s.
- *  - MISSION : si le modèle juge que l'ordre exige d'agir (apps, livrables,
- *    croiser des onglets), il émet la sentinelle → on capture le contenu des
- *    onglets cochés AVEC la session, puis on lance le pipeline agent complet
- *    (plan → run live → validations humaines → re-planification auto).
+ *  - TAC AU TAC : streaming SSE via le service worker ;
+ *  - MISSION : pipeline agent (onglets + session, validations, replan).
  *
- * Le content script répond aussi à « prompta:capture » : c'est lui qui permet
- * au service worker de lire N'IMPORTE quel onglet ouvert (même derrière login).
- *
- * Shadow DOM (zéro fuite CSS). Tout le réseau passe par le service worker.
+ * Shadow DOM (zéro fuite CSS). Réseau uniquement via le service worker.
  */
 
 (() => {
@@ -180,33 +177,29 @@
     }
   }
 
-  // ── UI ───────────────────────────────────────────────────────────────────
+  // ── UI — panneau latéral pleine hauteur (droite), ouverture = icône P ───
   const host = document.createElement("div");
   host.id = "prompta-everywhere-host";
-  host.style.cssText = "all:initial; position:fixed; z-index:2147483647; bottom:0; right:0;";
+  host.style.cssText = "all:initial; position:fixed; z-index:2147483647; inset:0; pointer-events:none;";
   const root = host.attachShadow({ mode: "closed" });
   (document.documentElement || document.body).appendChild(host);
   root.innerHTML = `
     <style>
       * { box-sizing:border-box; font-family:-apple-system,"SF Pro Text","Segoe UI",Roboto,sans-serif; }
       :host { color-scheme: dark; }
-      .fab { position:fixed; bottom:22px; right:22px; width:50px; height:50px; border-radius:16px;
-        background:linear-gradient(135deg,#8b7cff 0%,#5b4fe0 60%,#4a3fd0 100%); color:#fff; font-size:20px; font-weight:800; border:none;
-        cursor:pointer; box-shadow:0 8px 24px rgba(91,79,224,.45), inset 0 1px 0 rgba(255,255,255,.25);
-        display:flex; align-items:center; justify-content:center; transition:transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .18s; }
-      .fab:hover { transform:scale(1.08) translateY(-1px); box-shadow:0 12px 32px rgba(91,79,224,.6), inset 0 1px 0 rgba(255,255,255,.25); }
-      .fab:active { transform:scale(.96); }
-      .panel { position:fixed; bottom:84px; right:22px; width:408px; max-width:calc(100vw - 40px); height:580px; max-height:calc(100vh - 118px);
-        background:rgba(13,17,28,.92); backdrop-filter:blur(18px) saturate(1.3); -webkit-backdrop-filter:blur(18px) saturate(1.3);
-        color:#f3f5fb; border:1px solid rgba(124,108,255,.18); border-radius:20px;
-        box-shadow:0 24px 70px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03) inset;
-        display:none; flex-direction:column; overflow:hidden;
-        opacity:0; transform:translateY(10px) scale(.98); transition:opacity .2s ease, transform .22s cubic-bezier(.34,1.4,.64,1); }
-      .panel.open { display:flex; }
-      .panel.in { opacity:1; transform:translateY(0) scale(1); }
-      header { display:flex; align-items:center; gap:9px; padding:12px 14px; border-bottom:1px solid rgba(124,108,255,.12); }
-      .logo { width:26px; height:26px; border-radius:8px; background:linear-gradient(135deg,#8b7cff,#5b4fe0); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; color:#fff; box-shadow:0 2px 8px rgba(91,79,224,.4); }
-      header b { flex:1; font-size:13.5px; letter-spacing:.1px; }
+      .scrim { position:fixed; inset:0; background:rgba(0,0,0,.28); opacity:0; pointer-events:none;
+        transition:opacity .22s ease; }
+      .scrim.on { opacity:1; pointer-events:auto; }
+      .panel { position:fixed; top:0; right:0; bottom:0; width:min(400px,100vw); height:100vh;
+        background:rgba(13,17,28,.97); backdrop-filter:blur(20px) saturate(1.25); -webkit-backdrop-filter:blur(20px) saturate(1.25);
+        color:#f3f5fb; border-left:1px solid rgba(124,108,255,.22);
+        box-shadow:-12px 0 48px rgba(0,0,0,.45);
+        display:flex; flex-direction:column; overflow:hidden; pointer-events:auto;
+        transform:translateX(105%); transition:transform .28s cubic-bezier(.22,1,.36,1); }
+      .panel.open { transform:translateX(0); }
+      header { display:flex; align-items:center; gap:9px; padding:14px 14px 12px; border-bottom:1px solid rgba(124,108,255,.12); flex-shrink:0; }
+      .logo { width:28px; height:28px; border-radius:9px; background:linear-gradient(135deg,#8b7cff,#5b4fe0); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; color:#fff; box-shadow:0 2px 8px rgba(91,79,224,.4); }
+      header b { flex:1; font-size:14px; letter-spacing:.1px; }
       header .sub { color:#6b7595; font-weight:400; }
       select { appearance:none; background:rgba(30,39,64,.8); color:#dfe4f2; border:1px solid rgba(124,108,255,.18); border-radius:9px; padding:4px 9px; font-size:11px; cursor:pointer; max-width:122px; outline:none; }
       select:hover { border-color:rgba(124,108,255,.45); }
@@ -235,7 +228,7 @@
       .mact { background:none; border:1px solid rgba(124,108,255,.22); color:#aab3cc; border-radius:7px; font-size:10.5px; padding:2px 8px; cursor:pointer; transition:border-color .15s,color .15s; }
       .mact:hover { border-color:#8b7cff; color:#f3f5fb; }
       .err { margin-top:6px; font-size:11.5px; color:#f87171; white-space:pre-wrap; }
-      .ctx { border-top:1px solid rgba(124,108,255,.12); padding:8px 13px 0; }
+      .ctx { border-top:1px solid rgba(124,108,255,.12); padding:8px 13px 0; flex-shrink:0; }
       .ctxh { display:flex; align-items:center; gap:6px; font-size:11px; color:#aab3cc; cursor:pointer; user-select:none; }
       .ctxh .cv { transition:transform .15s; } .ctxh.open .cv { transform:rotate(90deg); }
       .ctxbody { display:none; } .ctxbody.open { display:block; }
@@ -247,7 +240,7 @@
       .note { font-size:11px; color:#6b7595; margin:5px 0; } .note a { color:#a99bff; }
       .opts { display:flex; gap:14px; padding:4px 0 7px; font-size:11px; color:#aab3cc; }
       .opts label { display:flex; align-items:center; gap:5px; cursor:pointer; }
-      .composer { border-top:1px solid rgba(124,108,255,.12); padding:10px 13px 12px; }
+      .composer { border-top:1px solid rgba(124,108,255,.12); padding:10px 13px 14px; flex-shrink:0; }
       .cbox { display:flex; align-items:flex-end; gap:8px; background:rgba(22,29,46,.9); border:1px solid rgba(124,108,255,.18); border-radius:15px; padding:8px; transition:border-color .15s, box-shadow .15s; }
       .cbox:focus-within { border-color:#8b7cff; box-shadow:0 0 0 3px rgba(139,124,255,.12); }
       textarea { flex:1; border:none; background:none; color:#f3f5fb; font-size:13px; resize:none; outline:none; max-height:110px; min-height:20px; line-height:1.45; }
@@ -257,26 +250,26 @@
       .snd:disabled { opacity:.4; cursor:default; box-shadow:none; }
       .ptoast { position:fixed; top:18px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:9px;
         background:rgba(13,17,28,.95); border:1px solid rgba(124,108,255,.4); color:#f3f5fb; font-size:12.5px;
-        border-radius:999px; padding:8px 16px; box-shadow:0 8px 28px rgba(0,0,0,.55); max-width:70vw; }
+        border-radius:999px; padding:8px 16px; box-shadow:0 8px 28px rgba(0,0,0,.55); max-width:70vw; pointer-events:none; }
       .ptoast span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .porb { width:12px; height:12px; border-radius:50%; flex-shrink:0; background:conic-gradient(from 0deg,#8b7cff,#4a3fd0,#8b7cff); animation:pspin 1.1s linear infinite; }
       .pring { position:fixed; display:none; border:2px solid #8b7cff; border-radius:8px; box-shadow:0 0 0 4px rgba(139,124,255,.28); pointer-events:none; transition:all .25s ease; }
       .pconfirm { position:fixed; top:64px; left:50%; transform:translateX(-50%); display:none; background:rgba(13,17,28,.97);
         border:1px solid rgba(124,108,255,.45); border-radius:14px; padding:13px 15px; color:#f3f5fb; font-size:13px;
-        max-width:440px; box-shadow:0 16px 48px rgba(0,0,0,.65); line-height:1.5; }
+        max-width:440px; box-shadow:0 16px 48px rgba(0,0,0,.65); line-height:1.5; pointer-events:auto; }
       .pcbtns { display:flex; gap:8px; margin-top:10px; justify-content:flex-end; }
       .pcbtns button { border:none; border-radius:9px; padding:6px 14px; font-size:12px; cursor:pointer; font-weight:600; }
       .pcyes { background:linear-gradient(135deg,#8b7cff,#5b4fe0); color:#fff; }
       .pcno { background:rgba(30,39,64,.9); color:#aab3cc; border:1px solid rgba(124,108,255,.2) !important; }
     </style>
-    <button class="fab" title="Prompta (Alt+P)">P</button>
-    <div class="panel">
+    <div class="scrim" data-r="scrim"></div>
+    <div class="panel" data-r="panel">
       <header>
         <span class="logo">P</span>
         <b>Prompta <span class="sub">· partout</span></b>
         <select data-r="model"><option>…</option></select>
         <a class="ico" data-r="conns" target="_blank" title="Apps connectées">🔌</a>
-        <button class="ico" data-r="close">✕</button>
+        <button class="ico" data-r="close" title="Fermer">✕</button>
       </header>
       <div class="feed" data-r="feed"></div>
       <div class="ctx">
@@ -285,7 +278,7 @@
           <div data-r="chips"></div>
           <div class="tact" data-r="tact" style="display:none"><button data-r="tall">tout cocher</button><button data-r="tnone">tout décocher</button></div>
           <div class="tabs" data-r="tabs" style="display:none"></div>
-          <div class="note">Je lis cette page et tes onglets cochés (même connectés). Les logiciels hors navigateur ne sont pas accessibles.</div>
+          <div class="note">Je lis cette page et tes onglets cochés (même connectés).</div>
           <div class="opts">
             <label><input type="checkbox" data-r="alltabs" checked> voir mes onglets</label>
             <label><input type="checkbox" data-r="explore" checked> explorer les liens</label>
@@ -307,8 +300,8 @@
     </div>`;
 
   const $ = (r) => root.querySelector(`[data-r="${r}"]`);
-  const fab = root.querySelector(".fab");
-  const panel = root.querySelector(".panel");
+  const panel = $("panel");
+  const scrim = $("scrim");
   const feed = $("feed"), goalEl = $("goal"), sendBtn = $("send"), modelEl = $("model");
   const ctxh = $("ctxh"), ctxbody = $("ctxbody"), ctxsum = $("ctxsum"), chips = $("chips"), tabsBox = $("tabs"), tact = $("tact");
   const alltabsEl = $("alltabs"), exploreEl = $("explore");
@@ -558,7 +551,7 @@
   function toggle(force) {
     panelOpen = force !== undefined ? force : !panelOpen;
     panel.classList.toggle("open", panelOpen);
-    requestAnimationFrame(() => panel.classList.toggle("in", panelOpen));
+    scrim.classList.toggle("on", panelOpen);
     if (panelOpen) {
       renderCtx();
       goalEl.focus();
@@ -566,8 +559,11 @@
       if (current && ["running", "pending"].includes(current.status) && !pollTimer) poll();
     }
   }
-  fab.addEventListener("click", () => toggle());
   $("close").addEventListener("click", () => toggle(false));
+  scrim.addEventListener("click", () => toggle(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && panelOpen) { e.stopPropagation(); toggle(false); }
+  }, true);
   sendBtn.addEventListener("click", launch);
   goalEl.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); launch(); } });
   goalEl.addEventListener("input", () => { goalEl.style.height = "auto"; goalEl.style.height = Math.min(110, goalEl.scrollHeight) + "px"; });
@@ -578,7 +574,7 @@
   alltabsEl.addEventListener("change", async () => { if (alltabsEl.checked) await loadTabs(); else openTabs = []; renderCtx(); });
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg?.type === "prompta:toggle") { toggle(true); return; }
+    if (msg?.type === "prompta:toggle") { toggle(); return; }
     // Le service worker lit CET onglet (croisement d'onglets avec session).
     if (msg?.type === "prompta:capture") {
       sendResponse({ content: extractPageText(msg.maxChars || 8000), title: document.title || "", url: location.href });

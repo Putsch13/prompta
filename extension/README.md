@@ -44,11 +44,12 @@ privé éditable dans le builder, relançable à volonté.
 
 ## Utilisation
 
-- **Clic sur l'icône « P »** de la barre d'outils Chrome → un popup s'ouvre
-  (comme Joko) : décris ta mission, clic sur « Lancer l'agent ». Le popup capture
-  automatiquement l'onglet actif (titre, sélection, contenu, liens)
-- **Alt+P** ou clic droit → **« Prompta : agir sur la sélection »** : ouvre une
-  barre superposée dans la page (entrées secondaires, pratiques pour une sélection)
+- **Clic sur l'icône « P »** de la barre d'outils Chrome → un **panneau latéral
+  glisse depuis la droite** (pleine hauteur, comme Joko). Re-clique (ou ✕ / fond
+  assombri) pour le fermer. La page active est capturée automatiquement.
+- **Alt+P** : même panneau, au clavier
+- **Clic droit** → **« Prompta : agir sur la sélection »** : ouvre le panneau
+  avec la sélection déjà prise en compte
 - Le bouton **connexions** montre l'état de chaque app (vert = utilisable)
 - La case **exploration du site** autorise l'agent à suivre les liens de la page
   (outil `web_fetch` côté serveur : HTML lisible, PDF, liens)
