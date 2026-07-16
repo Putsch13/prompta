@@ -13,8 +13,9 @@ import {
   Puzzle,
   ArrowRight,
   Check,
-  ExternalLink,
 } from "lucide-react";
+import { BrowserCompatBanner } from "@/components/marketing/BrowserCompatBanner";
+import { ExtensionPanelDemo } from "@/components/marketing/ExtensionPanelDemo";
 
 export const metadata: Metadata = {
   title: "Installer Prompta partout — guide",
@@ -70,23 +71,23 @@ const BROWSERS_NO = [
 const INSTALL_STEPS = [
   {
     n: "1",
-    title: "Télécharge le dossier de l'extension",
-    body: "Sur GitHub, ouvre le dossier extension/ puis Code → Download ZIP (ou clone le repo). Tu as besoin du dossier extension/ dézippé — celui qui contient manifest.json.",
+    title: "Télécharge le ZIP",
+    body: "Bouton « Télécharger l'extension » ci-dessus → tu obtiens prompta-everywhere.zip. Dézippe-le : tu dois voir manifest.json à la racine du dossier.",
   },
   {
     n: "2",
     title: "Ouvre la page Extensions",
-    body: "Colle l’URL de ton navigateur (chrome://extensions, edge://extensions, brave://extensions, arc://extensions ou opera://extensions). Active le Mode développeur.",
+    body: "Colle l’URL de ton navigateur (chrome://extensions, edge://extensions, brave://extensions…). Active le Mode développeur.",
   },
   {
     n: "3",
     title: "Charge l'extension non empaquetée",
-    body: "Clique « Charger l'extension non empaquetée » (Load unpacked) et sélectionne le dossier extension/.",
+    body: "Clique « Charger l'extension non empaquetée » et sélectionne le dossier dézippé (celui qui contient manifest.json).",
   },
   {
     n: "4",
     title: "Épingle le « P » dans la barre",
-    body: "Clique l'icône puzzle 🧩, puis la punaise à côté de « Prompta Everywhere ». L'icône P reste visible en haut.",
+    body: "Clique l'icône puzzle 🧩, puis la punaise à côté de « Prompta Everywhere ». L'icône P reste visible en haut à droite.",
   },
   {
     n: "5",
@@ -116,13 +117,13 @@ const USE_WAYS = [
 export default function PromptaPartoutPage() {
   return (
     <div className="min-h-screen bg-bg">
-      {/* Hero */}
       <section className="relative overflow-hidden border-b border-line">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 -top-40 h-[420px] bg-[radial-gradient(60%_60%_at_50%_0%,rgba(79,70,229,0.12),transparent_70%)]"
         />
         <div className="mx-auto max-w-page px-4 pb-16 pt-16 sm:px-6 sm:pt-20 lg:px-8">
+          <BrowserCompatBanner />
           <p className="inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent-light px-3 py-1 text-sm font-medium text-accent">
             <Zap className="h-3.5 w-3.5" />
             Guide d&apos;installation
@@ -134,20 +135,21 @@ export default function PromptaPartoutPage() {
             </span>
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-ink-soft">
-            Extension Chromium (Chrome, Edge, Brave, Arc, Opera) : sur n&apos;importe
-            quelle page, clic sur le P → panneau à droite. Question au tac au tac
-            ou mission sur tes apps — avec validations humaines sur le sensible.
+            Sur Chrome, Edge, Brave, Arc ou Opera : clic sur le P → le panneau
+            glisse à droite (comme Joko). Pas Safari, pas Firefox — utilise{" "}
+            <Link href="/quick" className="font-medium text-accent hover:underline">
+              /quick
+            </Link>{" "}
+            en attendant.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <a
-              href="https://github.com/Putsch13/prompta/tree/main/extension"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/downloads/prompta-everywhere.zip"
+              download="prompta-everywhere.zip"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover"
             >
               <Download className="h-5 w-5" />
               Télécharger l&apos;extension
-              <ExternalLink className="h-4 w-4 opacity-70" />
             </a>
             <Link
               href="/quick"
@@ -156,19 +158,26 @@ export default function PromptaPartoutPage() {
               Essayer sans extension (/quick)
             </Link>
           </div>
+          <p className="mt-3 text-sm text-ink-faint">
+            Fichier ZIP prêt à charger — pas besoin de GitHub.
+          </p>
+
+          <ExtensionPanelDemo />
+          <p className="mt-4 text-center text-sm text-ink-soft">
+            Aperçu du comportement : le panneau sort à droite quand tu cliques le P
+            (ici en démo — en vrai, sur une page web dans Chrome &amp; co.).
+          </p>
         </div>
       </section>
 
-      {/* Compatibilité */}
       <section className="border-b border-line">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
             Sur quels navigateurs ?
           </h2>
           <p className="mt-2 max-w-2xl text-ink-soft">
-            Même dossier <code className="rounded bg-card px-1.5 py-0.5 text-ink">extension/</code>,
-            même geste « charger non empaquetée » sur tout Chromium. Firefox et
-            Safari : pas encore.
+            Même ZIP, même geste « charger non empaquetée » sur tout Chromium.
+            Firefox et Safari : pas encore.
           </p>
 
           <h3 className="mt-10 text-sm font-semibold uppercase tracking-wide text-accent">
@@ -206,18 +215,9 @@ export default function PromptaPartoutPage() {
               </div>
             ))}
           </div>
-          <p className="mt-6 text-sm text-ink-soft">
-            Sans extension :{" "}
-            <Link href="/quick" className="font-medium text-accent hover:underline">
-              /quick
-            </Link>{" "}
-            marche dans n&apos;importe quel navigateur (même cerveau, sans lecture
-            d&apos;onglets ni pilotage de page).
-          </p>
         </div>
       </section>
 
-      {/* Installation */}
       <section className="border-b border-line bg-card2/40">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
@@ -225,8 +225,7 @@ export default function PromptaPartoutPage() {
           </h2>
           <p className="mt-2 max-w-2xl text-ink-soft">
             Pas encore sur les stores — tu l&apos;installes en mode développeur,
-            une fois. Ensuite : recharge l&apos;extension après chaque mise à jour
-            du dossier.
+            une fois. Ensuite : recharge l&apos;extension après chaque mise à jour.
           </p>
           <ol className="mt-10 space-y-6">
             {INSTALL_STEPS.map((s) => (
@@ -244,14 +243,14 @@ export default function PromptaPartoutPage() {
           <div className="mt-8 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card px-5 py-4 text-sm text-ink-soft">
             <Pin className="h-5 w-5 shrink-0 text-accent" />
             <span>
-              Après chaque mise à jour du code : page Extensions → icône ⟳ sur
-              Prompta Everywhere, puis recharge aussi l&apos;onglet de la page.
+              Après une mise à jour : page Extensions → ⟳ sur Prompta Everywhere,
+              puis recharge aussi l&apos;onglet de la page (sinon l&apos;ancien
+              panneau reste en mémoire).
             </span>
           </div>
         </div>
       </section>
 
-      {/* Utilisation */}
       <section className="border-b border-line">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
@@ -272,8 +271,7 @@ export default function PromptaPartoutPage() {
         </div>
       </section>
 
-      {/* Deux régimes */}
-      <section className="border-b border-line">
+      <section className="border-b border-line bg-card2/40">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
             Un cerveau, deux vitesses
@@ -317,8 +315,7 @@ export default function PromptaPartoutPage() {
         </div>
       </section>
 
-      {/* Config */}
-      <section className="border-b border-line bg-card2/40">
+      <section className="border-b border-line">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
             Configuration
@@ -359,8 +356,7 @@ export default function PromptaPartoutPage() {
         </div>
       </section>
 
-      {/* Exemples */}
-      <section className="border-b border-line">
+      <section className="border-b border-line bg-card2/40">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
             Exemples d&apos;ordres
@@ -395,24 +391,23 @@ export default function PromptaPartoutPage() {
         </div>
       </section>
 
-      {/* CTA */}
       <section>
         <div className="mx-auto max-w-page px-4 py-16 text-center sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
             Prêt ?
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-ink-soft">
-            Installe l&apos;extension, connecte une app, donne un premier ordre.
-            L&apos;historique et les validations sont dans ton dashboard.
+            Installe l&apos;extension dans Chrome (ou Edge / Brave…), connecte une
+            app, donne un premier ordre. L&apos;historique et les validations sont
+            dans ton dashboard.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
-              href="https://github.com/Putsch13/prompta/tree/main/extension"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/downloads/prompta-everywhere.zip"
+              download="prompta-everywhere.zip"
               className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-7 text-base font-semibold text-white hover:bg-accent-hover"
             >
-              <Download className="h-5 w-5" /> Installer
+              <Download className="h-5 w-5" /> Télécharger le ZIP
             </a>
             <Link
               href="/dashboard/connexions"

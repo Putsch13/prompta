@@ -34,7 +34,7 @@ test("plans — la marge est préservée (crédits inclus < prix du plan)", () =
   }
 });
 
-test("plans — freemium : 1 agent publié, 2 € de bienvenue", () => {
+test("plans — freemium : 1 agent gardé, 2 € de bienvenue", () => {
   assert.equal(PLANS.free.publishedAgentLimit, 1);
   assert.equal(PLANS.free.priceCents, 0);
   assert.equal(WELCOME_CREDIT_CENTS, 200);

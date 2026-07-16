@@ -88,7 +88,7 @@ test.describe("Prompta — parcours public", () => {
 
 test("pricing — page publique avec les 4 plans et JSON-LD", async ({ page }) => {
   await page.goto("/pricing");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(/gratuitement/i);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/gratuit/i);
   for (const plan of ["Découverte", "Starter", "Pro", "Scale"]) {
     await expect(page.getByRole("heading", { name: plan, exact: true })).toBeVisible();
   }

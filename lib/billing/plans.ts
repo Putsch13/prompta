@@ -1,12 +1,10 @@
 /**
  * Plans Prompta — SOURCE DE VÉRITÉ UNIQUE (pricing, quotas, crédits inclus).
  *
- * Modèle « à la Cursor » :
- *  - Découverte (gratuit) : 1 agent publié, 2 € de crédits IA offerts à
- *    l'inscription, BYOK illimité (ses propres clés API ne consomment jamais
- *    de crédits).
- *  - Plans payants : plus d'agents publiés + crédits IA inclus chaque mois.
- *  - Les crédits à la carte (packs) restent disponibles sur tous les plans.
+ * Produit recentré sur Prompta partout (extension) + missions + validations :
+ *  - Découverte : extension + 2 € offerts + BYOK
+ *  - Payants : plus de crédits / mois + plus d'agents « gardés »
+ *  - publishedAgentLimit = agents enregistrés depuis l'extension (save-agent)
  */
 
 export type PlanId = "free" | "starter" | "pro" | "scale";
@@ -16,7 +14,7 @@ export interface PromptaPlan {
   label: string;
   /** € / mois, en centimes. 0 = gratuit. */
   priceCents: number;
-  /** Agents/workflows publiés simultanément. null = illimité. */
+  /** Agents « gardés » (réutilisables) simultanément. null = illimité. */
   publishedAgentLimit: number | null;
   /** Crédits IA inclus chaque mois (centimes de crédit). */
   monthlyCreditCents: number;
@@ -35,14 +33,15 @@ export const PLANS: Record<PlanId, PromptaPlan> = {
     priceCents: 0,
     publishedAgentLimit: 1,
     monthlyCreditCents: 0,
-    tagline: "Construis et héberge ton premier agent — gratuitement.",
+    tagline: "Prompta partout + 2 € offerts — sans carte.",
     features: [
-      "1 agent hébergé en production",
+      "Extension Prompta partout (Chrome & Chromium)",
+      "Tac au tac + missions d'agent",
       "2 € de crédits IA offerts (GPT + Claude)",
-      "Builder visuel + copilote IA illimités",
-      "800+ applications connectables",
+      "1000+ apps connectables",
       "Tes propres clés API (BYOK) sans limite",
-      "Validation humaine & logs en direct",
+      "1 agent gardé réutilisable",
+      "Validations humaines & dossier de run",
     ],
   },
   starter: {
@@ -51,10 +50,11 @@ export const PLANS: Record<PlanId, PromptaPlan> = {
     priceCents: 1900,
     publishedAgentLimit: 5,
     monthlyCreditCents: 1000,
-    tagline: "Pour lancer tes premiers agents en production.",
+    tagline: "Pour utiliser Prompta partout tous les jours.",
     features: [
-      "5 agents en production",
+      "Tout Découverte",
       "10 € de crédits IA inclus / mois",
+      "5 agents gardés",
       "Tous les modèles (GPT, Claude, Gemini, Mistral)",
       "Runs illimités en BYOK",
       "Notifications email des validations",
@@ -67,14 +67,15 @@ export const PLANS: Record<PlanId, PromptaPlan> = {
     priceCents: 4900,
     publishedAgentLimit: 20,
     monthlyCreditCents: 3000,
-    tagline: "Pour ceux dont les agents travaillent tous les jours.",
+    tagline: "Volume de missions + crédits confortables.",
     highlight: true,
     features: [
-      "20 agents en production",
+      "Tout Starter",
       "30 € de crédits IA inclus / mois",
-      "Déclencheurs planifiés (cron) & webhooks",
+      "20 agents gardés",
+      "Pilotage navigateur & multi-onglets intensifs",
       "File d'exécution prioritaire",
-      "Dossiers de mission illimités (archives)",
+      "Historique de runs illimité",
       "Support prioritaire",
     ],
   },
@@ -84,14 +85,14 @@ export const PLANS: Record<PlanId, PromptaPlan> = {
     priceCents: 14900,
     publishedAgentLimit: null,
     monthlyCreditCents: 10000,
-    tagline: "Pour les équipes et les agences.",
+    tagline: "Équipes et usage intensif.",
     features: [
-      "Agents en production illimités",
+      "Tout Pro",
       "100 € de crédits IA inclus / mois",
-      "Organisations & sièges (équipe)",
-      "Webhooks & déclencheurs planifiés",
+      "Agents gardés illimités",
+      "Sièges équipe & facturation entreprise",
       "SLA & accompagnement dédié",
-      "Facturation entreprise",
+      "Priorité support",
     ],
   },
 };
@@ -111,7 +112,7 @@ export function planFor(id: PlanId): PromptaPlan {
   return PLANS[id];
 }
 
-/** Décision de publication (fonction pure, testable). */
+/** Décision de publication / agents gardés (fonction pure, testable). */
 export function canPublishOnPlan(
   plan: PromptaPlan,
   publishedCount: number,

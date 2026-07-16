@@ -48,7 +48,11 @@ privé éditable dans le builder, relançable à volonté.
 
 ## Installation (mode développeur)
 
-Même dossier `extension/` sur tout Chromium :
+1. Télécharge le ZIP depuis le site : bouton **Télécharger l'extension** sur
+   [`/prompta-partout`](https://prompta-sjtf.onrender.com/prompta-partout)
+   (fichier `prompta-everywhere.zip` — pas besoin de GitHub)
+2. Dézippe : tu dois voir `manifest.json` à la racine du dossier
+3. Ouvre la page extensions de ton navigateur Chromium :
 
 | Navigateur | Page extensions |
 |---|---|
@@ -58,12 +62,12 @@ Même dossier `extension/` sur tout Chromium :
 | Arc | `arc://extensions` |
 | Opera | `opera://extensions` |
 
-1. Ouvrir la page extensions ci-dessus
-2. Activer **Mode développeur**
-3. **Charger l'extension non empaquetée** → sélectionner ce dossier `extension/`
-4. **Épingler Prompta** : icône puzzle 🧩 → punaise à côté de « Prompta Everywhere »
-5. Être connecté à Prompta dans un onglet du **même** navigateur (session partagée)
-6. Après une mise à jour du code : ⟳ Recharger l'extension, puis recharger l'onglet
+4. Active **Mode développeur** → **Charger l'extension non empaquetée** → le dossier dézippé
+5. **Épingler Prompta** : icône puzzle 🧩 → punaise à côté de « Prompta Everywhere »
+6. Être connecté à Prompta dans un onglet du **même** navigateur (session partagée)
+7. Après une mise à jour : ⟳ Recharger l'extension, puis recharger l'onglet
+
+**Safari et Firefox ne sont pas supportés** pour l'instant — utilise `/quick`.
 
 ## Utilisation
 

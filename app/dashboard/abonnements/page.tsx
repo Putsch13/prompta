@@ -155,7 +155,7 @@ export default function AbonnementsPage() {
                     <Bot className="h-4 w-4 text-accent" />
                     {publishedAgents}
                     {planInfo.publishedAgentLimit != null ? ` / ${planInfo.publishedAgentLimit}` : ""} agent
-                    {publishedAgents > 1 ? "s" : ""} publié{publishedAgents > 1 ? "s" : ""}
+                    {publishedAgents > 1 ? "s" : ""} gardé{publishedAgents > 1 ? "s" : ""}
                   </span>
                   {planInfo.monthlyCreditCents > 0 && (
                     <span className="flex items-center gap-1.5">

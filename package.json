@@ -7,6 +7,8 @@
   },
   "scripts": {
     "dev": "next dev",
+    "pack:extension": "node scripts/pack-extension.mjs",
+    "prebuild": "node scripts/pack-extension.mjs",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint .",

@@ -17,7 +17,7 @@ const SECTIONS: Array<{ title: string; items: Array<{ q: string; a: string }> }>
       },
       {
         q: "Comment l'installer ?",
-        a: "Guide pas à pas sur Installer Prompta partout : mode développeur, charger le dossier extension/, épingler le P, te connecter à Prompta dans le même navigateur. Chrome = cible officielle ; les autres Chromium suivent le même geste.",
+        a: "Guide sur Installer Prompta partout : télécharge le ZIP, mode développeur, charger le dossier, épingler le P, te connecter dans le même navigateur (Chrome / Edge / Brave / Arc / Opera).",
       },
       {
         q: "Ça marche sur Firefox ou Safari ?",
