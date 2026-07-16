@@ -118,7 +118,7 @@ export default function AbonnementsPage() {
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-ink">Mon plan</h1>
-          <p className="mt-2 text-ink-soft">Ton plan d&apos;hébergement d&apos;agents et ta facturation.</p>
+          <p className="mt-2 text-ink-soft">Ton plan Prompta partout, crédits IA et facturation.</p>
         </div>
         <button
           onClick={openPortal}
