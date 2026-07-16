@@ -107,15 +107,13 @@ export default async function HomePage() {
                 <Zap className="h-5 w-5" />
                 Essayer l&apos;assistant
               </Link>
-              <a
-                href="https://github.com/Putsch13/prompta/tree/main/extension"
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/prompta-partout"
                 className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-7 text-base font-medium text-ink transition-colors hover:border-accent"
               >
                 <Globe className="h-5 w-5" />
-                Installer l&apos;extension
-              </a>
+                Installer Prompta partout
+              </Link>
             </div>
             <p className="mt-4 text-sm text-ink-faint">
               Gratuit pour démarrer · 2 € de crédits IA offerts · sans carte bancaire
@@ -350,16 +348,16 @@ export default async function HomePage() {
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
-              href="/quick"
+              href="/prompta-partout"
               className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-8 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover"
             >
-              <Zap className="h-5 w-5" /> Essayer l&apos;assistant
+              <Globe className="h-5 w-5" /> Installer Prompta partout
             </Link>
             <Link
-              href="/pricing"
+              href="/quick"
               className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-8 text-base font-medium text-ink hover:border-accent"
             >
-              Voir les tarifs <ArrowRight className="h-4 w-4" />
+              Essayer sans extension <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
           <p className="mt-6 text-sm text-ink-faint">

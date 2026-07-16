@@ -21,8 +21,13 @@ export function Footer() {
             <h3 className="text-sm font-semibold">Produit</h3>
             <ul className="mt-3 space-y-2">
               <li>
+                <Link href="/prompta-partout" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
+                  Installer Prompta partout
+                </Link>
+              </li>
+              <li>
                 <Link href="/quick" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
-                  L&apos;assistant
+                  L&apos;assistant (web)
                 </Link>
               </li>
               <li>

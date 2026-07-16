@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, Circle, Plug, Rocket } from "lucide-react";
+import { Check, Circle, Plug, Rocket, Globe } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   kycComplete?: boolean;
 }
 
-/** Parcours d'activation : connexions → premier ordre dans /quick. */
+/** Parcours d'activation : installer → connexions → premier ordre. */
 export async function BuilderOnboardingChecklist({ userId }: Props) {
   const admin = createAdminClient();
 
@@ -25,6 +25,13 @@ export async function BuilderOnboardingChecklist({ userId }: Props) {
   ]);
 
   const steps = [
+    {
+      id: "install",
+      label: "Installer Prompta partout (guide)",
+      done: (runCount ?? 0) > 0,
+      href: "/prompta-partout",
+      icon: Globe,
+    },
     {
       id: "connect",
       label: "Connecter une première app (Gmail, Sheets, Canva…)",
@@ -48,7 +55,7 @@ export async function BuilderOnboardingChecklist({ userId }: Props) {
     <div className="mt-8 rounded-2xl border border-line bg-card p-6">
       <h2 className="font-display text-lg font-semibold text-ink">Bien démarrer</h2>
       <p className="mt-1 text-sm text-ink-soft">
-        {completed}/{steps.length} étapes — connecte tes apps, puis donne un ordre.
+        {completed}/{steps.length} étapes — installe l&apos;extension, connecte une app, donne un ordre.
       </p>
       <ul className="mt-4 space-y-3">
         {steps.map((step) => (
