@@ -9,7 +9,7 @@ interface Props {
 export async function OnboardingChecklist({ userId }: Props) {
   const supabase = await createClient();
 
-  const [{ count: keyCount }, { count: runCount }, { count: downloadCount }] =
+  const [{ count: keyCount }, { count: runCount }, { count: agentCount }] =
     await Promise.all([
       supabase
         .from("user_api_keys")
@@ -21,9 +21,9 @@ export async function OnboardingChecklist({ userId }: Props) {
         .eq("user_id", userId)
         .eq("status", "completed"),
       supabase
-        .from("downloads")
+        .from("listings")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", userId),
+        .eq("creator_id", userId),
     ]);
 
   const steps = [
@@ -36,16 +36,16 @@ export async function OnboardingChecklist({ userId }: Props) {
     },
     {
       id: "run",
-      label: "Lancez votre premier prompt",
+      label: "Donnez votre premier ordre à l'assistant",
       done: (runCount ?? 0) > 0,
-      href: "/explore",
+      href: "/quick",
       icon: Play,
     },
     {
-      id: "explore",
-      label: "Explorez le catalogue",
-      done: (downloadCount ?? 0) > 0 || (runCount ?? 0) > 0,
-      href: "/explore",
+      id: "create",
+      label: "Créez votre premier agent",
+      done: (agentCount ?? 0) > 0,
+      href: "/dashboard/new",
       icon: Compass,
     },
   ];

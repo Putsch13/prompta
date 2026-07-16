@@ -4,7 +4,8 @@ test.describe("Prompta — parcours public", () => {
   test("accueil charge et affiche le header", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(/Prompta/i);
-    await expect(page.getByRole("link", { name: /explorer|prompta/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Prompta$/i }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(/voit ton écran/i);
   });
 
   test("page login accessible", async ({ page }) => {
@@ -14,9 +15,13 @@ test.describe("Prompta — parcours public", () => {
     await expect(page.getByRole("button", { name: /microsoft/i })).toBeVisible();
   });
 
-  test("page explore liste des prompts", async ({ page }) => {
+  test("marketplace dépubliée — /explore, /c et /u redirigent vers l'accueil", async ({ page }) => {
     await page.goto("/explore");
-    await expect(page.locator("body")).toContainText(/prompt|agent|explorer/i);
+    await expect(page).toHaveURL(/\/$/);
+    await page.goto("/c/productivite");
+    await expect(page).toHaveURL(/\/$/);
+    await page.goto("/u/demo");
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test("pages légales accessibles", async ({ page }) => {

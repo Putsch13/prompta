@@ -12,13 +12,19 @@ export function Footer() {
               <span className="text-lg font-bold">Prompta</span>
             </Link>
             <p className="mt-3 text-sm text-ink-soft">
-              Construis, héberge et supervise tes agents IA — connectés à tes vraies apps.
+              L&apos;assistant IA dans ton navigateur — il voit ton écran, agit sur tes apps,
+              et tu valides.
             </p>
           </div>
 
           <div>
             <h3 className="text-sm font-semibold">Produit</h3>
             <ul className="mt-3 space-y-2">
+              <li>
+                <Link href="/quick" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
+                  L&apos;assistant
+                </Link>
+              </li>
               <li>
                 <Link href="/dashboard/new" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
                   Créer un agent

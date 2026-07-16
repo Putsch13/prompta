@@ -8,7 +8,9 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/dashboard/", "/api/", "/auth/"],
+        // /listing, /u, /c : surfaces marketplace dépubliées (les /listing
+        // restent servies aux possesseurs/abonnés mais ne s'indexent plus).
+        disallow: ["/dashboard/", "/api/", "/auth/", "/listing/", "/u/", "/c/", "/quick", "/wallet"],
       },
     ],
     sitemap: `${baseUrl}/sitemap.xml`,

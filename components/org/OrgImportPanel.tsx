@@ -44,7 +44,7 @@ export function OrgImportPanel({ orgSlug, isEditor }: Props) {
   return (
     <form onSubmit={handleImport} className="mt-4 space-y-2">
       <label className="block text-xs font-medium text-ink-soft">
-        ID du listing marketplace à importer
+        ID de l&apos;agent à importer
       </label>
       <div className="flex gap-2">
         <input

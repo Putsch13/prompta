@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import {
-  Bot,
-  Play,
-  Bug,
-  Plug,
-  Hammer,
-  Gift,
+  Zap,
   Check,
   ShieldCheck,
   Loader2,
   ArrowRight,
+  Globe,
+  Eye,
+  MousePointerClick,
+  Layers,
+  MessageSquare,
+  Rocket,
 } from "lucide-react";
 import Link from "next/link";
 import { B2BSection } from "@/components/marketing/B2BSection";
@@ -18,14 +19,14 @@ import { PLANS } from "@/lib/billing/plans";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Prompta — Crée ton agent IA sans code, connecté à 1000+ apps",
+  title: "Prompta — l'IA qui voit ton écran et fait le travail",
   description:
-    "Construis un agent IA en décrivant ton objectif : Gmail, Sheets, Slack, Canva, Notion… Il travaille pour de vrai, tu valides les actions sensibles. Premier agent gratuit + 2 € de crédits IA offerts.",
+    "L'assistant dans ton navigateur : réponse instantanée sur n'importe quelle page, missions complètes sur tes apps (Gmail, Sheets, Canva…), pilotage du navigateur sous tes yeux. Chaque action sensible attend ton feu vert.",
   alternates: { canonical: "/" },
   openGraph: {
-    title: "Prompta — tes agents IA en production, sans code",
+    title: "Prompta — l'IA qui voit ton écran et fait le travail",
     description:
-      "Décris ton objectif, le copilote construit l'agent. 1000+ apps, validation humaine, logs en direct. Gratuit pour démarrer.",
+      "Réponse au tac au tac, missions cross-app, pilotage du navigateur en copilote visible. Validation humaine sur tout ce qui est sensible.",
   },
 };
 
@@ -45,11 +46,11 @@ const APPS_FALLBACK = [
 ];
 
 const DEMO_STEPS = [
-  { label: "Lecture du Drive — 3 fichiers trouvés", state: "done" },
-  { label: "Analyse Head of Sales (GPT-5.4)", state: "done" },
-  { label: "Création de la présentation Canva", state: "done" },
-  { label: "Validation humaine — en attente de ton feu vert", state: "waiting" },
-  { label: "Envoi du récap par email", state: "pending" },
+  { label: "Lecture des 3 onglets ouverts (avec ta session)", state: "done" },
+  { label: "Analyse croisée des devis (GPT-5.4)", state: "done" },
+  { label: "Pilotage du navigateur — remplissage du formulaire", state: "done" },
+  { label: "Confirmation dans la page — en attente de ton feu vert", state: "waiting" },
+  { label: "Récap envoyé par email", state: "pending" },
 ];
 
 export default async function HomePage() {
@@ -81,29 +82,31 @@ export default async function HomePage() {
         <div className="mx-auto max-w-page px-4 pb-16 pt-20 sm:px-6 sm:pt-28 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <p className="mx-auto inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent-light px-4 py-1.5 text-sm font-medium text-accent">
-              <Gift className="h-4 w-4" />
-              1 agent hébergé gratuit · 2 € de crédits IA offerts · sans carte bancaire
+              <Globe className="h-4 w-4" />
+              Prompta partout — l&apos;assistant dans ton navigateur
             </p>
             <h1 className="mt-6 font-display text-4xl font-bold tracking-tight text-ink sm:text-6xl">
-              Ton agent IA travaille.
+              <span className="block text-ink">Prompta.</span>
+              L&apos;IA qui voit ton écran
               <br />
               <span className="bg-gradient-to-r from-accent to-violet-500 bg-clip-text text-transparent">
-                Toi, tu valides.
+                et fait le travail.
               </span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-ink-soft">
-              Décris ton objectif en une phrase : le copilote construit l&apos;agent, le connecte
-              à tes vraies apps — Gmail, Sheets, Canva, Notion… — et l&apos;exécute pour de vrai.
-              Chaque action sensible attend ton feu vert, chaque étape est visible en direct.
+              Pose une question, elle répond au tac au tac sur n&apos;importe quelle page.
+              Donne un ordre, elle lit tes onglets, agit sur tes apps — Gmail, Sheets,
+              Canva, Notion… — et pilote même ton navigateur sous tes yeux.
+              Chaque action sensible attend ton feu vert.
             </p>
 
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link
-                href="/dashboard/new"
+                href="/quick"
                 className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-7 text-base font-semibold text-white shadow-lg shadow-accent/25 transition-all hover:bg-accent-hover hover:shadow-accent/35"
               >
-                <Bot className="h-5 w-5" />
-                Créer mon agent gratuit
+                <Zap className="h-5 w-5" />
+                Essayer l&apos;assistant
               </Link>
               <Link
                 href="/pricing"
@@ -112,46 +115,135 @@ export default async function HomePage() {
                 Voir les tarifs
               </Link>
             </div>
+            <p className="mt-4 text-sm text-ink-faint">
+              Gratuit pour démarrer · 2 € de crédits IA offerts · sans carte bancaire
+            </p>
           </div>
 
-          {/* ── Console live (mock produit) ── */}
+          {/* ── Panneau extension (mock produit) ── */}
           <div className="mx-auto mt-14 max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#101019] shadow-2xl shadow-accent/10">
             <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
-              <span className="ml-3 text-xs font-medium text-white/60">
-                Audit commercial hebdo — exécution en direct
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-[#8b7cff] to-[#5b4fe0] text-xs font-extrabold text-white">
+                P
+              </span>
+              <span className="text-xs font-medium text-white/60">
+                Prompta partout — sur ta page, dans tes onglets
               </span>
               <span className="ml-auto flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> LIVE
               </span>
             </div>
-            <ul className="space-y-1 p-4">
-              {DEMO_STEPS.map((s, i) => (
-                <li key={s.label} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
-                  <span className="w-4 text-xs text-white/30">{i + 1}</span>
-                  {s.state === "done" && <Check className="h-4 w-4 shrink-0 text-emerald-400" />}
-                  {s.state === "waiting" && (
-                    <ShieldCheck className="h-4 w-4 shrink-0 animate-pulse text-amber-300" />
-                  )}
-                  {s.state === "pending" && (
-                    <Loader2 className="h-4 w-4 shrink-0 text-white/25" />
-                  )}
-                  <span
-                    className={
-                      s.state === "done"
-                        ? "text-white/80"
-                        : s.state === "waiting"
-                          ? "font-medium text-amber-200"
-                          : "text-white/35"
-                    }
-                  >
-                    {s.label}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="p-4">
+              <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-[#8b7cff] to-[#5b4fe0] px-4 py-2 text-sm text-white">
+                Compare les 3 devis ouverts dans mes onglets et remplis le formulaire
+                fournisseur avec le meilleur
+              </p>
+              <ul className="mt-4 space-y-1">
+                {DEMO_STEPS.map((s, i) => (
+                  <li key={s.label} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
+                    <span className="w-4 text-xs text-white/30">{i + 1}</span>
+                    {s.state === "done" && <Check className="h-4 w-4 shrink-0 text-emerald-400" />}
+                    {s.state === "waiting" && (
+                      <ShieldCheck className="h-4 w-4 shrink-0 animate-pulse text-amber-300" />
+                    )}
+                    {s.state === "pending" && (
+                      <Loader2 className="h-4 w-4 shrink-0 text-white/25" />
+                    )}
+                    <span
+                      className={
+                        s.state === "done"
+                          ? "text-white/80"
+                          : s.state === "waiting"
+                            ? "font-medium text-amber-200"
+                            : "text-white/35"
+                      }
+                    >
+                      {s.label}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── DEUX RÉGIMES ────────────────────────────────────────────────── */}
+      <section className="border-t border-line bg-card2/50">
+        <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-accent">
+              Un cerveau, deux vitesses
+            </p>
+            <h2 className="mt-2 font-display text-2xl font-bold text-ink sm:text-3xl">
+              Du tac au tac à la mission complète
+            </h2>
+          </div>
+          <div className="mx-auto mt-12 grid max-w-4xl gap-6 sm:grid-cols-2">
+            <div className="rounded-2xl border border-line bg-card p-7">
+              <MessageSquare className="h-9 w-9 text-accent" />
+              <h3 className="mt-4 font-display text-lg font-semibold text-ink">
+                Réponse instantanée
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+                « Résume cette page », « traduis ma sélection », « explique ce tableau » —
+                la réponse arrive en streaming, en moins d&apos;une seconde, sans quitter
+                ta page. L&apos;assistant voit ce que tu vois.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-line bg-card p-7">
+              <Rocket className="h-9 w-9 text-accent" />
+              <h3 className="mt-4 font-display text-lg font-semibold text-ink">
+                Mission d&apos;agent
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+                « Lis la bdd affichée, croise-la avec mon Drive, fais-moi une prez Canva
+                et envoie-la-moi » — il bascule tout seul en agent complet : plan,
+                exécution live, validations humaines, re-planification si une étape échoue.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── SUPERPOUVOIRS ───────────────────────────────────────────────── */}
+      <section className="border-t border-line">
+        <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-accent">
+              Ce qu&apos;aucun chatbot ne fait
+            </p>
+            <h2 className="mt-2 font-display text-2xl font-bold text-ink sm:text-3xl">
+              Il travaille là où tu travailles
+            </h2>
+          </div>
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                icon: Eye,
+                title: "Il voit tes onglets — même connectés",
+                desc: "Le contenu réel de tes onglets ouverts est lu par ton navigateur, avec ta session : dashboards, CRM, mails ouverts. Il compare, croise et synthétise ce qu'aucune IA « extérieure » ne peut voir.",
+              },
+              {
+                icon: Layers,
+                title: "Il agit sur 1 000+ apps",
+                desc: "Gmail, Sheets, Canva, Notion, HubSpot, Shopify… Il crée, écrit, envoie pour de vrai — chaque écriture sensible passe par ta validation, que tu peux relire et corriger.",
+              },
+              {
+                icon: MousePointerClick,
+                title: "Il pilote ton navigateur, sous tes yeux",
+                desc: "Formulaires, clics, navigation : l'agent agit dans ton onglet en copilote visible. Chaque action est annoncée, l'élément visé est surligné, et rien de risqué ne part sans ta confirmation dans la page.",
+              },
+            ].map((f) => (
+              <div
+                key={f.title}
+                className="group rounded-2xl border border-line bg-card p-7 transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-lg hover:shadow-accent/5"
+              >
+                <f.icon className="h-9 w-9 text-accent" />
+                <h3 className="mt-4 font-display text-lg font-semibold text-ink">{f.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-ink-soft">{f.desc}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -160,7 +252,7 @@ export default async function HomePage() {
       <section className="border-t border-line bg-card">
         <div className="mx-auto max-w-page px-4 py-12 sm:px-6 lg:px-8">
           <p className="text-center text-sm font-semibold text-ink">
-            Plus de 1 000 applications connectables pour vos agents
+            Plus de 1 000 applications connectables
           </p>
           <p className="mt-1 text-center text-xs font-bold uppercase tracking-wider text-ink-faint">
             Connecté à tes outils du quotidien
@@ -195,58 +287,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── PARCOURS ────────────────────────────────────────────────────── */}
-      <section className="border-t border-line bg-card2/50">
-        <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-accent">
-              Le parcours en 4 temps
-            </p>
-            <h2 className="mt-2 font-display text-2xl font-bold text-ink sm:text-3xl">
-              Comme Render, mais pour les agents
-            </h2>
-          </div>
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              {
-                icon: Hammer,
-                step: "01",
-                title: "Construire",
-                desc: "Décris ton objectif : le copilote IA dessine l'arborescence des étapes et te guide nœud par nœud.",
-              },
-              {
-                icon: Plug,
-                step: "02",
-                title: "Connecter",
-                desc: "Gmail, Sheets, Slack, Notion, Canva… Branche un compte en un clic, sans copier d'ID.",
-              },
-              {
-                icon: Play,
-                step: "03",
-                title: "Lancer",
-                desc: "Exécution réelle par défaut. Étapes, parallélisme et validations humaines intégrées.",
-              },
-              {
-                icon: Bug,
-                step: "04",
-                title: "Superviser",
-                desc: "Console live, dossier de mission, erreurs traduites en actions — et une IA qui répare les runs.",
-              },
-            ].map((s) => (
-              <div
-                key={s.step}
-                className="group relative rounded-2xl border border-line bg-card p-6 transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-lg hover:shadow-accent/5"
-              >
-                <span className="font-display text-sm font-bold text-ink-faint">{s.step}</span>
-                <s.icon className="mt-3 h-9 w-9 text-accent" />
-                <h3 className="mt-4 font-display text-lg font-semibold text-ink">{s.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-ink-soft">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ── CONFIANCE ───────────────────────────────────────────────────── */}
       <section className="border-t border-line">
         <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
@@ -260,10 +300,10 @@ export default async function HomePage() {
               </h2>
               <ul className="mt-6 space-y-4">
                 {[
-                  "Validation humaine avant chaque action sensible — tu relis, corriges ou refuses, même par email.",
-                  "Dossier de mission complet : chaque entrée, chaque sortie, chaque email envoyé est tracé.",
-                  "Jetons OAuth chiffrés, tes clés API jamais exposées.",
-                  "Une IA de réparation qui diagnostique les échecs et relance le run corrigé.",
+                  "Validation humaine avant chaque action sensible — email, publication, CRM, e-commerce. Tu relis, corriges ou refuses.",
+                  "Pilotage du navigateur en copilote visible : action annoncée, élément surligné, confirmation dans la page pour tout ce qui est risqué. Jamais de mot de passe, jamais de paiement.",
+                  "Dossier de mission complet : chaque entrée, chaque sortie, chaque email envoyé est tracé dans ton back-office.",
+                  "Le contenu des pages est traité comme une donnée non fiable : un texte malveillant ne peut pas donner d'ordres à ton agent. Jetons OAuth chiffrés, clés API jamais exposées.",
                 ].map((t) => (
                   <li key={t} className="flex items-start gap-3 text-ink-soft">
                     <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
@@ -274,21 +314,21 @@ export default async function HomePage() {
             </div>
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
               <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
-                Validation requise
+                Confirmation requise
               </p>
               <p className="mt-2 font-medium text-amber-950">
-                « Audit commercial hebdo » attend ton feu vert
+                Prompta veut : envoyer le formulaire fournisseur
               </p>
               <div className="mt-3 rounded-xl border border-amber-200 bg-white p-4 text-sm text-ink-soft">
-                Synthèse : le CA de la semaine progresse de 12 %. Trois clients à relancer en
-                priorité : Alpha SARL, Studio K, Maison Verne…
+                Devis retenu : Alpha SARL (2 340 € — le mieux-disant sur les 3 onglets
+                comparés). Le formulaire est rempli, prêt à partir.
               </div>
               <div className="mt-4 flex gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-                  <Check className="h-4 w-4" /> Valider et continuer
+                  <Check className="h-4 w-4" /> Autoriser
                 </span>
                 <span className="inline-flex items-center rounded-lg border border-line bg-white px-4 py-2 text-sm text-ink-soft">
-                  Corriger avec l&apos;IA
+                  Refuser
                 </span>
               </div>
             </div>
@@ -345,16 +385,17 @@ export default async function HomePage() {
       <section className="border-t border-line">
         <div className="mx-auto max-w-page px-4 py-20 text-center sm:px-6 lg:px-8">
           <h2 className="font-display text-3xl font-bold text-ink">
-            Ton premier agent en production dans 10 minutes
+            Ton assistant, sur toutes tes pages, dans 2 minutes
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-ink-soft">
-            Décris ce que tu veux automatiser — le copilote s&apos;occupe du reste.
+            Crée ton compte, connecte tes apps — l&apos;assistant fait le reste,
+            et tu gardes le dernier mot.
           </p>
           <Link
-            href="/dashboard/new"
+            href="/quick"
             className="mt-8 inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-8 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover"
           >
-            <Bot className="h-5 w-5" /> Commencer gratuitement
+            <Zap className="h-5 w-5" /> Commencer gratuitement
           </Link>
         </div>
       </section>

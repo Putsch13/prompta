@@ -2,7 +2,7 @@ import { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Conditions Générales d'Utilisation | Prompta",
-  description: "Conditions générales d'utilisation de la marketplace Prompta",
+  description: "Conditions générales d'utilisation de Prompta",
 };
 
 export default function TermsPage() {
@@ -18,9 +18,9 @@ export default function TermsPage() {
       <div className="prose prose-neutral mt-8 max-w-none">
         <h2>1. Présentation de Prompta</h2>
         <p>
-          Prompta est une marketplace permettant aux créateurs de vendre des prompts,
-          agents et workflows d&apos;intelligence artificielle, et aux utilisateurs de les
-          acquérir et utiliser.
+          Prompta est une plateforme d&apos;agents d&apos;intelligence artificielle : un
+          assistant dans le navigateur et un back-office permettant de créer, exécuter
+          et superviser des agents connectés à vos applications.
         </p>
 
         <h2>2. Acceptation des conditions</h2>
@@ -42,19 +42,12 @@ export default function TermsPage() {
           et de toutes les activités réalisées depuis votre compte.
         </p>
 
-        <h2>4. Rôles et responsabilités</h2>
-        <h3>4.1 Pour les créateurs (vendeurs)</h3>
+        <h2>4. Utilisation du service</h2>
         <ul>
-          <li>Vous garantissez que vos contenus sont originaux ou que vous disposez des droits nécessaires.</li>
-          <li>Vous vous engagez à ne pas publier de contenu illégal, nuisible ou trompeur.</li>
-          <li>Vous êtes responsable de la qualité et du fonctionnement de vos prompts/agents.</li>
-          <li>Vous acceptez la commission de 20% prélevée par Prompta sur chaque vente.</li>
-        </ul>
-        <h3>4.2 Pour les acheteurs</h3>
-        <ul>
-          <li>Vous vous engagez à utiliser les contenus acquis de manière légale et éthique.</li>
-          <li>Vous ne pouvez pas revendre ou redistribuer les contenus achetés sans autorisation.</li>
-          <li>Vous acceptez que les résultats des prompts/agents dépendent de facteurs externes (modèles IA, paramètres, etc.).</li>
+          <li>Vous vous engagez à utiliser Prompta de manière légale et éthique.</li>
+          <li>Vous êtes responsable des agents que vous créez, des ordres que vous donnez à l&apos;assistant, et des actions que vous validez.</li>
+          <li>Vous acceptez que les résultats des agents dépendent de facteurs externes (modèles IA, applications connectées, contenu des pages consultées, etc.).</li>
+          <li>Les validations humaines (approbations) sont votre responsabilité : une action sensible validée par vous engage votre compte.</li>
         </ul>
 
         <h2>5. Contenus interdits</h2>
@@ -72,30 +65,29 @@ export default function TermsPage() {
         <h2>6. Paiements et remboursements</h2>
         <h3>6.1 Paiements</h3>
         <p>
-          Les paiements sont traités par Stripe. Prompta ne stocke aucune information
-          de carte bancaire. Les prix sont affichés TTC pour les clients européens.
+          Les paiements (abonnements, crédits) sont traités par Stripe. Prompta ne
+          stocke aucune information de carte bancaire. Les prix sont affichés TTC
+          pour les clients européens.
         </p>
         <h3>6.2 Remboursements</h3>
         <p>
-          Les demandes de remboursement sont évaluées au cas par cas. Un remboursement
-          peut être accordé si le contenu ne correspond pas à sa description ou ne
-          fonctionne pas comme prévu.
+          Les demandes de remboursement sont évaluées au cas par cas, notamment en
+          cas d&apos;erreur de facturation ou de dysfonctionnement avéré du service.
         </p>
 
         <h2>7. Propriété intellectuelle</h2>
         <p>
-          Les créateurs conservent leurs droits de propriété intellectuelle sur les
-          contenus qu&apos;ils publient. En publiant sur Prompta, ils accordent une licence
-          limitée permettant l&apos;affichage et la distribution de leurs contenus sur la
-          plateforme.
+          Vous conservez vos droits sur les agents, prompts et contenus que vous
+          créez. Prompta conserve ses droits sur la plateforme, l&apos;extension et les
+          marques associées. En utilisant le service, vous nous accordez une licence
+          limitée pour héberger et exécuter vos agents afin de fournir le service.
         </p>
 
         <h2>8. Modération et signalement</h2>
         <h3>8.1 Modération</h3>
         <p>
-          Tous les contenus sont soumis à une modération avant publication. Prompta
-          se réserve le droit de refuser ou supprimer tout contenu ne respectant pas
-          ces conditions.
+          Prompta se réserve le droit de suspendre un compte ou de bloquer une
+          exécution qui ne respecte pas ces conditions ou la loi applicable.
         </p>
         <h3>8.2 Procédure de signalement (Takedown)</h3>
         <p>

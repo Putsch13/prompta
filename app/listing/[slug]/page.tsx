@@ -53,6 +53,9 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   return {
     title: listing.title,
     description: listing.description || `${listing.type} sur Prompta`,
+    // Marketplace dépubliée : la page sert au lancement (possédé/abonné/partagé),
+    // plus à l'acquisition — rien à indexer.
+    robots: { index: false, follow: false },
     alternates: {
       canonical: canonicalUrl,
     },
@@ -253,13 +256,12 @@ export default async function ListingPage(props: Props) {
               {listing.type}
             </span>
             {listing.tags.map((tag) => (
-              <Link
+              <span
                 key={tag}
-                href={`/explore?q=${tag}`}
-                className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-muted hover:text-accent"
+                className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-muted"
               >
                 #{tag}
-              </Link>
+              </span>
             ))}
           </div>
 
@@ -603,12 +605,9 @@ export default async function ListingPage(props: Props) {
               </div>
             )}
 
-            {/* Créateur */}
+            {/* Créateur (profils publics dépubliés : simple carte, sans lien) */}
             {creator && (
-              <Link
-                href={`/u/${creator.username}`}
-                className="flex items-center gap-3 rounded-xl border border-border p-4 transition-colors hover:border-accent"
-              >
+              <div className="flex items-center gap-3 rounded-xl border border-border p-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-light text-sm font-bold text-accent">
                   {creator.display_name.charAt(0).toUpperCase()}
                 </div>
@@ -621,7 +620,7 @@ export default async function ListingPage(props: Props) {
                   </div>
                   <p className="text-xs text-muted">@{creator.username}</p>
                 </div>
-              </Link>
+              </div>
             )}
 
             {/* Signaler */}

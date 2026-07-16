@@ -30,7 +30,7 @@ export interface CategorySeed {
   icon?: string;
 }
 
-/** Catégories marketplace — seed DB + fallback wizard. */
+/** Catégories d'agents — seed DB + fallback wizard. */
 export const BUILDER_CATEGORIES: CategorySeed[] = [
   { slug: "marketing", name: "Marketing", icon: "📣" },
   { slug: "ventes", name: "Ventes", icon: "💼" },
@@ -432,11 +432,6 @@ export function groupBy<T extends { [key: string]: unknown }>(
     map.set(groupKey, arr);
   }
   return map;
-}
-
-/** Retourne les entrées populaires en premier */
-export function getPopularFirst<T extends CatalogEntry>(items: T[]): T[] {
-  return [...items].sort((a, b) => (b.popular ? 1 : 0) - (a.popular ? 1 : 0));
 }
 
 /** Trouve les intégrations qui nécessitent une clé API */

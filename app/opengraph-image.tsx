@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "Prompta — Ton agent IA travaille. Toi, tu valides.";
+export const alt = "Prompta — L'IA qui voit ton écran et fait le travail.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -41,13 +41,13 @@ export default function OpengraphImage() {
           <div style={{ fontSize: 36, fontWeight: 700 }}>Prompta</div>
         </div>
         <div style={{ marginTop: 48, fontSize: 68, fontWeight: 800, lineHeight: 1.15 }}>
-          Ton agent IA travaille.
+          {"L'IA qui voit ton écran"}
         </div>
         <div style={{ fontSize: 68, fontWeight: 800, lineHeight: 1.15, opacity: 0.9 }}>
-          Toi, tu valides.
+          et fait le travail.
         </div>
         <div style={{ marginTop: 40, fontSize: 30, opacity: 0.85 }}>
-          Construis, lance et supervise des agents connectés à 1 000+ applications.
+          Tac au tac, missions cross-app, pilotage du navigateur — toi, tu valides.
         </div>
       </div>
     ),

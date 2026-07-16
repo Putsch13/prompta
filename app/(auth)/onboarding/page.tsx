@@ -180,7 +180,7 @@ export default function OnboardingPage() {
             </label>
             <div className="relative mt-1.5">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-faint">
-                prompta.io/u/
+                @
               </span>
               <input
                 id="username"
@@ -195,7 +195,7 @@ export default function OnboardingPage() {
                     e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
                   )
                 }
-                className="h-10 w-full rounded-lg border border-line bg-card pl-[7.5rem] pr-10 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="h-10 w-full rounded-lg border border-line bg-card pl-8 pr-10 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
                 {checkingUsername && (

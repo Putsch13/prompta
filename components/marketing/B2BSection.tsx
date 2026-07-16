@@ -109,7 +109,7 @@ export function B2BSection() {
                 <div>
                   <p className="font-medium text-ink">Bibliothèque privée</p>
                   <p className="text-sm text-ink-soft">
-                    Agents et workflows internes, non publiés sur le marketplace public.
+                    Agents et workflows internes, privés et partagés à votre équipe uniquement.
                   </p>
                 </div>
               </li>

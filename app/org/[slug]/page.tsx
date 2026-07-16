@@ -108,7 +108,7 @@ export default async function OrgPage(props: Props) {
             </h2>
             {approved.length === 0 ? (
               <p className="mt-4 text-sm text-ink-soft">
-                Aucun contenu approuvé. Importez un agent du marketplace.
+                Aucun contenu approuvé. Importez un agent de votre bibliothèque.
               </p>
             ) : (
               <ul className="mt-4 space-y-2">
@@ -125,10 +125,10 @@ export default async function OrgPage(props: Props) {
             )}
             <OrgImportPanel orgSlug={org.slug} isEditor={isEditor} />
             <Link
-              href="/explore"
+              href="/dashboard/contenus"
               className="mt-3 inline-block text-sm text-accent hover:underline"
             >
-              Parcourir le marketplace →
+              Voir mes agents →
             </Link>
           </section>
 

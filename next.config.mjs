@@ -15,6 +15,17 @@ const nextConfig = {
       { source: "/dashboard/:path*", headers: antiFrame },
     ];
   },
+  async redirects() {
+    // Marketplace dépubliée (recentrage produit sur l'assistant navigateur) :
+    // les anciennes URL publiques — catalogue, catégories, profils créateurs —
+    // redirigent vers l'accueil. Les pages /listing restent (lancement d'un
+    // agent possédé/abonné) mais ne sont plus indexées.
+    return [
+      { source: "/explore", destination: "/", permanent: true },
+      { source: "/c/:slug*", destination: "/", permanent: true },
+      { source: "/u/:username*", destination: "/", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

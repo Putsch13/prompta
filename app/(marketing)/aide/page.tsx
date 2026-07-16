@@ -4,10 +4,31 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Aide & FAQ — Prompta",
   description:
-    "Tout comprendre : créer un agent IA, connecter tes apps, crédits et BYOK, validations humaines, planification, sécurité.",
+    "Tout comprendre : l'assistant dans le navigateur, créer un agent IA, connecter tes apps, crédits et BYOK, validations humaines, planification, sécurité.",
 };
 
 const SECTIONS: Array<{ title: string; items: Array<{ q: string; a: string }> }> = [
+  {
+    title: "L'assistant dans le navigateur (Prompta partout)",
+    items: [
+      {
+        q: "C'est quoi, Prompta partout ?",
+        a: "Une barre flottante disponible sur toutes tes pages web (extension Chrome) : tu poses une question, elle répond au tac au tac en voyant la page affichée. Tu donnes un ordre plus ambitieux (« croise cette page avec mon Drive et envoie-moi une synthèse ») et elle bascule toute seule en mission d'agent complète, avec plan et suivi en direct.",
+      },
+      {
+        q: "L'assistant peut-il lire mes autres onglets ?",
+        a: "Oui — mentionne-les simplement (« compare les 3 devis ouverts dans mes onglets ») : le contenu est lu par TON navigateur, avec ta session, donc ça marche aussi sur les pages derrière login (CRM, mails, dashboards). Rien n'est lu sans que tu le demandes.",
+      },
+      {
+        q: "Comment fonctionne le pilotage du navigateur ?",
+        a: "Quand une mission l'exige, l'agent agit directement dans ton onglet : il annonce chaque action, surligne l'élément visé, puis clique ou remplit sous tes yeux. Toute action risquée (envoyer, publier, payer, supprimer) affiche une confirmation dans la page — sans ton feu vert, rien ne part. Il ne saisit jamais de mot de passe ni de données de paiement.",
+      },
+      {
+        q: "Une mission lancée depuis l'assistant a bien marché, je peux la garder ?",
+        a: "Oui — bouton « Sauvegarder comme agent » sur la mission : elle devient un agent privé réutilisable dans ton Dashboard, planifiable et modifiable dans le builder.",
+      },
+    ],
+  },
   {
     title: "Créer & modifier un agent",
     items: [

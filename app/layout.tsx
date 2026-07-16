@@ -17,11 +17,11 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: {
-    default: "Prompta — Marketplace de prompts, agents & workflows IA",
+    default: "Prompta — l'IA qui voit ton écran et fait le travail",
     template: "%s | Prompta",
   },
   description:
-    "Découvrez, achetez et publiez des prompts, agents et workflows IA prêts à l'emploi. Bundles complets avec environnement, guide et versioning.",
+    "L'assistant IA dans ton navigateur : réponse instantanée sur n'importe quelle page, missions complètes sur tes apps, pilotage du navigateur sous tes yeux — avec validation humaine.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
   openGraph: {
     siteName: "Prompta",

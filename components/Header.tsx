@@ -11,6 +11,7 @@ const NAV = [
   { href: "/cas-usage", label: "Cas d'usage" },
   { href: "/pricing", label: "Tarifs" },
   { href: "/aide", label: "Aide" },
+  { href: "/quick", label: "Assistant", authOnly: true },
   { href: "/wallet", label: "Mon wallet", authOnly: true },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/admin", label: "Admin", adminOnly: true },
