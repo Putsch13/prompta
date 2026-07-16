@@ -115,7 +115,7 @@ async function auditPublicPages() {
 }
 
 async function auditAuthGates() {
-  for (const path of ["/dashboard", "/dashboard/contenus", "/dashboard/runs", "/dashboard/connexions", "/dashboard/validations", "/admin"]) {
+  for (const path of ["/dashboard", "/dashboard/runs", "/dashboard/connexions", "/dashboard/validations", "/admin"]) {
     try {
       const [res, ms] = await timed(() => fetch(`${BASE_URL}${path}`, { redirect: "manual" }));
       const ok = [302, 303, 307, 308].includes(res.status);
@@ -130,7 +130,7 @@ async function auditAuthenticated(cookies: Record<string, string>) {
   const H = { cookie: cookieHeader(cookies) };
 
   // Pages clés connectées → 200 sans page d'erreur.
-  for (const path of ["/dashboard", "/dashboard/contenus", "/dashboard/runs", "/dashboard/connexions", "/dashboard/validations", "/dashboard/abonnements", "/admin"]) {
+  for (const path of ["/dashboard", "/dashboard/runs", "/dashboard/connexions", "/dashboard/validations", "/dashboard/abonnements", "/admin"]) {
     try {
       const [res, ms] = await timed(() => fetch(`${BASE_URL}${path}`, { headers: H, redirect: "manual" }));
       const body = res.status === 200 ? await res.text() : "";

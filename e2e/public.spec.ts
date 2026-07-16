@@ -56,6 +56,19 @@ test.describe("Prompta — parcours public", () => {
     await expect(page).toHaveURL(/\/login\?redirect=%2Fdashboard/);
   });
 
+  test("routes builder coupées redirigent (login ou runs)", async ({ page }) => {
+    for (const path of [
+      "/dashboard/new",
+      "/dashboard/contenus",
+      "/dashboard/ia-quotidien",
+      "/dashboard/documents",
+      "/dashboard/payouts",
+    ]) {
+      await page.goto(path);
+      await expect(page).toHaveURL(/login|dashboard\/runs/);
+    }
+  });
+
   test("APIs sensibles refusent sans auth", async ({ request }) => {
     for (const path of ["/api/approvals", "/api/connectors", "/api/keys", "/api/credits"]) {
       const res = await request.get(path);

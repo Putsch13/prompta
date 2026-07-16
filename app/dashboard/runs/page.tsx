@@ -292,10 +292,10 @@ function RunsHistoryContent() {
         <div className="mt-8">
           <EmptyState
             title="Aucun run dans cette vue"
-            description="Lancez un agent pour voir ses exécutions, logs et erreurs apparaître ici."
+            description="Donne un ordre dans l'assistant (Prompta partout ou /quick) — les missions et réponses apparaissent ici."
             action={
-              <Link href="/dashboard/contenus" className="text-sm font-medium text-accent hover:underline">
-                Voir mes agents →
+              <Link href="/quick" className="text-sm font-medium text-accent hover:underline">
+                Ouvrir l&apos;assistant →
               </Link>
             }
           />

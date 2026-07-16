@@ -154,13 +154,13 @@ export default function AidePage() {
 
       <div className="mt-14 rounded-2xl border border-accent/30 bg-accent/5 p-8 text-center">
         <p className="font-display text-lg font-semibold text-ink">
-          Prêt à mettre un agent au travail ?
+          Prêt à donner un ordre à l&apos;assistant ?
         </p>
         <Link
-          href="/dashboard/new"
+          href="/quick"
           className="mt-4 inline-flex rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover"
         >
-          Créer mon agent
+          Ouvrir l&apos;assistant
         </Link>
       </div>
 
