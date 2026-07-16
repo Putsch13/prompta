@@ -209,7 +209,9 @@ async function executeStepWithRetry(
         throw err;
       }
       const code = extractErrorCode(err);
-      if (attempt >= maxAttempts || !RETRYABLE_CODES.has(code)) throw err;
+      // Jamais de retry sur un pilotage navigateur : les actions déjà
+      // exécutées dans l'onglet (clics, envois) ne sont pas idempotentes.
+      if (step.type === "browser" || attempt >= maxAttempts || !RETRYABLE_CODES.has(code)) throw err;
       await new Promise((r) => setTimeout(r, 1000 * attempt));
     }
   }
@@ -239,7 +241,9 @@ async function executeStep(
             ? `Approbation ${step.label ?? ""}`.trim()
             : sType === "retrieve"
               ? `Retrieve ${step.source}`
-              : "Code sandbox";
+              : sType === "browser"
+                ? "Pilotage navigateur"
+                : "Code sandbox";
 
   const resolved = sType === "llm" ? resolveModelOrDefault(step.model) : null;
 
@@ -715,6 +719,43 @@ async function executeStep(
       return { content };
     }
 
+    if (step.type === "browser") {
+      const pilotGoal = interpolate(step.goal, vars, { maxVarChars: 4_000 });
+      if (simulated || ctx.demoMode) {
+        const preview = `[${ctx.demoMode ? "DÉMO" : "APERÇU"} — pilotage navigateur non exécuté]\n${pilotGoal.slice(0, 300)}`;
+        if (runId && stepDbId) {
+          await logStepSuccess(stepDbId, preview, undefined, stepStartedAt).catch(() => undefined);
+        }
+        return { content: preview };
+      }
+      if (!runId) throw new Error("Le pilotage du navigateur requiert un runId");
+      const { runBrowserPilot } = await import("./browser-pilot");
+      const pilot = await runBrowserPilot({
+        goal: pilotGoal,
+        runId,
+        stepIndex,
+        modelId: step.model,
+        apiKeys: ctx.apiKeys,
+        maxActions: step.maxActions,
+      });
+      const content = pilot.finalUrl ? `${pilot.summary}\n(page finale : ${pilot.finalUrl})` : pilot.summary;
+      await logRunActivity({
+        userId: ctx.userId,
+        runId: ctx.runId,
+        listingId: ctx.listingId,
+        actionType: "tool",
+        actionLabel: `Pilotage navigateur (${pilot.actionsUsed} actions)`,
+        detail: { stepIndex, actions: pilot.actionsUsed },
+      }).catch(() => undefined);
+      if (runId && stepDbId) {
+        await logStepSuccess(stepDbId, content.slice(0, 4000), undefined, stepStartedAt).catch(() => undefined);
+      }
+      return {
+        content,
+        usage: { inputTokens: pilot.inputTokens, outputTokens: pilot.outputTokens, model: pilot.model, tool: "browser" },
+      };
+    }
+
     if (step.type === "approval") {
       // Le contenu À VALIDER = template interpolé + contenu produit par l'étape
       // amont (le rapport/email/message), pour que l'utilisateur voie vraiment
@@ -805,6 +846,8 @@ function describeStep(step: AgentStep, index: number): string {
       return step.label ?? "Approbation";
     case "retrieve":
       return `Retrieve ${step.source}`;
+    case "browser":
+      return "Pilotage navigateur";
     default:
       return `Étape ${index + 1}`;
   }
@@ -929,11 +972,16 @@ export async function runAgent(
   // limites (builder ≤ 2026-07) portent des plafonds intenables figés dans leur
   // manifeste (60 s, 5 tool calls, 8 000 tokens cumulés, 50 Ko) qui faisaient
   // échouer des runs valides. Le coût reste gardé par le hold de crédits.
+  // Une étape de pilotage navigateur dialogue avec l'humain (confirmations
+  // in-page, chargements) : elle a besoin d'un plancher de temps bien plus haut.
+  const hasBrowserStep = manifest.steps.some(
+    (s) => s.type === "browser" || (s.type === "parallel" && s.branches.some((b) => b.steps.some((x) => x.type === "browser"))),
+  );
   const flooredLimits = {
     ...manifest.limits,
     max_steps: Math.max(manifest.limits.max_steps, manifest.steps.length + 2),
     max_tokens: Math.max(manifest.limits.max_tokens, 16_000),
-    timeout_ms: Math.max(manifest.limits.timeout_ms ?? 60_000, 120_000),
+    timeout_ms: Math.max(manifest.limits.timeout_ms ?? 60_000, hasBrowserStep ? 600_000 : 120_000),
     max_tool_calls: Math.max(manifest.limits.max_tool_calls ?? 5, 10),
     max_output_bytes: Math.max(manifest.limits.max_output_bytes ?? 51_200, 512_000),
   };
@@ -1180,7 +1228,7 @@ export async function runAgent(
           i
         );
 
-        if (step.type === "tool" || step.type === "action") {
+        if (step.type === "tool" || step.type === "action" || step.type === "browser") {
           toolCalls++;
           if (toolCalls > maxToolCalls) throw new Error("Plafond max_tool_calls atteint");
         }

@@ -31,12 +31,12 @@ export async function validateAgentPreflight(
   }
 
   for (const step of manifest.steps) {
-    if (step.type === "llm") {
+    if (step.type === "llm" || step.type === "browser") {
       const { provider } = resolveModelOrDefault(step.model);
       if (!apiKeys[provider] && !manifest.secrets.includes(provider as KeyProvider)) {
         issues.push({
           code: "missing_key",
-          message: `Clé ${provider} requise pour le modèle ${step.model}.`,
+          message: `Clé ${provider} requise pour ${step.type === "llm" ? `le modèle ${step.model}` : "le pilotage du navigateur"}.`,
         });
       }
     }

@@ -119,8 +119,8 @@ export function deriveRunInputsFromSteps(
         continue;
       }
 
-      if (step.type === "llm") {
-        for (const key of extractInputVariables(step.prompt)) {
+      if (step.type === "llm" || step.type === "browser") {
+        for (const key of extractInputVariables(step.type === "llm" ? step.prompt : step.goal)) {
           addField(key, { label: keyToLabel(key), required: true, type: "text" });
         }
         continue;

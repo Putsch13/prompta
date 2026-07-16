@@ -112,6 +112,22 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
     outputKey: z.string().optional(),
     maxResults: z.number().default(5),
   }),
+  /**
+   * Pilotage du navigateur (Prompta partout) : l'agent AGIT dans l'onglet de
+   * l'utilisateur — clics, saisie, navigation — en mode copilote visible.
+   * Boucle serveur : le LLM décide une action à la fois, l'extension l'exécute
+   * dans la page (avec la session de l'utilisateur) et renvoie un snapshot.
+   * Les actions à risque exigent une confirmation IN-PAGE de l'utilisateur.
+   */
+  z.object({
+    type: z.literal("browser"),
+    /** Objectif de la séquence de pilotage, en langage naturel. */
+    goal: z.string(),
+    /** Modèle qui décide les actions (défaut : modèle de la mission). */
+    model: z.string().optional(),
+    maxActions: z.number().optional(),
+    outputKey: z.string().optional(),
+  }),
 ]);
 
 export type BaseAgentStep = z.infer<typeof BaseAgentStepSchema>;

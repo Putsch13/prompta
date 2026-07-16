@@ -16,15 +16,4 @@ export function marginCentsFromCost(actualCostCents: number): number {
   return Math.max(0, billed - costInWalletUnits);
 }
 
-/** Vérifie que la marge structurelle est positive (MARKUP > 1). */
-export function assertProfitableMarkup(): void {
-  if (MARKUP <= 1) {
-    throw new Error("MARKUP doit être > 1 pour que le mode crédits soit rentable.");
-  }
-}
-
-export function estimateHoldCents(estimatedCostCents: number): number {
-  return billedCentsFromCost(estimatedCostCents);
-}
-
 export { CREDIT_VALUE_CENTS, MARKUP, costToCredits };

@@ -95,6 +95,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: true, tabs: await captureTabContents(msg.urls, msg.maxTabs, msg.maxChars) });
       } else if (msg?.type === "prompta:baseUrl") {
         sendResponse({ ok: true, baseUrl: await baseUrl() });
+      } else if (msg?.type === "prompta:pilot-watch") {
+        // Un run vient d'être lancé depuis cet onglet (ou l'onglet actif pour le
+        // popup) : le service worker surveille ses tâches de pilotage navigateur.
+        const tabId = msg.tabId ?? _sender?.tab?.id;
+        if (msg.runId && tabId) watchPilotRun(msg.runId, tabId);
+        sendResponse({ ok: true });
       } else {
         sendResponse({ ok: false, status: 0, body: { message: "message inconnu" } });
       }
@@ -104,6 +110,118 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   })();
   return true; // réponse asynchrone
 });
+
+// ── Pilotage du navigateur (copilote visible) ────────────────────────────────
+// Une étape « browser » d'un run pousse des tâches (snapshot / action) dans une
+// file serveur. Le worker les récupère en pollant le statut du run, les fait
+// exécuter par le content script de l'onglet piloté (overlay + confirmation
+// in-page pour les actions risquées), puis poste la réponse.
+const pilotSessions = new Map(); // runId → { tabId, timer, busy, seen:Set }
+const PILOT_POLL_MS = 1500;
+const PILOT_MAX_MS = 15 * 60 * 1000;
+
+function watchPilotRun(runId, tabId) {
+  const existing = pilotSessions.get(runId);
+  if (existing) { existing.tabId = tabId; return; }
+  const s = { tabId, busy: false, seen: new Set(), timer: null, startedAt: Date.now() };
+  pilotSessions.set(runId, s);
+  s.timer = setInterval(() => {
+    if (Date.now() - s.startedAt > PILOT_MAX_MS) { stopPilot(runId); return; }
+    pilotTick(runId).catch(() => { /* tick suivant */ });
+  }, PILOT_POLL_MS);
+}
+
+function stopPilot(runId) {
+  const s = pilotSessions.get(runId);
+  if (!s) return;
+  clearInterval(s.timer);
+  pilotSessions.delete(runId);
+  chrome.tabs.sendMessage(s.tabId, { type: "prompta:pilot-end" }).catch(() => { /* onglet fermé */ });
+}
+
+async function pilotTick(runId) {
+  const s = pilotSessions.get(runId);
+  if (!s || s.busy) return;
+  s.busy = true;
+  try {
+    const r = await api(`/api/run/agent/${encodeURIComponent(runId)}`);
+    if (!r.ok || !r.body) return;
+    if (["completed", "failed", "cancelled", "awaiting_approval"].includes(r.body.status)) {
+      stopPilot(runId);
+      return;
+    }
+    const task = r.body.browser_task;
+    if (!task || s.seen.has(task.id)) return;
+    s.seen.add(task.id);
+    let response;
+    try {
+      response = await runPilotTask(s, task.request || {});
+    } catch (err) {
+      response = { ok: false, error: String((err && err.message) || err).slice(0, 300) };
+    }
+    await api(`/api/extension/browser-tasks/${encodeURIComponent(task.id)}`, {
+      method: "POST",
+      body: JSON.stringify(response),
+    });
+  } finally {
+    s.busy = false;
+  }
+}
+
+function waitForTabComplete(tabId, timeoutMs = 15000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve();
+    };
+    const onUpdated = (id, info) => {
+      // 600 ms de grâce après « complete » : laisser les apps SPA se peindre.
+      if (id === tabId && info.status === "complete") setTimeout(finish, 600);
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    setTimeout(finish, timeoutMs);
+  });
+}
+
+async function tabSnapshot(tabId) {
+  const r = await chrome.tabs.sendMessage(tabId, { type: "prompta:pilot-snapshot" });
+  if (!r || !r.ok || !r.snapshot) throw new Error((r && r.error) || "Snapshot de page impossible (onglet fermé ?)");
+  return r.snapshot;
+}
+
+async function runPilotTask(s, request) {
+  const { tabId } = s;
+  if (request.kind === "snapshot") {
+    return { ok: true, snapshot: await tabSnapshot(tabId) };
+  }
+  const action = request.action || {};
+  if (action.type === "navigate") {
+    if (!/^https?:\/\//i.test(action.url || "")) return { ok: false, error: "URL de navigation invalide" };
+    chrome.tabs.sendMessage(tabId, { type: "prompta:pilot-toast", label: request.label || "" }).catch(() => {});
+    await chrome.tabs.update(tabId, { url: action.url });
+    await new Promise((r) => setTimeout(r, 800));
+    await waitForTabComplete(tabId);
+    return { ok: true, snapshot: await tabSnapshot(tabId) };
+  }
+  if (action.type === "wait") {
+    await new Promise((r) => setTimeout(r, 1500));
+    return { ok: true, snapshot: await tabSnapshot(tabId) };
+  }
+  // click / type / select / scroll : exécutés PAR le content script.
+  try {
+    const r = await chrome.tabs.sendMessage(tabId, { type: "prompta:pilot-act", action, label: request.label || "" });
+    if (!r) throw new Error("action sans réponse");
+    return r;
+  } catch {
+    // Le clic a probablement déclenché une navigation (contexte du content
+    // script détruit avant la réponse) : attendre le chargement, snapshot frais.
+    await waitForTabComplete(tabId);
+    return { ok: true, snapshot: await tabSnapshot(tabId) };
+  }
+}
 
 // ── Tac au tac streamé ───────────────────────────────────────────────────────
 // Port longue durée : le panneau envoie { payload }, le worker relaie chaque

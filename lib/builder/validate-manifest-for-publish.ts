@@ -47,6 +47,9 @@ function scanSteps(steps: AgentStep[], stepOffset = 0): CredentialLeakIssue[] {
     if (step.type === "code") {
       issues.push(...scanText(step.source, idx));
     }
+    if (step.type === "browser") {
+      issues.push(...scanText(step.goal, idx));
+    }
     if (step.type === "action") {
       const allowLiterals = step.sharedEnv === true;
       for (const [key, value] of Object.entries(step.params ?? {})) {

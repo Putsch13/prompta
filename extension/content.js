@@ -71,6 +71,115 @@
     openTabs = (r?.ok && Array.isArray(r.tabs) ? r.tabs : []).map((t) => ({ title: t.title, url: t.url, checked: true }));
   }
 
+  // ── Pilotage (copilote visible) ──────────────────────────────────────────
+  // L'agent AGIT dans CETTE page : snapshot des éléments interactifs, puis
+  // exécution d'actions une à une, sous les yeux de l'utilisateur (toast +
+  // halo sur l'élément). Les actions risquées exigent SA confirmation in-page.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const RISKY_RE = /(envoyer|send|publier|publish|payer|payment|pay\b|acheter|buy|checkout|commander|order|supprimer|delete|remove|confirmer|confirm|valider|submit|poster|post\b|tweeter|tweet|répondre|reply|s'abonner|subscribe|transférer|transfer|signer|sign\b|enregistrer|save)/i;
+  let pilotEls = new Map(); // id « eN » → élément (du DERNIER snapshot)
+
+  function pilotSnapshot() {
+    pilotEls = new Map();
+    const elements = [];
+    let n = 0;
+    const nodes = document.querySelectorAll("a[href],button,input,textarea,select,[role='button'],[contenteditable='true']");
+    for (const el of nodes) {
+      if (elements.length >= 80) break;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.display === "none") continue;
+      const id = "e" + (++n);
+      pilotEls.set(id, el);
+      const item = { id, tag: el.tagName.toLowerCase() };
+      const text = (el.innerText || el.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
+      if (text) item.text = text.slice(0, 100);
+      if (el.tagName === "A" && el.href) item.href = String(el.href).slice(0, 300);
+      if (el.placeholder) item.placeholder = String(el.placeholder).slice(0, 80);
+      if (el.tagName === "INPUT") {
+        item.inputType = el.type;
+        if (el.type !== "password" && el.value) item.value = String(el.value).slice(0, 80);
+      }
+      if (el.tagName === "TEXTAREA" && el.value) item.value = String(el.value).slice(0, 80);
+      if (el.tagName === "SELECT") item.value = String(el.value).slice(0, 80);
+      elements.push(item);
+    }
+    return { url: location.href, title: document.title || "", text: extractPageText(6000), elements };
+  }
+
+  function isRiskyAction(action, el) {
+    if (action.type === "type" && action.submit) return true;
+    if (action.type !== "click" || !el) return false;
+    if (el.type === "submit") return true;
+    const t = (el.innerText || el.value || el.getAttribute("aria-label") || "").toLowerCase();
+    return RISKY_RE.test(t);
+  }
+
+  function setNativeValue(el, value) {
+    el.focus();
+    if (el.isContentEditable) {
+      el.textContent = value;
+      el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      return;
+    }
+    // Setter natif du prototype : indispensable pour les inputs contrôlés
+    // (React & co ignorent une simple affectation el.value).
+    const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    if (setter) setter.call(el, value); else el.value = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function submitField(el) {
+    if (el.form && typeof el.form.requestSubmit === "function") { el.form.requestSubmit(); return; }
+    for (const type of ["keydown", "keypress", "keyup"]) {
+      el.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+    }
+  }
+
+  async function pilotAct(action, label) {
+    const needsEl = ["click", "type", "select"].includes(action.type);
+    const el = needsEl ? pilotEls.get(action.id) : null;
+    if (needsEl && (!el || !document.contains(el))) {
+      return { ok: false, error: "élément introuvable (la page a changé depuis le snapshot)", snapshot: pilotSnapshot() };
+    }
+    if (action.type === "type" && el && (el.type === "password" || /pass|pwd/i.test(el.name || ""))) {
+      return { ok: false, error: "champ mot de passe — saisie refusée par sécurité", snapshot: pilotSnapshot() };
+    }
+    pilotToast(label || "action en cours…");
+    if (el) {
+      try { el.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { /* iframe/pos exotique */ }
+      await sleep(350);
+      pilotHighlight(el);
+    }
+    if (isRiskyAction(action, el)) {
+      const approved = await pilotConfirm(label || "cette action");
+      if (!approved) {
+        pilotClearHighlight();
+        return { ok: false, declined: true, snapshot: pilotSnapshot() };
+      }
+    }
+    try {
+      if (action.type === "click") el.click();
+      else if (action.type === "type") { setNativeValue(el, String(action.text ?? "")); if (action.submit) submitField(el); }
+      else if (action.type === "select") {
+        el.value = String(action.value ?? "");
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      else if (action.type === "scroll") window.scrollBy({ top: action.dir === "up" ? -600 : 600, behavior: "smooth" });
+      else { pilotClearHighlight(); return { ok: false, error: `action inconnue « ${action.type} »`, snapshot: pilotSnapshot() }; }
+      await sleep(1000); // laisser la page réagir (requêtes, re-render)
+      pilotClearHighlight();
+      return { ok: true, snapshot: pilotSnapshot() };
+    } catch (err) {
+      pilotClearHighlight();
+      return { ok: false, error: String((err && err.message) || err).slice(0, 200), snapshot: pilotSnapshot() };
+    }
+  }
+
   // ── UI ───────────────────────────────────────────────────────────────────
   const host = document.createElement("div");
   host.id = "prompta-everywhere-host";
@@ -146,6 +255,19 @@
       .snd { width:34px; height:34px; border-radius:11px; background:linear-gradient(135deg,#8b7cff,#5b4fe0); color:#fff; border:none; font-size:15px; cursor:pointer; flex-shrink:0; transition:transform .12s, opacity .15s; box-shadow:0 3px 10px rgba(91,79,224,.35); }
       .snd:hover:not(:disabled) { transform:scale(1.06); }
       .snd:disabled { opacity:.4; cursor:default; box-shadow:none; }
+      .ptoast { position:fixed; top:18px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:9px;
+        background:rgba(13,17,28,.95); border:1px solid rgba(124,108,255,.4); color:#f3f5fb; font-size:12.5px;
+        border-radius:999px; padding:8px 16px; box-shadow:0 8px 28px rgba(0,0,0,.55); max-width:70vw; }
+      .ptoast span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .porb { width:12px; height:12px; border-radius:50%; flex-shrink:0; background:conic-gradient(from 0deg,#8b7cff,#4a3fd0,#8b7cff); animation:pspin 1.1s linear infinite; }
+      .pring { position:fixed; display:none; border:2px solid #8b7cff; border-radius:8px; box-shadow:0 0 0 4px rgba(139,124,255,.28); pointer-events:none; transition:all .25s ease; }
+      .pconfirm { position:fixed; top:64px; left:50%; transform:translateX(-50%); display:none; background:rgba(13,17,28,.97);
+        border:1px solid rgba(124,108,255,.45); border-radius:14px; padding:13px 15px; color:#f3f5fb; font-size:13px;
+        max-width:440px; box-shadow:0 16px 48px rgba(0,0,0,.65); line-height:1.5; }
+      .pcbtns { display:flex; gap:8px; margin-top:10px; justify-content:flex-end; }
+      .pcbtns button { border:none; border-radius:9px; padding:6px 14px; font-size:12px; cursor:pointer; font-weight:600; }
+      .pcyes { background:linear-gradient(135deg,#8b7cff,#5b4fe0); color:#fff; }
+      .pcno { background:rgba(30,39,64,.9); color:#aab3cc; border:1px solid rgba(124,108,255,.2) !important; }
     </style>
     <button class="fab" title="Prompta (Alt+P)">P</button>
     <div class="panel">
@@ -176,6 +298,12 @@
           <button class="snd" data-r="send">↑</button>
         </div>
       </div>
+    </div>
+    <div class="ptoast" data-r="ptoast"><span class="porb"></span><span data-r="ptoastmsg"></span></div>
+    <div class="pring" data-r="pring"></div>
+    <div class="pconfirm" data-r="pconfirm">
+      <div><b>Prompta veut :</b> <span data-r="pcmsg"></span></div>
+      <div class="pcbtns"><button class="pcno" data-r="pcno">Refuser</button><button class="pcyes" data-r="pcyes">Autoriser</button></div>
     </div>`;
 
   const $ = (r) => root.querySelector(`[data-r="${r}"]`);
@@ -186,6 +314,48 @@
   const alltabsEl = $("alltabs"), exploreEl = $("explore");
 
   send("prompta:baseUrl").then((r) => { if (r?.baseUrl) { baseUrl = r.baseUrl; $("conns").href = baseUrl + "/dashboard/connexions"; } });
+
+  // ── Overlay copilote (toast d'action, halo, confirmation in-page) ───────
+  const ptoast = $("ptoast"), ptoastmsg = $("ptoastmsg"), pring = $("pring"), pconfirm = $("pconfirm"), pcmsg = $("pcmsg");
+  let toastTimer = null;
+  function pilotToast(label) {
+    ptoastmsg.textContent = "Prompta pilote — " + label;
+    ptoast.style.display = "flex";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { ptoast.style.display = "none"; }, 6000);
+  }
+  function pilotHighlight(el) {
+    const r = el.getBoundingClientRect();
+    pring.style.display = "block";
+    pring.style.top = r.top - 4 + "px";
+    pring.style.left = r.left - 4 + "px";
+    pring.style.width = r.width + 8 + "px";
+    pring.style.height = r.height + 8 + "px";
+  }
+  function pilotClearHighlight() { pring.style.display = "none"; }
+  let confirmResolve = null;
+  function pilotConfirm(label) {
+    return new Promise((resolve) => {
+      // Une seule confirmation à la fois : l'ancienne (zombie) est refusée.
+      if (confirmResolve) confirmResolve(false);
+      confirmResolve = resolve;
+      pcmsg.textContent = label;
+      pconfirm.style.display = "block";
+      // Auto-refus avant l'expiration de la tâche serveur (60 s) : silence = non.
+      setTimeout(() => { if (confirmResolve === resolve) settleConfirm(false); }, 40_000);
+    });
+  }
+  function settleConfirm(value) {
+    pconfirm.style.display = "none";
+    if (confirmResolve) { confirmResolve(value); confirmResolve = null; }
+  }
+  $("pcyes").addEventListener("click", () => settleConfirm(true));
+  $("pcno").addEventListener("click", () => settleConfirm(false));
+  function pilotEnd() {
+    ptoast.style.display = "none";
+    pilotClearHighlight();
+    settleConfirm(false);
+  }
 
   // ── Rendu ──────────────────────────────────────────────────────────────
   function statusText(s) { return { completed: "terminé", failed: "échec", awaiting_approval: "à valider", running: "en cours", pending: "en file", streaming: "répond…" }[s] || s; }
@@ -284,6 +454,9 @@
       current.planned = r.body.planned_steps?.length ? r.body.planned_steps : current.planned;
       current.error = r.body.error_message; current.answer = extractAnswer(r.body.output);
       current.approvalId = r.body.approval_id ?? null;
+      // Tâche de pilotage en attente : (ré)armer le service worker — couvre le
+      // redémarrage du worker ET un plan réparé qui introduit du pilotage.
+      if (r.body.browser_task) send("prompta:pilot-watch", { runId: current.runId });
       renderFeed();
       // Terminal OU en attente de validation : on cesse de poller (la validation
       // se fait dans le dashboard ; loadHistory rafraîchira à la réouverture).
@@ -324,6 +497,9 @@
       renderFeed(); return;
     }
     current.runId = r.body.runId; current.title = r.body.title; current.status = "running";
+    // Mission avec pilotage : le service worker surveille la file de tâches
+    // navigateur et les fait exécuter dans CET onglet.
+    if (r.body.pilots) send("prompta:pilot-watch", { runId: current.runId });
     renderFeed(); poll();
   }
 
@@ -406,6 +582,15 @@
     // Le service worker lit CET onglet (croisement d'onglets avec session).
     if (msg?.type === "prompta:capture") {
       sendResponse({ content: extractPageText(msg.maxChars || 8000), title: document.title || "", url: location.href });
+      return;
+    }
+    // Pilotage : le service worker fait exécuter les actions de l'agent ICI.
+    if (msg?.type === "prompta:pilot-snapshot") { sendResponse({ ok: true, snapshot: pilotSnapshot() }); return; }
+    if (msg?.type === "prompta:pilot-toast") { pilotToast(msg.label || "navigation…"); return; }
+    if (msg?.type === "prompta:pilot-end") { pilotEnd(); return; }
+    if (msg?.type === "prompta:pilot-act") {
+      pilotAct(msg.action || {}, msg.label || "").then(sendResponse);
+      return true; // réponse asynchrone
     }
   });
 

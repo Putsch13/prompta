@@ -39,6 +39,7 @@ const KIND_FALLBACK: Record<string, { lucide: string; color: string; label: stri
   approval: { lucide: "Shield", color: "#D97706", label: "Approbation" },
   action: { lucide: "Zap", color: "#10B981", label: "Action" },
   retrieve: { lucide: "BookOpen", color: "#0D9488", label: "Savoir (RAG)" },
+  browser: { lucide: "MousePointerClick", color: "#EC4899", label: "Navigateur" },
   trigger: { lucide: "Play", color: "#64748B", label: "Déclencheur" },
 };
 

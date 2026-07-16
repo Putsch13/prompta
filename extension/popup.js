@@ -251,6 +251,9 @@ function pollRun() {
     current.error = r.body.error_message;
     current.answer = extractAnswer(r.body.output);
     current.approvalId = r.body.approval_id ?? null;
+    // Tâche de pilotage en attente : (ré)armer le service worker — couvre le
+    // redémarrage du worker ET un plan réparé qui introduit du pilotage.
+    if (r.body.browser_task) armPilot(current.runId);
     renderFeed();
     // awaiting_approval est TERMINAL pour le poll : la validation se fait dans
     // le dashboard — sinon le composer reste bloqué indéfiniment.
@@ -296,8 +299,18 @@ async function launchMission(goal) {
   current.runId = r.body.runId;
   current.title = r.body.title;
   current.status = "running";
+  // Mission avec pilotage : le service worker exécutera les actions de l'agent
+  // dans l'onglet actif (celui que l'utilisateur regarde).
+  if (r.body.pilots) armPilot(current.runId);
   renderFeed();
   pollRun();
+}
+
+async function armPilot(runId) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) await send("prompta:pilot-watch", { runId, tabId: tab.id });
+  } catch { /* pas d'onglet pilotable */ }
 }
 
 /** Tac au tac streamé ; bascule automatiquement en mission si le modèle le décide. */

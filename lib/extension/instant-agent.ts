@@ -269,6 +269,7 @@ TYPES D'ÉTAPES DISPONIBLES (format RUNTIME strict) :
 - {"type":"action","connector":"google_sheets","action":"google_sheets.create_spreadsheet","params":{"title":"…"},"outputKey":"creation"} puis extraction d'id par étape llm ("Réponds UNIQUEMENT le spreadsheetId de : {{creation}}") puis {"action":"google_sheets.append_row","params":{"spreadsheet_id":"{{id}}","values":"COL1;COL2\\nval1;val2"}}
 - {"type":"action","connector":"gmail","action":"gmail.send","params":{"from":"EMAIL_UTILISATEUR","to":"…","subject":"…","body":"…"}}
 - {"type":"approval","label":"…","payloadTemplate":"{{cle}}","outputKey":"valide"} — validation humaine
+- {"type":"browser","goal":"objectif précis en langage naturel (quoi faire, sur quelle page, quand s'arrêter)","outputKey":"pilotage"} — PILOTE le navigateur de l'utilisateur : clique, remplit des formulaires, navigue DANS son onglet actif, avec sa session, sous ses yeux (il confirme chaque action risquée dans la page). Résultat = résumé de ce qui a été fait/observé.
 - {"type":"condition","expression":"{{cle}} contains X"}
 - {"type":"parallel","branches":[{"steps":[…],"outputKey":"b1"},…],"outputKey":"tout"}
 - Autres apps (notion, trello, shopify, hubspot…) : {"type":"action","connector":"<app>","action":"<app>.<verbe_objet>","params":{…}} — le résolveur trouve le bon outil.
@@ -286,7 +287,8 @@ RÈGLES DURES :
 8. DEUX RÉGIMES selon l'ordre :
    • SIMPLE / CONVERSATIONNEL (question, traduction, réécriture, explication, calcul, brainstorming, résumé d'un texte fourni) → réponds DIRECTEMENT : UNE seule étape llm dont l'outputKey est "reponse". N'ajoute NI email, NI action externe, NI validation. La réponse s'affiche à l'utilisateur.
    • MISSION / AGENT (produire un livrable, écrire dans une app, envoyer, publier, recenser, croiser des pages) → enchaîne les étapes utiles ; termine par le livrable. N'ajoute un gmail.send de restitution QUE si l'ordre demande un envoi/rapport par email OU si le livrable est un lien (Sheets/Doc créé) à te transmettre — sinon la dernière étape llm "reponse" résume ce qui a été fait.
-9. Ne fabrique JAMAIS une étape d'envoi/action externe que l'ordre ne justifie pas (une simple question ne déclenche pas d'email). 1 étape pour le simple, jusqu'à 12 pour une grosse mission.`;
+9. Ne fabrique JAMAIS une étape d'envoi/action externe que l'ordre ne justifie pas (une simple question ne déclenche pas d'email). 1 étape pour le simple, jusqu'à 12 pour une grosse mission.
+10. Étape "browser" (pilotage) : UNIQUEMENT quand l'ordre exige d'INTERAGIR avec l'interface de la page affichée (cliquer, remplir un formulaire, dérouler des résultats, agir sur un site SANS connecteur ni API). Ordre de préférence STRICT : connecteur > web_fetch/web_search > browser (le pilotage est lent et mobilise l'utilisateur). JAMAIS de browser pour lire la page ({{page_active}} suffit) ni pour un site public statique (web_fetch suffit). JAMAIS pour se connecter ou payer. Le goal doit être autoportant et borné (« remplis le formulaire de contact avec …, ne l'envoie qu'après confirmation »). 1 seule étape browser par mission.`;
 
 export async function buildInstantAgent(params: {
   goal: string;

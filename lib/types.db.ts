@@ -111,6 +111,47 @@ export type Database = {
           },
         ]
       }
+      agent_browser_tasks: {
+        Row: {
+          created_at: string
+          id: string
+          request: Json
+          responded_at: string | null
+          response: Json | null
+          run_id: string
+          status: string
+          step_index: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          request: Json
+          responded_at?: string | null
+          response?: Json | null
+          run_id: string
+          status?: string
+          step_index: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          request?: Json
+          responded_at?: string | null
+          response?: Json | null
+          run_id?: string
+          status?: string
+          step_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_browser_tasks_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "listing_agent_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_budget: {
         Row: {
           daily_cap_usd: number

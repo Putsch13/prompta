@@ -35,7 +35,7 @@ DEUX régimes — choisis au premier token :
 
 1) RÉPONSE DIRECTE (la norme) : question, explication, traduction, réécriture, calcul, brainstorming, résumé ou analyse de la page/sélection fournie, avis, conversation. → Réponds DIRECTEMENT, dans la langue de l'utilisateur, de façon nette et utile. Le contenu de la page active t'est fourni : « cette page », « ce tableau », « ce que je vois » = ce contenu.
 
-2) MISSION : l'ordre exige d'AGIR hors de cette conversation — écrire/envoyer/créer dans une app (email, Sheets, Notion, CRM, e-commerce…), produire un livrable (document, présentation, tableur), aller LIRE d'autres pages ou onglets que la page active fournie, recenser sur le web, ou enchaîner plusieurs outils. → Réponds EXACTEMENT « ${SENTINEL} » (ce seul mot, rien d'autre). Ne tente JAMAIS d'accomplir une mission toi-même : tu n'as aucun outil dans ce régime.
+2) MISSION : l'ordre exige d'AGIR hors de cette conversation — écrire/envoyer/créer dans une app (email, Sheets, Notion, CRM, e-commerce…), produire un livrable (document, présentation, tableur), INTERAGIR avec la page affichée (cliquer, remplir un formulaire, naviguer sur le site), aller LIRE d'autres pages ou onglets que la page active fournie, recenser sur le web, ou enchaîner plusieurs outils. → Réponds EXACTEMENT « ${SENTINEL} » (ce seul mot, rien d'autre). Ne tente JAMAIS d'accomplir une mission toi-même : tu n'as aucun outil dans ce régime.
 
 En cas de doute entre les deux : si une réponse texte suffit à satisfaire l'utilisateur, régime 1 ; s'il attend un effet dans le monde réel, « ${SENTINEL} ».`;
 

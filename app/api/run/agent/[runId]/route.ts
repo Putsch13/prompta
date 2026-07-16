@@ -68,6 +68,7 @@ export async function GET(request: NextRequest, props: Params) {
     preview?: string;
     step_index: number;
   } | null = null;
+  let browser_task: { id: string; request: unknown } | null = null;
   let effectiveStatus = run.status;
   if (["awaiting_approval", "running", "pending"].includes(run.status)) {
     const admin = createAdminClient();
@@ -93,6 +94,20 @@ export async function GET(request: NextRequest, props: Params) {
       };
       effectiveStatus = "awaiting_approval";
     }
+
+    // Pilotage navigateur en attente : l'extension qui polle ce statut exécute
+    // la tâche dans l'onglet de l'utilisateur puis poste sa réponse.
+    if (run.status === "running") {
+      const { data: task } = await admin
+        .from("agent_browser_tasks")
+        .select("id, request")
+        .eq("run_id", params.runId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (task) browser_task = { id: task.id, request: task.request };
+    }
   }
 
   return NextResponse.json({
@@ -106,6 +121,7 @@ export async function GET(request: NextRequest, props: Params) {
     heartbeat_at: run.heartbeat_at ?? null,
     approval_id,
     approval,
+    browser_task,
     planned_steps,
   });
 }

@@ -7,6 +7,7 @@ import {
   Code,
   GitBranch,
   MessageSquare,
+  MousePointerClick,
   Search,
   Shield,
   Zap,
@@ -36,6 +37,8 @@ function stepIcon(step: AgentStep) {
       return GitBranch;
     case "retrieve":
       return Bot;
+    case "browser":
+      return MousePointerClick;
     default:
       return Bot;
   }
@@ -57,6 +60,8 @@ function describeStep(step: AgentStep, index: number): string {
       return `Condition : ${step.expression.slice(0, 60)}`;
     case "retrieve":
       return `Lecture ${step.source}`;
+    case "browser":
+      return `Pilotage navigateur — ${step.goal.slice(0, 60)}`;
     default:
       return `Étape ${index + 1}`;
   }
@@ -78,6 +83,8 @@ function stepBadge(step: AgentStep): string {
       return "SI/SINON";
     case "retrieve":
       return "DONNÉES";
+    case "browser":
+      return "NAVIGATEUR";
     default:
       return "ÉTAPE";
   }

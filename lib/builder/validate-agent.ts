@@ -114,6 +114,19 @@ export function validateAgentManifest(
       }
     }
 
+    // Pilotage navigateur sans objectif
+    if (step.type === "browser") {
+      const goal = step.goal?.trim() ?? "";
+      if (!goal) {
+        issues.push({
+          stepIndex: i,
+          severity: "error",
+          code: "empty_browser_goal",
+          message: `Étape ${i + 1} (Navigateur) : l'objectif de pilotage est vide.`,
+        });
+      }
+    }
+
     // Action : connecteur obligatoire
     if (step.type === "action") {
       if (!step.connector?.trim()) {
@@ -330,6 +343,7 @@ function getStepTextFields(step: AgentStep): string[] {
   if (step.type === "code" && step.source) fields.push(step.source);
   if (step.type === "retrieve" && step.query) fields.push(step.query);
   if (step.type === "condition" && step.expression) fields.push(step.expression);
+  if (step.type === "browser" && step.goal) fields.push(step.goal);
   if (step.type === "approval" && step.payloadTemplate) fields.push(step.payloadTemplate);
   if (step.type === "action" && step.params) {
     fields.push(...Object.values(step.params));

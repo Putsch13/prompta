@@ -47,17 +47,22 @@ export function computeManifestLimits(steps: AgentStep[]): AgentManifest["limits
   );
   const llmCount = flat.filter((s) => s.type === "llm").length;
   const toolActionCount = flat.filter(
-    (s) => s.type === "tool" || s.type === "action",
+    (s) => s.type === "tool" || s.type === "action" || s.type === "browser",
   ).length;
+  const hasBrowser = flat.some((s) => s.type === "browser");
 
   return {
     max_steps: Math.max(steps.length + 2, 10),
     // Cumul entrée+sortie sur tout le run : les prompts embarquent les sorties
     // des étapes amont (Sheets, docs…), 8 000 cumulés était intenable.
-    max_tokens: Math.max(16_000, llmCount * 8_000),
+    // Le pilotage navigateur consomme aussi des tokens (≈12 décisions/étape).
+    max_tokens: Math.max(16_000, llmCount * 8_000 + (hasBrowser ? 24_000 : 0)),
     // ~45 s par étape (LLM lents + retries connecteur 1+3+9 s), borné à 5 min
     // (aligné sur maxDuration=300 de la route sync ; le worker n'a pas de borne HTTP).
-    timeout_ms: Math.min(Math.max(120_000, flat.length * 45_000), 300_000),
+    // Le pilotage navigateur dialogue avec l'humain : plancher 10 min.
+    timeout_ms: hasBrowser
+      ? 600_000
+      : Math.min(Math.max(120_000, flat.length * 45_000), 300_000),
     // Chaque étape tool/action compte 1 appel + marge retries/reprises.
     max_tool_calls: Math.max(10, toolActionCount * 2),
     max_output_bytes: 512_000,
@@ -161,11 +166,11 @@ function toManifestInput(needed: NeededInput) {
   };
 }
 
-/** Sync si court et sans outil long, connecteur ou code. */
+/** Sync si court et sans outil long, connecteur, code ni pilotage navigateur. */
 export function shouldRunSync(manifest: AgentManifest): boolean {
   if (manifest.steps.length > 3) return false;
   return !manifest.steps.some((s) => {
-    if (s.type === "action" || s.type === "code") return true;
+    if (s.type === "action" || s.type === "code" || s.type === "browser") return true;
     if (s.type === "tool") {
       if (LONG_TOOLS.has(s.tool)) return true;
       if (s.tool === "web_search") return true;

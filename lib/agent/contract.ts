@@ -136,8 +136,8 @@ function walkSteps(
     const step = w.step;
     const idx = w.stepIndex;
 
-    if (step.type === "llm") {
-      for (const key of extractInputVariables(step.prompt)) {
+    if (step.type === "llm" || step.type === "browser") {
+      for (const key of extractInputVariables(step.type === "llm" ? step.prompt : step.goal)) {
         if (isFakeVariable(key) || isStepOutputKey(key, outputKeys)) continue;
         acc.push({
           key,

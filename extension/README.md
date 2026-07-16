@@ -13,6 +13,16 @@ Ce que l'extension voit : la page active (même derrière votre login), votre
 sélection, et le **contenu réel de tous les onglets cochés** — capturé par le
 navigateur avec votre session (dashboards, CRM, mails ouverts…).
 
+## Pilotage du navigateur (copilote visible)
+
+Quand la mission l'exige (remplir un formulaire, dérouler des résultats, agir
+sur un site sans connecteur), l'agent **pilote votre onglet sous vos yeux** :
+chaque action est annoncée (toast en haut de page) et l'élément visé est
+surligné. Les actions risquées — envoyer, publier, payer, supprimer… —
+affichent une **demande de confirmation dans la page** : rien ne part sans
+votre accord (silence = refus au bout de 40 s). Jamais de saisie de mots de
+passe ni de paiement. Gardez l'onglet ouvert pendant le pilotage.
+
 Exemples d'ordres, depuis n'importe quelle page :
 - « Résume cette page en 5 points. » *(réponse instantanée)*
 - « Lis la bdd affichée, compare-la avec le doc “budget 2026” de mon Drive, fais-moi une prez Canva et envoie-la-moi. »

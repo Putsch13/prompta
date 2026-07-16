@@ -1,4 +1,3 @@
-import { scanContent } from "@/lib/content-filter";
 import { safeFetch } from "./safe-fetch";
 
 /** Désencode les entités HTML basiques (partagé corps + href des liens). */
@@ -139,9 +138,4 @@ export async function httpFetch(url: string): Promise<string> {
 
 export async function fileRead(content: string): Promise<string> {
   return content.substring(0, 10000);
-}
-
-export function scanOutput(output: string): boolean {
-  const result = scanContent(output);
-  return result.flagged;
 }

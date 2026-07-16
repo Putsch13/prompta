@@ -270,7 +270,14 @@ export async function processPendingAgentRuns(
       if (result.status === "failed" && isPreview && !claimed.dry_run) {
         const rawInputs = (claimed.inputs as Record<string, string>) ?? {};
         const repairsDone = Number(rawInputs.__repairs ?? 0);
-        if (rawInputs.__source === "extension" && repairsDone < 2 && result.error) {
+        // Deux cas où l'on NE répare PAS : décision humaine (refus/annulation),
+        // et étape de pilotage navigateur échouée — des actions non idempotentes
+        // (clics, saisies) ont pu être exécutées dans l'onglet, un replan
+        // repartirait de cette étape et les rejouerait.
+        const userIntentFailure =
+          /annulée par l'utilisateur|Pilotage interrompu/i.test(result.error ?? "");
+        const failedStepIsBrowser = manifest.steps[result.stepsCompleted]?.type === "browser";
+        if (rawInputs.__source === "extension" && repairsDone < 2 && result.error && !userIntentFailure && !failedStepIsBrowser) {
           try {
             const { replanAfterFailure, MAX_REPAIRS_PER_RUN } = await import("@/lib/extension/replan");
             if (repairsDone < MAX_REPAIRS_PER_RUN) {

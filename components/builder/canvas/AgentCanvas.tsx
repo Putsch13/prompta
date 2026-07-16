@@ -7,6 +7,7 @@ import {
   GitBranch,
   Maximize2,
   MessageSquare,
+  MousePointerClick,
   Search,
   Shield,
   Workflow,
@@ -21,6 +22,7 @@ import { graphToSteps, type PlanGraph, type PlanNode } from "@/lib/builder/plan-
 
 const LUCIDE_MAP: Record<string, LucideIcon> = {
   MessageSquare,
+  MousePointerClick,
   Search,
   Code,
   GitBranch,

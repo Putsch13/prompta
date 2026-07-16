@@ -1,5 +1,4 @@
 import { AI_MODELS } from "@/lib/catalogs";
-import { resolveModelOrDefault } from "./resolve-model";
 import { getModelPricing } from "./pricing";
 
 export type LLMProvider = "openai" | "anthropic" | "google" | "mistral";
@@ -32,25 +31,3 @@ export const MODEL_CATALOG: ModelInfo[] = AI_MODELS.filter((m) =>
     outputCostPer1M: pricing.outputPer1M / 100,
   };
 });
-
-export function getModel(id: string): ModelInfo | undefined {
-  const resolved = resolveModelOrDefault(id);
-  return MODEL_CATALOG.find((m) => m.id === resolved.catalogId);
-}
-
-export function getModelsForProvider(provider: LLMProvider): ModelInfo[] {
-  return MODEL_CATALOG.filter((m) => m.provider === provider);
-}
-
-export function estimateCost(
-  modelId: string,
-  inputTokens: number,
-  outputTokens: number
-): number {
-  const resolved = resolveModelOrDefault(modelId);
-  const pricing = getModelPricing(resolved.apiModel);
-  return (
-    (inputTokens / 1_000_000) * (pricing.inputPer1M / 100) +
-    (outputTokens / 1_000_000) * (pricing.outputPer1M / 100)
-  );
-}

@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
   const walk = (steps: typeof manifest.steps) => {
     for (const s of steps) {
       if (s.type === "llm") scan(s.prompt);
+      else if (s.type === "browser") scan(s.goal);
       else if (s.type === "tool" || s.type === "action") Object.values(s.params ?? {}).forEach(scan);
       else if (s.type === "parallel") s.branches.forEach((b) => walk(b.steps as typeof manifest.steps));
     }

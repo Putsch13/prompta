@@ -19,6 +19,7 @@ export type PlanNodeKind =
   | "condition"
   | "approval"
   | "retrieve"
+  | "browser"
   | "trigger";
 
 export type DataSourceKind =
@@ -351,6 +352,12 @@ function nodeToAgentStep(node: PlanNode, defaultModel: string): AgentStep {
         query: node.query ?? node.description ?? "",
         outputKey: node.outputKey,
         maxResults: 5,
+      };
+    case "browser":
+      return {
+        type: "browser",
+        goal: node.prompt ?? node.description ?? "",
+        outputKey: node.outputKey,
       };
     default:
       return {
@@ -1025,6 +1032,15 @@ function agentStepToNode(step: BaseAgentStep, id: string, index: number): PlanNo
         name: "Recherche documentaire",
         dataSource: step.source,
         query: step.query,
+      };
+    case "browser":
+      return {
+        ...base,
+        kind: "browser",
+        name: "Pilotage du navigateur",
+        description: step.goal.slice(0, 140),
+        prompt: step.goal,
+        riskLevel: "medium",
       };
   }
 }

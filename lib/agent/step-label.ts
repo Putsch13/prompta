@@ -33,6 +33,8 @@ export function stepDisplayLabel(step: StepLike, index: number): string {
       return step.label?.trim() ? `Validation : ${step.label}` : "Validation humaine";
     case "code":
       return "Code (sandbox)";
+    case "browser":
+      return "Pilotage du navigateur";
     case "parallel":
       return `Étapes en parallèle (${step.branches?.length ?? 0} branches)`;
     default:

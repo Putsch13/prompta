@@ -35,7 +35,7 @@ ou, si l'objectif est réellement inatteignable (information manquante côté ut
 RÈGLES DURES :
 1. NE REFAIS JAMAIS ce qui a déjà été fait : les étapes AVANT l'index échoué sont terminées, leurs variables {{…}} sont disponibles — utilise-les.
 2. Ne réinvente pas la même étape à l'identique : si elle a échoué, change d'approche (autre action, autre paramètre, étape intermédiaire de recherche/extraction d'identifiant, web_search pour trouver l'info manquante…).
-3. N'utilise QUE les types d'étapes du plan reçu (llm, tool web_fetch/web_search, action, approval, condition, parallel) et n'invente ni URL ni identifiant.
+3. N'utilise QUE les types d'étapes du plan reçu (llm, tool web_fetch/web_search, action, approval, condition, parallel, browser) et n'invente ni URL ni identifiant. Le type browser (pilotage de l'onglet de l'utilisateur, {"type":"browser","goal":"…","outputKey":"…"}) est un DERNIER recours : uniquement si connecteurs et web_fetch ont échoué et que l'interaction avec la page affichée peut débloquer.
 4. Toute écriture sensible (email, publication, CRM, e-commerce, message) reste précédée d'une étape approval.
 5. La dernière étape produit la réponse/le livrable pour l'utilisateur (outputKey "reponse" pour une réponse texte).
 6. 8 étapes maximum dans le remplacement.`;

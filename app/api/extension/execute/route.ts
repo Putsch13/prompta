@@ -8,7 +8,9 @@ import { listUserConnections } from "@/lib/connections";
 import { buildInstantAgent, sanitizeUrlForContext, type PageContext } from "@/lib/extension/instant-agent";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+// Le run tourne dans after() : une mission avec pilotage navigateur (dialogue
+// homme-machine) peut durer plusieurs minutes.
+export const maxDuration = 300;
 
 /**
  * Extension « Prompta Everywhere » : ordre en langage naturel + contexte de la
@@ -143,6 +145,9 @@ export async function POST(request: NextRequest) {
     runId: run.id,
     title: built.title,
     stepsPlanned: built.manifest.steps.length,
+    // Le plan contient du pilotage navigateur : l'extension doit armer son
+    // exécuteur de tâches (le run dialoguera avec l'onglet de l'utilisateur).
+    pilots: built.manifest.steps.some((s) => s.type === "browser"),
     runUrl: `/dashboard/runs/${run.id}`,
   });
 }

@@ -29,6 +29,15 @@ export function estimateMaxCostForManifest(manifest: AgentManifest): number {
       toolCalls++;
       total += getToolPricing(step.action);
     }
+    if (step.type === "browser") {
+      // Pilotage navigateur : jusqu'à ~12 décisions LLM courtes (snapshot en
+      // entrée ~8k tokens, action en sortie ~700 tokens).
+      toolCalls++;
+      const { apiModel } = resolveModelOrDefault(step.model);
+      const pricing = getModelPricing(apiModel);
+      const turns = Math.min(step.maxActions ?? 12, 20);
+      total += turns * ((8_000 / 1_000_000) * pricing.inputPer1M + (700 / 1_000_000) * pricing.outputPer1M);
+    }
   }
 
   const maxTools = manifest.limits.max_tool_calls ?? 5;

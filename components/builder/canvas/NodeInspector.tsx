@@ -849,6 +849,22 @@ export function NodeInspector({
           </div>
         )}
 
+        {node.kind === "browser" && (
+          <div>
+            <label className="text-xs text-ink-soft">Objectif du pilotage navigateur</label>
+            <textarea
+              value={node.prompt ?? ""}
+              onChange={(e) => patch({ prompt: e.target.value })}
+              rows={4}
+              placeholder="Ce que l'agent doit accomplir en pilotant l'onglet de l'utilisateur (clics, formulaires, navigation)…"
+              className="mt-1 w-full rounded-lg border border-line px-2 py-1 text-sm"
+            />
+            <p className="mt-1 text-[11px] text-ink-soft">
+              Exécuté dans le navigateur de l&apos;utilisateur (extension Prompta partout), sous ses yeux — il confirme chaque action risquée.
+            </p>
+          </div>
+        )}
+
         {node.kind === "retrieve" && (
           <div className="space-y-2">
             <div>

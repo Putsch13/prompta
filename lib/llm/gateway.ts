@@ -12,7 +12,6 @@ export interface CallModelParams {
   model: string;
   messages: ChatMessage[];
   apiKey: string;
-  stream?: boolean;
   maxTokens?: number;
   tokenParam?: TokenParam;
 }
@@ -302,19 +301,6 @@ export async function callModel(
   params: CallModelParams
 ): Promise<CallModelResult> {
   return callProvider(params);
-}
-
-/** Streaming simulé en V1 — découpe la réponse en chunks. */
-export async function* streamModel(
-  params: CallModelParams
-): AsyncGenerator<string, CallModelResult, undefined> {
-  const result = await callModel({ ...params, stream: false });
-  const chunks = result.content.match(/.{1,20}/g) ?? [result.content];
-  for (const chunk of chunks) {
-    yield chunk;
-    await new Promise((r) => setTimeout(r, 10));
-  }
-  return result;
 }
 
 // ─── Vrai streaming (SSE fournisseur → deltas) ───────────────────────────────

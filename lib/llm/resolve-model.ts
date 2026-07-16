@@ -45,10 +45,10 @@ export function resolveModel(catalogId: string): ResolvedModel | null {
  * Résout un modèle avec fallback sur gpt-5.4-mini (modèle réel, pas inventé).
  */
 export function resolveModelOrDefault(
-  catalogId: string,
+  catalogId: string | undefined,
   defaultId = "gpt-5.4-mini"
 ): ResolvedModel {
-  const resolved = resolveModel(catalogId);
+  const resolved = catalogId ? resolveModel(catalogId) : null;
   if (resolved) return resolved;
 
   const defaultResolved = resolveModel(defaultId);
