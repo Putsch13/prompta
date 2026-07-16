@@ -13,11 +13,15 @@ const SECTIONS: Array<{ title: string; items: Array<{ q: string; a: string }> }>
     items: [
       {
         q: "C'est quoi, Prompta partout ?",
-        a: "L'extension Chrome qui met l'assistant sur toutes tes pages : question → réponse au tac au tac en voyant l'écran ; ordre plus ambitieux → mission d'agent (apps, onglets, pilotage) avec validations humaines.",
+        a: "L'extension Chromium (Chrome, Edge, Brave, Arc, Opera) qui met l'assistant sur toutes tes pages : clic sur le P → panneau à droite ; question → réponse au tac au tac ; ordre ambitieux → mission d'agent avec validations humaines.",
       },
       {
         q: "Comment l'installer ?",
-        a: "Guide pas à pas sur la page Installer Prompta partout : mode développeur Chrome, charger le dossier extension/, épingler le P, te connecter à Prompta dans le même navigateur.",
+        a: "Guide pas à pas sur Installer Prompta partout : mode développeur, charger le dossier extension/, épingler le P, te connecter à Prompta dans le même navigateur. Chrome = cible officielle ; les autres Chromium suivent le même geste.",
+      },
+      {
+        q: "Ça marche sur Firefox ou Safari ?",
+        a: "Pas tel quel. Firefox demanderait un polyfill et un packaging Add-ons ; Safari une conversion Web Extension + compte Apple. En attendant : /quick marche dans n'importe quel navigateur.",
       },
       {
         q: "L'assistant peut-il lire mes autres onglets ?",
@@ -29,7 +33,7 @@ const SECTIONS: Array<{ title: string; items: Array<{ q: string; a: string }> }>
       },
       {
         q: "Je n'ai pas l'extension : je peux quand même essayer ?",
-        a: "Oui — /quick dans le navigateur (même cerveau, sans barre flottante sur les autres sites).",
+        a: "Oui — /quick dans le navigateur (même cerveau, sans panneau sur les autres sites ni lecture d'onglets).",
       },
     ],
   },

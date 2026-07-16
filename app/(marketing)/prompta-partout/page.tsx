@@ -19,30 +19,74 @@ import {
 export const metadata: Metadata = {
   title: "Installer Prompta partout — guide",
   description:
-    "Installer et configurer l'extension Chrome Prompta partout : installation en 2 minutes, raccourcis, connexions apps, tac au tac et missions avec validation humaine.",
+    "Installer Prompta partout sur Chrome, Edge, Brave, Arc ou Opera : panneau latéral, raccourcis, connexions apps. Firefox et Safari non supportés pour l'instant.",
   alternates: { canonical: "/prompta-partout" },
 };
+
+const BROWSERS_OK = [
+  {
+    name: "Chrome",
+    badge: "Cible officielle",
+    url: "chrome://extensions",
+    note: "Manifest V3, APIs chrome.* — c’est la référence.",
+  },
+  {
+    name: "Edge",
+    badge: "Chromium",
+    url: "edge://extensions",
+    note: "Même install « charger non empaquetée ».",
+  },
+  {
+    name: "Brave",
+    badge: "Chromium",
+    url: "brave://extensions",
+    note: "Idem Chrome. Épingler le P via l’icône puzzle.",
+  },
+  {
+    name: "Arc",
+    badge: "Chromium",
+    url: "arc://extensions",
+    note: "En général OK. Extensions via le menu Arc / Extensions.",
+  },
+  {
+    name: "Opera",
+    badge: "Chromium",
+    url: "opera://extensions",
+    note: "Activer le mode développeur, puis charger le dossier.",
+  },
+];
+
+const BROWSERS_NO = [
+  {
+    name: "Firefox",
+    why: "APIs proches, mais il faut adapter (polyfill browser.*, background, packaging Add-ons). Pas supporté tel quel.",
+  },
+  {
+    name: "Safari",
+    why: "Conversion en Safari Web Extension + compte Apple / packaging Mac. Plus lourd — pas supporté pour l’instant.",
+  },
+];
 
 const INSTALL_STEPS = [
   {
     n: "1",
     title: "Télécharge le dossier de l'extension",
-    body: "Sur GitHub, ouvre le dossier extension/ puis Code → Download ZIP (ou clone le repo). Tu as besoin du dossier extension/ dézippé.",
+    body: "Sur GitHub, ouvre le dossier extension/ puis Code → Download ZIP (ou clone le repo). Tu as besoin du dossier extension/ dézippé — celui qui contient manifest.json.",
   },
   {
     n: "2",
-    title: "Ouvre chrome://extensions",
-    body: "Colle chrome://extensions dans la barre d'adresse Chrome (ou Edge). Active le Mode développeur en haut à droite.",
+    title: "Ouvre la page Extensions",
+    body: "Colle l’URL de ton navigateur (chrome://extensions, edge://extensions, brave://extensions, arc://extensions ou opera://extensions). Active le Mode développeur.",
   },
   {
     n: "3",
     title: "Charge l'extension non empaquetée",
-    body: "Clique « Charger l'extension non empaquetée » et sélectionne le dossier extension/ (celui qui contient manifest.json).",
+    body: "Clique « Charger l'extension non empaquetée » (Load unpacked) et sélectionne le dossier extension/.",
   },
   {
     n: "4",
     title: "Épingle le « P » dans la barre",
-    body: "Clique l'icône puzzle 🧩 de Chrome, puis la punaise à côté de « Prompta Everywhere ». L'icône P reste visible.",
+    body: "Clique l'icône puzzle 🧩, puis la punaise à côté de « Prompta Everywhere ». L'icône P reste visible en haut.",
   },
   {
     n: "5",
@@ -90,9 +134,9 @@ export default function PromptaPartoutPage() {
             </span>
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-ink-soft">
-            Extension Chrome (mode développeur pour l&apos;instant) : tu poses une
-            question sur n&apos;importe quelle page, ou tu lances une mission sur
-            tes apps — avec validations humaines sur tout ce qui est sensible.
+            Extension Chromium (Chrome, Edge, Brave, Arc, Opera) : sur n&apos;importe
+            quelle page, clic sur le P → panneau à droite. Question au tac au tac
+            ou mission sur tes apps — avec validations humaines sur le sensible.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <a
@@ -115,16 +159,74 @@ export default function PromptaPartoutPage() {
         </div>
       </section>
 
-      {/* Installation */}
+      {/* Compatibilité */}
       <section className="border-b border-line">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
-            Installation (Chrome / Edge)
+            Sur quels navigateurs ?
           </h2>
           <p className="mt-2 max-w-2xl text-ink-soft">
-            Pas encore sur le Chrome Web Store — tu l&apos;installes en mode
-            développeur, une fois. Ensuite elle se met à jour quand tu recharges
-            le dossier.
+            Même dossier <code className="rounded bg-card px-1.5 py-0.5 text-ink">extension/</code>,
+            même geste « charger non empaquetée » sur tout Chromium. Firefox et
+            Safari : pas encore.
+          </p>
+
+          <h3 className="mt-10 text-sm font-semibold uppercase tracking-wide text-accent">
+            Ça marche
+          </h3>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {BROWSERS_OK.map((b) => (
+              <div
+                key={b.name}
+                className="rounded-2xl border border-line bg-card px-5 py-4"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-display font-semibold text-ink">{b.name}</span>
+                  <span className="rounded-full border border-accent/25 bg-accent-light px-2 py-0.5 text-[11px] font-medium text-accent">
+                    {b.badge}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-relaxed text-ink-soft">{b.note}</p>
+                <p className="mt-2 font-mono text-xs text-ink/70">{b.url}</p>
+              </div>
+            ))}
+          </div>
+
+          <h3 className="mt-10 text-sm font-semibold uppercase tracking-wide text-ink-soft">
+            Pas supporté tel quel
+          </h3>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {BROWSERS_NO.map((b) => (
+              <div
+                key={b.name}
+                className="rounded-2xl border border-dashed border-line bg-card2/50 px-5 py-4"
+              >
+                <span className="font-display font-semibold text-ink">{b.name}</span>
+                <p className="mt-2 text-sm leading-relaxed text-ink-soft">{b.why}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-6 text-sm text-ink-soft">
+            Sans extension :{" "}
+            <Link href="/quick" className="font-medium text-accent hover:underline">
+              /quick
+            </Link>{" "}
+            marche dans n&apos;importe quel navigateur (même cerveau, sans lecture
+            d&apos;onglets ni pilotage de page).
+          </p>
+        </div>
+      </section>
+
+      {/* Installation */}
+      <section className="border-b border-line bg-card2/40">
+        <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
+          <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
+            Installation (Chromium)
+          </h2>
+          <p className="mt-2 max-w-2xl text-ink-soft">
+            Pas encore sur les stores — tu l&apos;installes en mode développeur,
+            une fois. Ensuite : recharge l&apos;extension après chaque mise à jour
+            du dossier.
           </p>
           <ol className="mt-10 space-y-6">
             {INSTALL_STEPS.map((s) => (
@@ -139,19 +241,18 @@ export default function PromptaPartoutPage() {
               </li>
             ))}
           </ol>
-          <div className="mt-8 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card2/60 px-5 py-4 text-sm text-ink-soft">
+          <div className="mt-8 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card px-5 py-4 text-sm text-ink-soft">
             <Pin className="h-5 w-5 shrink-0 text-accent" />
             <span>
-              Après chaque mise à jour du code :{" "}
-              <code className="rounded bg-card px-1.5 py-0.5 text-ink">chrome://extensions</code>{" "}
-              → icône ⟳ sur Prompta Everywhere.
+              Après chaque mise à jour du code : page Extensions → icône ⟳ sur
+              Prompta Everywhere, puis recharge aussi l&apos;onglet de la page.
             </span>
           </div>
         </div>
       </section>
 
       {/* Utilisation */}
-      <section className="border-b border-line bg-card2/40">
+      <section className="border-b border-line">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
             Comment l&apos;utiliser
@@ -203,7 +304,7 @@ export default function PromptaPartoutPage() {
           </div>
           <ul className="mt-8 space-y-3">
             {[
-              "Coche les onglets à lire dans « Ce que je vois » — même derrière login (session Chrome).",
+              "Coche les onglets à lire dans « Ce que je vois » — même derrière login (session du navigateur).",
               "Connecte tes apps (Gmail, Sheets, Canva…) dans Connexions avant les missions d'écriture.",
               "Les actions sensibles (envoyer, publier, payer…) demandent ton feu vert — dans le dashboard ou dans la page en pilotage.",
             ].map((t) => (

@@ -1,4 +1,4 @@
-# Prompta partout — extension Chrome
+# Prompta partout — extension Chromium
 
 UN cerveau, DEUX régimes, sur **toutes** vos pages (web, PDF, fichiers locaux) :
 
@@ -12,6 +12,19 @@ UN cerveau, DEUX régimes, sur **toutes** vos pages (web, PDF, fichiers locaux) 
 Ce que l'extension voit : la page active (même derrière votre login), votre
 sélection, et le **contenu réel de tous les onglets cochés** — capturé par le
 navigateur avec votre session (dashboards, CRM, mails ouverts…).
+
+## Compatibilité navigateurs
+
+| Navigateur | Statut |
+|---|---|
+| **Chrome** | Cible officielle |
+| **Edge, Brave, Arc, Opera** | Chromium — même install « charger non empaquetée », en général OK |
+| **Firefox** | Pas supporté tel quel (polyfill `browser.*`, packaging Add-ons) |
+| **Safari** | Pas supporté (conversion Web Extension + compte Apple) |
+
+Sans extension : [`/quick`](https://prompta-sjtf.onrender.com/quick) marche partout.
+
+Guide produit : [`/prompta-partout`](https://prompta-sjtf.onrender.com/prompta-partout).
 
 ## Pilotage du navigateur (copilote visible)
 
@@ -35,12 +48,22 @@ privé éditable dans le builder, relançable à volonté.
 
 ## Installation (mode développeur)
 
-1. Ouvrir `chrome://extensions`
-2. Activer **Mode développeur** (interrupteur en haut à droite)
+Même dossier `extension/` sur tout Chromium :
+
+| Navigateur | Page extensions |
+|---|---|
+| Chrome | `chrome://extensions` |
+| Edge | `edge://extensions` |
+| Brave | `brave://extensions` |
+| Arc | `arc://extensions` |
+| Opera | `opera://extensions` |
+
+1. Ouvrir la page extensions ci-dessus
+2. Activer **Mode développeur**
 3. **Charger l'extension non empaquetée** → sélectionner ce dossier `extension/`
-4. **Épingler Prompta** : cliquer l'icône puzzle 🧩 de la barre Chrome, puis la
-   punaise à côté de « Prompta Everywhere » → l'icône « P » reste visible en haut
-5. Être connecté à Prompta dans un onglet du même navigateur (session partagée)
+4. **Épingler Prompta** : icône puzzle 🧩 → punaise à côté de « Prompta Everywhere »
+5. Être connecté à Prompta dans un onglet du **même** navigateur (session partagée)
+6. Après une mise à jour du code : ⟳ Recharger l'extension, puis recharger l'onglet
 
 ## Utilisation
 
