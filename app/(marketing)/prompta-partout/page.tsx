@@ -71,28 +71,28 @@ const BROWSERS_NO = [
 const INSTALL_STEPS = [
   {
     n: "1",
-    title: "Télécharge le ZIP",
-    body: "Bouton « Télécharger l'extension » ci-dessus → tu obtiens prompta-everywhere.zip. Dézippe-le : tu dois voir manifest.json à la racine du dossier.",
+    title: "Télécharge et dézippe",
+    body: "Le ZIP = l'extension elle-même (le code que Chrome va charger). Double-clique pour dézipper : tu obtiens un dossier avec un fichier nommé manifest.json dedans.",
   },
   {
     n: "2",
-    title: "Ouvre la page Extensions",
-    body: "Colle l’URL de ton navigateur (chrome://extensions, edge://extensions, brave://extensions…). Active le Mode développeur.",
+    title: "Ouvre la page Extensions de Chrome",
+    body: "Dans la barre d'adresse, colle chrome://extensions et appuie Entrée. En haut à droite, active « Mode développeur ».",
   },
   {
     n: "3",
-    title: "Charge l'extension non empaquetée",
-    body: "Clique « Charger l'extension non empaquetée » et sélectionne le dossier dézippé (celui qui contient manifest.json).",
+    title: "Dis à Chrome où est le dossier",
+    body: "Clique « Charger l'extension non empaquetée », puis choisis le dossier que tu viens de dézipper (pas le .zip lui-même — le dossier ouvert).",
   },
   {
     n: "4",
-    title: "Épingle le « P » dans la barre",
-    body: "Clique l'icône puzzle 🧩, puis la punaise à côté de « Prompta Everywhere ». L'icône P reste visible en haut à droite.",
+    title: "Épingle le « P »",
+    body: "Clique l'icône puzzle 🧩 en haut à droite de Chrome, puis la punaise à côté de « Prompta Everywhere ». Le P reste visible.",
   },
   {
     n: "5",
-    title: "Connecte-toi à Prompta",
-    body: "Ouvre Prompta dans un onglet du même navigateur et connecte-toi. L'extension partage ta session — sans compte, rien ne part.",
+    title: "Connecte-toi sur Prompta",
+    body: "Ouvre Prompta dans un onglet du même Chrome et connecte-toi. Ensuite, sur n'importe quel site, clic sur le P → le panneau sort à droite.",
   },
 ];
 
@@ -135,13 +135,21 @@ export default function PromptaPartoutPage() {
             </span>
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-ink-soft">
-            Sur Chrome, Edge, Brave, Arc ou Opera : clic sur le P → le panneau
-            glisse à droite (comme Joko). Pas Safari, pas Firefox — utilise{" "}
-            <Link href="/quick" className="font-medium text-accent hover:underline">
-              /quick
-            </Link>{" "}
-            en attendant.
+            C&apos;est une <strong className="font-semibold text-ink">extension de navigateur</strong>{" "}
+            (comme un petit programme qui s&apos;ajoute à Chrome) : tu cliques le P
+            en haut → un panneau glisse à droite sur n&apos;importe quelle page.
           </p>
+          <div className="mt-6 max-w-2xl rounded-2xl border border-line bg-card px-5 py-4 text-sm leading-relaxed text-ink-soft">
+            <p className="font-semibold text-ink">Pourquoi un fichier ZIP ?</p>
+            <p className="mt-1.5">
+              Prompta n&apos;est <strong className="font-medium text-ink">pas encore</strong> sur
+              le Chrome Web Store (le « magasin » d&apos;extensions). Du coup on te
+              donne l&apos;extension en fichier compressé : tu le dézippes, tu le
+              charges une fois dans Chrome, et le P apparaît en haut. C&apos;est
+              temporaire — le jour où on est sur le Store, ce sera un clic
+              « Ajouter à Chrome ».
+            </p>
+          </div>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <a
               href="/downloads/prompta-everywhere.zip"
@@ -149,17 +157,17 @@ export default function PromptaPartoutPage() {
               className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover"
             >
               <Download className="h-5 w-5" />
-              Télécharger l&apos;extension
+              Télécharger l&apos;extension (ZIP)
             </a>
             <Link
               href="/quick"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-line bg-card px-6 text-base font-medium text-ink hover:border-accent"
             >
-              Essayer sans extension (/quick)
+              Essayer sans installer (/quick)
             </Link>
           </div>
           <p className="mt-3 text-sm text-ink-faint">
-            Fichier ZIP prêt à charger — pas besoin de GitHub.
+            Chrome, Edge, Brave, Arc ou Opera — pas Safari, pas Firefox.
           </p>
 
           <ExtensionPanelDemo />
