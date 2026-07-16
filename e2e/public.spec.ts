@@ -15,12 +15,20 @@ test.describe("Prompta — parcours public", () => {
     await expect(page.getByRole("button", { name: /microsoft/i })).toBeVisible();
   });
 
-  test("marketplace dépubliée — /explore, /c et /u redirigent vers l'accueil", async ({ page }) => {
+  test("surfaces coupées redirigent vers l'accueil", async ({ page }) => {
     await page.goto("/explore");
     await expect(page).toHaveURL(/\/$/);
     await page.goto("/c/productivite");
     await expect(page).toHaveURL(/\/$/);
     await page.goto("/u/demo");
+    await expect(page).toHaveURL(/\/$/);
+    await page.goto("/cas-usage");
+    await expect(page).toHaveURL(/\/$/);
+    await page.goto("/cas-usage/veille-quotidienne");
+    await expect(page).toHaveURL(/\/$/);
+    await page.goto("/listing/demo-agent");
+    await expect(page).toHaveURL(/\/$/);
+    await page.goto("/org/demo");
     await expect(page).toHaveURL(/\/$/);
   });
 

@@ -4,32 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  LayoutDashboard,
   CreditCard,
   User,
   Key,
   Repeat,
   History,
   Coins,
-  Bot,
-  FileText,
   ClipboardCheck,
-  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
-  dashboard: LayoutDashboard,
-  contenus: Bot,
-  quotidien: Sparkles,
-  documents: FileText,
   connexions: Key,
   runs: History,
   validations: ClipboardCheck,
   credits: Coins,
   abonnements: Repeat,
-  payouts: CreditCard,
   profile: User,
+  compte: CreditCard,
 };
 
 type NavItem = {
@@ -39,21 +31,15 @@ type NavItem = {
   exact?: boolean;
 };
 
-// Navigation centrée agent (build → run → debug), à la Render.
 const PRIMARY_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Aperçu", iconKey: "dashboard", exact: true },
-  { href: "/dashboard/contenus", label: "Mes agents", iconKey: "contenus" },
-  { href: "/dashboard/ia-quotidien", label: "IA du quotidien", iconKey: "quotidien" },
-  { href: "/dashboard/runs", label: "Runs & logs", iconKey: "runs" },
-  { href: "/dashboard/connexions", label: "Connexions", iconKey: "connexions" },
+  { href: "/dashboard/runs", label: "Runs", iconKey: "runs" },
   { href: "/dashboard/validations", label: "Validations", iconKey: "validations" },
+  { href: "/dashboard/connexions", label: "Connexions", iconKey: "connexions" },
 ];
 
-// Compte & facturation (secondaire).
-const SECONDARY_ITEMS: NavItem[] = [
+const COMPTE_ITEMS: NavItem[] = [
   { href: "/dashboard/abonnements", label: "Abonnements", iconKey: "abonnements" },
   { href: "/dashboard/credits", label: "Crédits", iconKey: "credits" },
-  { href: "/dashboard/documents", label: "Documents", iconKey: "documents" },
   { href: "/dashboard/edit-profile", label: "Profil", iconKey: "profile" },
 ];
 
@@ -62,8 +48,6 @@ export function DashboardNav() {
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [activeRuns, setActiveRuns] = useState(0);
 
-  // Poll léger : les badges vivent même si on reste sur la même page
-  // (avant : rafraîchi uniquement au changement de route → notifs invisibles).
   useEffect(() => {
     const load = () =>
       fetch("/api/activity/summary")
@@ -117,13 +101,12 @@ export function DashboardNav() {
 
   return (
     <nav className="sticky top-24">
-      {/* Mobile : barre horizontale scrollable. Desktop : nav verticale. */}
       <div className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0">
         {PRIMARY_ITEMS.map(renderItem)}
         <span className="hidden px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-ink-faint lg:block">
-          Compte &amp; facturation
+          Compte
         </span>
-        {SECONDARY_ITEMS.map(renderItem)}
+        {COMPTE_ITEMS.map(renderItem)}
       </div>
     </nav>
   );

@@ -277,13 +277,13 @@ export default function EditProfilePage() {
       <section className="mt-12 border-t border-line pt-10">
         <h2 className="font-display text-lg font-bold text-ink">Sécurité du compte</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          Mot de passe, documents partagés avec vos agents, suppression du compte.
+          Mot de passe, connexions apps, suppression du compte.
         </p>
         <Link
-          href="/dashboard/documents"
+          href="/dashboard/connexions"
           className="mt-3 inline-block text-sm font-medium text-accent hover:underline"
         >
-          Gérer mes documents →
+          Gérer mes connexions →
         </Link>
 
         <form onSubmit={handleChangePassword} className="mt-6 space-y-4 rounded-xl border border-line bg-card p-5">

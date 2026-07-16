@@ -129,7 +129,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push("/quick");
     router.refresh();
   }
 
@@ -144,7 +144,7 @@ export default function OnboardingPage() {
             Complète ton profil
           </h1>
           <p className="mt-2 text-sm text-ink-soft">
-            Ces infos seront visibles sur ton profil public
+            Ensuite : connecte tes apps et donne un ordre à l&apos;assistant
           </p>
         </div>
 

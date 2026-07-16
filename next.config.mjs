@@ -16,14 +16,25 @@ const nextConfig = {
     ];
   },
   async redirects() {
-    // Marketplace dépubliée (recentrage produit sur l'assistant navigateur) :
-    // les anciennes URL publiques — catalogue, catégories, profils créateurs —
-    // redirigent vers l'accueil. Les pages /listing restent (lancement d'un
-    // agent possédé/abonné) mais ne sont plus indexées.
+    // Recentrage produit : marketplace, builder, orgs et cas d'usage hors produit.
     return [
       { source: "/explore", destination: "/", permanent: true },
       { source: "/c/:slug*", destination: "/", permanent: true },
       { source: "/u/:username*", destination: "/", permanent: true },
+      { source: "/cas-usage", destination: "/", permanent: true },
+      { source: "/cas-usage/:slug*", destination: "/", permanent: true },
+      { source: "/org/:slug*", destination: "/", permanent: true },
+      { source: "/listing/:slug*", destination: "/", permanent: true },
+      { source: "/dashboard/new", destination: "/dashboard/runs", permanent: true },
+      { source: "/dashboard/contenus", destination: "/dashboard/runs", permanent: true },
+      { source: "/dashboard/ia-quotidien", destination: "/dashboard/runs", permanent: true },
+      { source: "/dashboard/documents", destination: "/dashboard/runs", permanent: true },
+      { source: "/dashboard/payouts", destination: "/dashboard/runs", permanent: true },
+      {
+        source: "/dashboard/listing/:id/edit",
+        destination: "/dashboard/runs",
+        permanent: true,
+      },
     ];
   },
 };

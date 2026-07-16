@@ -94,12 +94,6 @@ async function auditPublicPages() {
     ["/sitemap.xml", /urlset|sitemap/i],
     ["/robots.txt", /User-agent/i],
     ["/aide", /Questions fréquentes/i],
-    ["/cas-usage", /Cas d.usage|missions concrètes/i],
-    ["/cas-usage/veille-quotidienne", /veille/i],
-    ["/cas-usage/relances-clients", /relance/i],
-    ["/cas-usage/emails-vers-trello", /Trello/i],
-    ["/cas-usage/reporting-automatique", /Sheets/i],
-    ["/cas-usage/prospection-contenu", /LinkedIn/i],
   ];
   for (const [path, expect] of pages) {
     try {

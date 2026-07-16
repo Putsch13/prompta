@@ -13,7 +13,6 @@ import {
   Rocket,
 } from "lucide-react";
 import Link from "next/link";
-import { B2BSection } from "@/components/marketing/B2BSection";
 import { PLANS } from "@/lib/billing/plans";
 
 export const dynamic = "force-dynamic";
@@ -108,12 +107,15 @@ export default async function HomePage() {
                 <Zap className="h-5 w-5" />
                 Essayer l&apos;assistant
               </Link>
-              <Link
-                href="/pricing"
+              <a
+                href="https://github.com/Putsch13/prompta/tree/main/extension"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-7 text-base font-medium text-ink transition-colors hover:border-accent"
               >
-                Voir les tarifs
-              </Link>
+                <Globe className="h-5 w-5" />
+                Installer l&apos;extension
+              </a>
             </div>
             <p className="mt-4 text-sm text-ink-faint">
               Gratuit pour démarrer · 2 € de crédits IA offerts · sans carte bancaire
@@ -336,71 +338,36 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── PRICING TEASER ──────────────────────────────────────────────── */}
-      <section className="border-t border-line bg-card2/50">
-        <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
-              Gratuit pour démarrer, simple pour grandir
-            </h2>
-            <p className="mt-3 text-ink-soft">
-              BYOK sur tous les plans : tes propres clés API = exécutions illimitées.
-            </p>
-          </div>
-          <div className="mx-auto mt-10 grid max-w-4xl gap-4 sm:grid-cols-3">
-            {(["free", "starter", "pro"] as const).map((id) => {
-              const p = PLANS[id];
-              return (
-                <Link
-                  key={id}
-                  href="/pricing"
-                  className={`rounded-2xl border bg-card p-6 transition-all hover:-translate-y-0.5 hover:shadow-lg ${
-                    p.highlight ? "border-accent ring-1 ring-accent/30" : "border-line"
-                  }`}
-                >
-                  <p className="font-display font-bold text-ink">{p.label}</p>
-                  <p className="mt-2">
-                    <span className="font-display text-3xl font-bold text-ink">
-                      {p.priceCents === 0 ? "0 €" : `${p.priceCents / 100} €`}
-                    </span>
-                    <span className="text-sm text-ink-faint"> / mois</span>
-                  </p>
-                  <p className="mt-2 text-sm text-ink-soft">{p.tagline}</p>
-                </Link>
-              );
-            })}
-          </div>
-          <p className="mt-8 text-center">
-            <Link
-              href="/pricing"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline"
-            >
-              Comparer tous les plans <ArrowRight className="h-4 w-4" />
-            </Link>
-          </p>
-        </div>
-      </section>
-
       {/* ── CTA FINAL ───────────────────────────────────────────────────── */}
-      <section className="border-t border-line">
+      <section className="border-t border-line bg-card2/50">
         <div className="mx-auto max-w-page px-4 py-20 text-center sm:px-6 lg:px-8">
           <h2 className="font-display text-3xl font-bold text-ink">
             Ton assistant, sur toutes tes pages, dans 2 minutes
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-ink-soft">
-            Crée ton compte, connecte tes apps — l&apos;assistant fait le reste,
-            et tu gardes le dernier mot.
+            Essaye dans le navigateur, ou installe l&apos;extension — même cerveau,
+            validations humaines, historique dans ton back-office.
           </p>
-          <Link
-            href="/quick"
-            className="mt-8 inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-8 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover"
-          >
-            <Zap className="h-5 w-5" /> Commencer gratuitement
-          </Link>
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link
+              href="/quick"
+              className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-8 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover"
+            >
+              <Zap className="h-5 w-5" /> Essayer l&apos;assistant
+            </Link>
+            <Link
+              href="/pricing"
+              className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-8 text-base font-medium text-ink hover:border-accent"
+            >
+              Voir les tarifs <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <p className="mt-6 text-sm text-ink-faint">
+            Plans dès {PLANS.free.priceCents === 0 ? "0 €" : `${PLANS.free.priceCents / 100} €`}
+            {" · "}BYOK = exécutions illimitées
+          </p>
         </div>
       </section>
-
-      <B2BSection />
     </div>
   );
 }

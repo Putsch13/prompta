@@ -26,18 +26,8 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/dashboard/new" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
-                  Créer un agent
-                </Link>
-              </li>
-              <li>
                 <Link href="/pricing" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
                   Tarifs
-                </Link>
-              </li>
-              <li>
-                <Link href="/cas-usage" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
-                  Cas d&apos;usage
                 </Link>
               </li>
               <li>
@@ -47,7 +37,7 @@ export function Footer() {
               </li>
               <li>
                 <Link href="/dashboard/connexions" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
-                  1000+ applications
+                  Connexions
                 </Link>
               </li>
             </ul>
@@ -57,7 +47,7 @@ export function Footer() {
             <h3 className="text-sm font-semibold">Compte</h3>
             <ul className="mt-3 space-y-2">
               <li>
-                <Link href="/dashboard" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
+                <Link href="/dashboard/runs" prefetch className="text-sm text-ink-soft transition-colors hover:text-ink">
                   Dashboard
                 </Link>
               </li>

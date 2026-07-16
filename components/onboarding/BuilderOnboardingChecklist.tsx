@@ -1,36 +1,28 @@
 import Link from "next/link";
-import { Check, Circle, Plus, Plug, Rocket } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { Check, Circle, Plug, Rocket } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 interface Props {
   userId: string;
-  /** Conservé pour compat — plus utilisé (parcours sans vente). */
+  /** Conservé pour compat. */
   kycComplete?: boolean;
 }
 
-/** Parcours d'activation : connecter → construire → mettre en production. */
+/** Parcours d'activation : connexions → premier ordre dans /quick. */
 export async function BuilderOnboardingChecklist({ userId }: Props) {
-  const supabase = await createClient();
   const admin = createAdminClient();
 
-  const [{ count: connectionCount }, { count: agentCount }, { count: runCount }] =
-    await Promise.all([
-      admin
-        .from("user_connections")
-        .select("*", { count: "exact", head: true })
-        .eq("owner_id", userId)
-        .eq("status", "connected"),
-      supabase
-        .from("listings")
-        .select("*", { count: "exact", head: true })
-        .eq("creator_id", userId)
-        .neq("type", "prompt"),
-      admin
-        .from("listing_agent_runs")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", userId),
-    ]);
+  const [{ count: connectionCount }, { count: runCount }] = await Promise.all([
+    admin
+      .from("user_connections")
+      .select("*", { count: "exact", head: true })
+      .eq("owner_id", userId)
+      .eq("status", "connected"),
+    admin
+      .from("listing_agent_runs")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId),
+  ]);
 
   const steps = [
     {
@@ -41,17 +33,10 @@ export async function BuilderOnboardingChecklist({ userId }: Props) {
       icon: Plug,
     },
     {
-      id: "build",
-      label: "Construire son premier agent avec le copilote",
-      done: (agentCount ?? 0) > 0,
-      href: "/dashboard/new",
-      icon: Plus,
-    },
-    {
       id: "run",
-      label: "Le lancer pour de vrai et suivre le live",
+      label: "Donner un premier ordre à l'assistant",
       done: (runCount ?? 0) > 0,
-      href: "/dashboard/new",
+      href: "/quick",
       icon: Rocket,
     },
   ];
@@ -63,7 +48,7 @@ export async function BuilderOnboardingChecklist({ userId }: Props) {
     <div className="mt-8 rounded-2xl border border-line bg-card p-6">
       <h2 className="font-display text-lg font-semibold text-ink">Bien démarrer</h2>
       <p className="mt-1 text-sm text-ink-soft">
-        {completed}/{steps.length} étapes — ton premier agent en production en moins de 10 minutes.
+        {completed}/{steps.length} étapes — connecte tes apps, puis donne un ordre.
       </p>
       <ul className="mt-4 space-y-3">
         {steps.map((step) => (

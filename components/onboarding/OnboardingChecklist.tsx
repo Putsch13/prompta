@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, Circle, Key, Play, Compass } from "lucide-react";
+import { Check, Circle, Key, Play } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 
 interface Props {
@@ -9,27 +9,21 @@ interface Props {
 export async function OnboardingChecklist({ userId }: Props) {
   const supabase = await createClient();
 
-  const [{ count: keyCount }, { count: runCount }, { count: agentCount }] =
-    await Promise.all([
-      supabase
-        .from("user_api_keys")
-        .select("*", { count: "exact", head: true })
-        .eq("owner_id", userId),
-      supabase
-        .from("runs")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("status", "completed"),
-      supabase
-        .from("listings")
-        .select("*", { count: "exact", head: true })
-        .eq("creator_id", userId),
-    ]);
+  const [{ count: keyCount }, { count: runCount }] = await Promise.all([
+    supabase
+      .from("user_api_keys")
+      .select("*", { count: "exact", head: true })
+      .eq("owner_id", userId),
+    supabase
+      .from("listing_agent_runs")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId),
+  ]);
 
   const steps = [
     {
       id: "keys",
-      label: "Configurez une clé API",
+      label: "Configurez une clé API ou une app",
       done: (keyCount ?? 0) > 0,
       href: "/dashboard/connexions",
       icon: Key,
@@ -40,13 +34,6 @@ export async function OnboardingChecklist({ userId }: Props) {
       done: (runCount ?? 0) > 0,
       href: "/quick",
       icon: Play,
-    },
-    {
-      id: "create",
-      label: "Créez votre premier agent",
-      done: (agentCount ?? 0) > 0,
-      href: "/dashboard/new",
-      icon: Compass,
     },
   ];
 
