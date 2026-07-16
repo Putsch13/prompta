@@ -26,13 +26,18 @@ export function TopUp({ showBalance = true, compact = false }: Props) {
 
   async function buyPack(packId: string) {
     setBuying(packId);
-    const res = await fetch("/api/stripe/credits", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ packId }),
-    });
-    const data = await res.json();
-    if (data.url) window.location.href = data.url;
+    try {
+      const res = await fetch("/api/stripe/credits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packId }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.assign(data.url);
+        return; // redirection en cours
+      }
+    } catch { /* réseau — on rend la main */ }
     setBuying(null);
   }
 

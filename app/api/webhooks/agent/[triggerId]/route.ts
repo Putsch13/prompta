@@ -31,9 +31,16 @@ export async function POST(request: NextRequest, props: { params: Promise<{ trig
   const secret = trigger.webhook_secret as string | null;
   const rawBody = await request.text();
 
-  if (secret && signature) {
+  // Un secret configuré rend la signature OBLIGATOIRE : sans elle (ou si elle
+  // ne correspond pas), on refuse. Comparaison en temps constant.
+  if (secret) {
+    if (!signature) {
+      return NextResponse.json({ error: "Signature manquante" }, { status: 401 });
+    }
     const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-    if (signature !== expected) {
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
       return NextResponse.json({ error: "Signature invalide" }, { status: 401 });
     }
   }

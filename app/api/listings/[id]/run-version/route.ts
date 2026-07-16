@@ -27,7 +27,9 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
     .eq("id", params.id)
     .maybeSingle();
 
-  if (!listing) {
+  // Un listing non publié n'est visible que de son créateur (sinon fuite de
+  // versionId/slug de brouillons par énumération d'UUID).
+  if (!listing || (listing.status !== "published" && listing.creator_id !== user.id)) {
     return NextResponse.json({ error: "Agent introuvable" }, { status: 404 });
   }
   if (listing.type === "prompt") {

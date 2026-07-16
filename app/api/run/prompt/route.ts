@@ -113,10 +113,13 @@ export async function POST(request: NextRequest) {
 
   const hasEntitlement = isOwner || isPro || hasPurchase || hasSubscription;
 
+  // La version DOIT appartenir au listing contrôlé plus haut (sinon IDOR :
+  // exécuter le prompt d'un autre listing via son versionId).
   const { data: version } = await admin
     .from("listing_versions")
     .select("prompt_body")
     .eq("id", versionId)
+    .eq("listing_id", listingId)
     .single();
 
   if (!version?.prompt_body) {

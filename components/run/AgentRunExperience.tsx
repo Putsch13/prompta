@@ -164,7 +164,12 @@ export function AgentRunExperience({
       }
     }
     loadSteps();
-    if (!activeForSteps) return;
+    if (!activeForSteps) {
+      // cleanup quand même : un fetch en vol ne doit pas setState après unmount
+      return () => {
+        cancelled = true;
+      };
+    }
     const t = setInterval(loadSteps, 1500);
     return () => {
       cancelled = true;
@@ -231,11 +236,14 @@ export function AgentRunExperience({
   }, [runId, status]);
 
   useEffect(() => {
+    // Sélection par défaut uniquement : ne jamais écraser un onglet choisi par
+    // l'utilisateur (sinon chaque refresh le ramenait de force sur « files »).
+    if (activeGroup) return;
     if (deliverables.length > 0) {
       setActiveGroup("files");
       return;
     }
-    if (groups.size > 0 && !activeGroup) {
+    if (groups.size > 0) {
       setActiveGroup(Array.from(groups.keys())[0]);
     }
   }, [groups, activeGroup, deliverables.length]);

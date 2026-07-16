@@ -133,7 +133,10 @@ export async function holdAgentRunCredits(
   runId: string,
   estimatedMax: number
 ): Promise<boolean> {
-  return holdCreditsForRun(userId, estimatedMax, runId);
+  // run_type "agent" obligatoire : la RPC écrit sinon l'UUID dans
+  // prompt_run_id (FK → runs) et échoue pour un run agent — et le settle,
+  // lui, trace déjà "agent" (incohérence hold/settle).
+  return holdCreditsForRun(userId, estimatedMax, runId, "agent");
 }
 
 export async function releaseAgentRunCredits(
@@ -141,7 +144,7 @@ export async function releaseAgentRunCredits(
   runId: string,
   estimatedMax: number
 ): Promise<void> {
-  await releaseCreditHold(userId, estimatedMax, runId);
+  await releaseCreditHold(userId, estimatedMax, runId, "agent");
 }
 
 export async function settleAgentRunCredits(

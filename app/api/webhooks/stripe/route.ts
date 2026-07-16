@@ -100,6 +100,15 @@ export async function POST(request: Request) {
 
       if (!listing) break;
 
+      // Idempotence : Stripe rejoue les webhooks — une session déjà traitée ne
+      // doit pas recréer achat/download ni renvoyer les emails.
+      const { data: existingPurchase } = await admin
+        .from("purchases")
+        .select("id")
+        .eq("stripe_checkout_session", session.id)
+        .maybeSingle();
+      if (existingPurchase) break;
+
       const priceCents = listing.price_cents ?? 0;
       const { platformFeeCents } = computeFees(priceCents);
 
@@ -294,11 +303,18 @@ export async function POST(request: Request) {
           .eq("stripe_subscription_id", subscriptionId)
           .maybeSingle();
         if (platformSub?.user_id) {
-          const invoiceId = (invoice as { id?: string }).id ?? `inv_${subscriptionId}_${Date.now()}`;
-          const { grantPlanMonthlyCredits } = await import("@/lib/billing/entitlements");
-          await grantPlanMonthlyCredits(platformSub.user_id, platformSub.plan, invoiceId).catch(
-            (e) => console.error("[webhook] plan credit grant failed:", e),
-          );
+          // Sans invoice.id, un fallback horodaté casserait l'idempotence
+          // (chaque retry Stripe re-créditerait) : on saute le grant, Stripe
+          // rejouera l'événement avec l'id présent.
+          const invoiceId = (invoice as { id?: string }).id;
+          if (invoiceId) {
+            const { grantPlanMonthlyCredits } = await import("@/lib/billing/entitlements");
+            await grantPlanMonthlyCredits(platformSub.user_id, platformSub.plan, invoiceId).catch(
+              (e) => console.error("[webhook] plan credit grant failed:", e),
+            );
+          } else {
+            console.error("[webhook] invoice.paid sans id — grant crédits plan sauté");
+          }
           await admin
             .from("platform_subscriptions")
             .update({ status: "active" })

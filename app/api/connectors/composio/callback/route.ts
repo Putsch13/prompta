@@ -34,9 +34,17 @@ export async function GET(req: NextRequest) {
 
   try {
     await handleComposioCallback(user.id, toolkit, connectedAccountId, status);
-    const returnUrl = req.nextUrl.searchParams.get("returnUrl");
-    const appBase = appUrl.replace(/\/$/, "");
-    if (returnUrl && returnUrl.startsWith(appBase)) {
+    // Comparaison d'ORIGINE stricte : startsWith accepterait
+    // https://app.com.evil.com (open redirect).
+    const rawReturn = req.nextUrl.searchParams.get("returnUrl");
+    let returnUrl: string | null = null;
+    if (rawReturn) {
+      try {
+        const u = new URL(rawReturn);
+        if (u.origin === new URL(appUrl).origin) returnUrl = u.toString();
+      } catch { /* returnUrl invalide → redirection par défaut */ }
+    }
+    if (returnUrl) {
       const sep = returnUrl.includes("?") ? "&" : "?";
       return NextResponse.redirect(`${returnUrl}${sep}connected=${toolkit}`);
     }

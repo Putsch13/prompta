@@ -82,11 +82,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Listing introuvable" }, { status: 404 });
   }
 
+  // La version doit appartenir au listing (sinon fuite du manifeste d'un autre
+  // agent via son versionId).
   const { data: version } = await admin
     .from("listing_versions")
     .select("env, prompt_body")
     .eq("id", versionId)
+    .eq("listing_id", listingId)
     .single();
+
+  if (!version) {
+    return NextResponse.json({ error: "Version introuvable pour ce listing" }, { status: 404 });
+  }
 
   const parsedEnv = parseListingEnv(version?.env, version?.prompt_body);
 

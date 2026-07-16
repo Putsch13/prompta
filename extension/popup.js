@@ -118,6 +118,9 @@ function statusLabel(s) {
 }
 function msgCard(item, liveSteps) {
   const model = item.model ? ` · ${esc(item.model)}` : "";
+  // Un run refusé AVANT création (connecteur manquant, clarification…) a un
+  // runId placeholder « … » : aucun lien dossier ne doit pointer dessus.
+  const hasRun = item.runId && item.runId !== "…";
   let body = "";
   if (liveSteps) {
     body = `<div class="steps">${liveSteps.map((label, i) => {
@@ -128,17 +131,36 @@ function msgCard(item, liveSteps) {
   }
   let footer = "";
   if (item.answer) footer += `<div class="answer" style="margin-top:8px;color:var(--ink);white-space:pre-wrap">${esc(item.answer).slice(0, 4000)}</div>`;
-  if (item.status === "awaiting_approval") footer += `<div class="warn" style="margin-top:6px">⏸ <a href="${baseUrl}/dashboard/validations" target="_blank" rel="noopener">valider dans Prompta</a></div>`;
-  else if (item.status === "completed") footer += `<div style="margin-top:6px"><a href="${baseUrl}/dashboard/runs/${esc(item.runId)}" target="_blank" rel="noopener">voir le dossier ↗</a></div>`;
-  else if (item.status === "failed") footer += `<div class="err" style="margin-top:6px">✗ ${esc(item.error || "Échec")} — <a href="${baseUrl}/dashboard/runs/${esc(item.runId)}" target="_blank" rel="noopener">détails</a></div>`;
+  if (item.status === "awaiting_approval") {
+    const validateUrl = item.approvalId
+      ? `${baseUrl}/dashboard/validations?focus=${esc(item.approvalId)}`
+      : `${baseUrl}/dashboard/validations`;
+    footer += `<div class="warn" style="margin-top:6px">⏸ <a href="${validateUrl}" target="_blank" rel="noopener">valider dans Prompta</a></div>`;
+  } else if (item.status === "completed" && hasRun) footer += `<div style="margin-top:6px"><a href="${baseUrl}/dashboard/runs/${esc(item.runId)}" target="_blank" rel="noopener">voir le dossier ↗</a></div>`;
+  else if (item.status === "failed") {
+    const detailLink = hasRun ? ` — <a href="${baseUrl}/dashboard/runs/${esc(item.runId)}" target="_blank" rel="noopener">détails</a>` : "";
+    const connectLink = item.needsConnect ? ` — <a href="${baseUrl}/dashboard/connexions" target="_blank" rel="noopener">connecter ↗</a>` : "";
+    footer += `<div class="err" style="margin-top:6px">✗ ${esc(item.error || "Échec")}${connectLink}${detailLink}</div>`;
+  }
+  const cancelBtn = liveSteps && hasRun && (item.status === "running" || item.status === "pending")
+    ? `<button data-cancel="${esc(item.runId)}" style="margin-left:auto;background:none;border:1px solid var(--line);color:var(--soft);border-radius:6px;font-size:10px;padding:1px 7px;cursor:pointer">■ stop</button>`
+    : "";
   return `<div class="msg" data-run="${esc(item.runId)}">
     <div class="goal">${esc(item.goal || item.title || "Mission")}</div>
     ${body}${footer}
-    <div class="meta"><span class="dot s-${esc(item.status)}"></span>${statusLabel(item.status)}${model}</div>
+    <div class="meta"><span class="dot s-${esc(item.status)}"></span>${statusLabel(item.status)}${model}${cancelBtn}</div>
   </div>`;
 }
 let history = [];
 let current = null; // { runId, goal, model, status, stepsCompleted, error, planned }
+const SUGGESTIONS = [
+  "Résume cette page en 5 points",
+  "Compare mes onglets ouverts",
+  "Rédige un email pro à partir de ma sélection",
+];
+function emptyState() {
+  return `<div class="empty">Ton assistant du quotidien.<br>Pose une question rapide<br>ou confie-lui une grosse mission.<br><br>${SUGGESTIONS.map((s) => `<button data-suggest="${esc(s)}" style="display:block;margin:6px auto 0;background:var(--panel);border:1px solid var(--line);color:var(--soft);border-radius:999px;font-size:11px;padding:5px 12px;cursor:pointer">${esc(s)}</button>`).join("")}</div>`;
+}
 function renderFeed() {
   const items = [...history];
   const list = items.map((it) => msgCard(it)).join("");
@@ -146,7 +168,12 @@ function renderFeed() {
   const clar = clarifyQ && clarifyQ.length
     ? `<div class="msg"><div class="goal" style="font-weight:600">Quelques précisions pour bien faire :</div><ul style="margin:6px 0 0;padding-left:18px;color:var(--soft)">${clarifyQ.map((q) => `<li>${esc(q)}</li>`).join("")}</ul><div style="color:var(--faint);font-size:11px;margin-top:6px">Réponds ci-dessous, je m'occupe du reste.</div></div>`
     : "";
-  feed.innerHTML = (list + cur + clar) || `<div class="empty">Ton assistant du quotidien.<br>Pose une question rapide<br>ou confie-lui une grosse mission.</div>`;
+  feed.innerHTML = (list + cur + clar) || emptyState();
+  feed.querySelectorAll("[data-suggest]").forEach((b) => b.addEventListener("click", () => { goalEl.value = b.dataset.suggest; goalEl.focus(); }));
+  feed.querySelectorAll("[data-cancel]").forEach((b) => b.addEventListener("click", async () => {
+    b.disabled = true;
+    await send("prompta:cancel", { runId: b.dataset.cancel });
+  }));
   feed.scrollTop = feed.scrollHeight;
 }
 
@@ -205,8 +232,11 @@ function pollRun() {
     current.planned = r.body.planned_steps?.length ? r.body.planned_steps : current.planned;
     current.error = r.body.error_message;
     current.answer = extractAnswer(r.body.output);
+    current.approvalId = r.body.approval_id ?? null;
     renderFeed();
-    if (["completed", "failed", "cancelled"].includes(r.body.status)) {
+    // awaiting_approval est TERMINAL pour le poll : la validation se fait dans
+    // le dashboard — sinon le composer reste bloqué indéfiniment.
+    if (["completed", "failed", "cancelled", "awaiting_approval"].includes(r.body.status)) {
       stopPolling(); launching = false; sendBtn.disabled = false;
       loadHistory(); // le run terminé (et sa réponse) rejoint le fil
     }
@@ -238,8 +268,14 @@ async function launch() {
   }
   if (!r?.ok) {
     launching = false; sendBtn.disabled = false;
-    if (r?.status === 409 && r.body?.missingConnectors?.length) { current.status = "failed"; current.error = `À connecter : ${r.body.missingConnectors.join(", ")}`; }
-    else current.status = "failed", current.error = r?.body?.message || (r?.status === 401 ? "Connecte-toi à Prompta." : `Erreur ${r?.status || "réseau"}`);
+    if (r?.status === 409 && r.body?.missingConnectors?.length) {
+      current.status = "failed";
+      current.error = `À connecter : ${r.body.missingConnectors.join(", ")}`;
+      current.needsConnect = true;
+    } else {
+      current.status = "failed";
+      current.error = r?.body?.message || (r?.status === 401 ? "Connecte-toi à Prompta." : `Erreur ${r?.status || "réseau"}`);
+    }
     renderFeed();
     return;
   }

@@ -34,31 +34,40 @@ export function BuyButton({
 
   async function handleBuy() {
     setLoading(true);
-    const res = await fetch("/api/stripe/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listingId }),
-    });
-    const data = await res.json();
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+        return; // redirection en cours : le spinner reste affiché
+      }
       alert(data.error || "Erreur");
-      setLoading(false);
+    } catch {
+      alert("Erreur réseau — réessayez.");
     }
+    setLoading(false);
   }
 
   async function handleDownload() {
     if (!versionId || !canDownload) return;
     setLoading(true);
-    const res = await fetch(`/api/download/${versionId}`);
-    const data = await res.json();
-    if (data.url) {
-      window.open(data.url, "_blank");
-    } else {
-      alert(data.error || "Erreur");
+    try {
+      const res = await fetch(`/api/download/${versionId}`);
+      const data = await res.json();
+      if (data.url) {
+        window.open(data.url, "_blank");
+      } else {
+        alert(data.error || "Erreur");
+      }
+    } catch {
+      alert("Erreur réseau — réessayez.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   if (RUNNABLE_TYPES.has(listingType) && (isFree || alreadyPurchased || isOwner)) {

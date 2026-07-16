@@ -16,6 +16,10 @@ function getResend(): Resend {
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "Prompta <noreply@prompta.fr>";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
+/** Échappe les valeurs interpolées dans le HTML des emails (titres saisis par les créateurs…). */
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 interface PurchaseReceiptParams {
   to: string;
   listingTitle: string;
@@ -84,7 +88,7 @@ export async function sendPurchaseReceipt(params: PurchaseReceiptParams) {
     </tr>
     <tr>
       <td style="padding: 12px 0; border-bottom: 1px solid #eee; color: #666;">Produit</td>
-      <td style="padding: 12px 0; border-bottom: 1px solid #eee; text-align: right; font-weight: 600;">${listingTitle}</td>
+      <td style="padding: 12px 0; border-bottom: 1px solid #eee; text-align: right; font-weight: 600;">${escapeHtml(listingTitle)}</td>
     </tr>
     <tr>
       <td style="padding: 12px 0; border-bottom: 1px solid #eee; color: #666;">Prix HT</td>
@@ -166,7 +170,7 @@ export async function sendSaleNotification(params: SaleNotificationParams) {
   <div style="background: linear-gradient(115deg, #0A66C2 0%, #378FE9 100%); border-radius: 12px; padding: 24px; margin-bottom: 24px; color: white;">
     <h2 style="margin: 0 0 8px; font-size: 20px;">🎉 Nouvelle vente !</h2>
     <p style="margin: 0; opacity: 0.9;">
-      ${buyerName} vient d'acheter <strong>${listingTitle}</strong>
+      ${escapeHtml(buyerName)} vient d'acheter <strong>${escapeHtml(listingTitle)}</strong>
     </p>
   </div>
 
@@ -226,7 +230,7 @@ export async function sendSubscriptionConfirmation(params: SubscriptionConfirmat
 <html>
 <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
   <h1 style="color: #0A66C2;">Abonnement confirmé</h1>
-  <p>Votre abonnement à <strong>${listingTitle}</strong> est actif.</p>
+  <p>Votre abonnement à <strong>${escapeHtml(listingTitle)}</strong> est actif.</p>
   <p>Montant : <strong>${(amountCents / 100).toFixed(2)} €/mois</strong></p>
   <p>Lancez l'agent avec vos clés API depuis la fiche listing.</p>
   <p><a href="${APP_URL}/dashboard/connexions">Configurer mes clés →</a></p>
@@ -335,12 +339,12 @@ export async function sendMissionReportEmail(params: MissionReportParams) {
   const linkButtons = links
     .map(
       (l) =>
-        `<a href="${l.url}" style="display:inline-block;background:#4F46E5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin:4px 6px 4px 0;">${l.label}</a>`,
+        `<a href="${escapeHtml(l.url)}" style="display:inline-block;background:#4F46E5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin:4px 6px 4px 0;">${escapeHtml(l.label)}</a>`,
     )
     .join("");
 
   const attachList = attachments
-    .map((a) => `<li style="margin:2px 0;">📎 ${a.filename}</li>`)
+    .map((a) => `<li style="margin:2px 0;">📎 ${escapeHtml(a.filename)}</li>`)
     .join("");
 
   const html = `
@@ -349,9 +353,9 @@ export async function sendMissionReportEmail(params: MissionReportParams) {
 <body style="font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#1f2937;max-width:640px;margin:0 auto;padding:24px;">
   <div style="background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;border-radius:14px;padding:26px 30px;">
     <p style="margin:0;font-size:13px;opacity:.85;">Mission terminée ✅</p>
-    <h1 style="margin:6px 0 0;font-size:22px;">${agentTitle}</h1>
+    <h1 style="margin:6px 0 0;font-size:22px;">${escapeHtml(agentTitle)}</h1>
   </div>
-  ${summary ? `<p style="margin:20px 0 8px;line-height:1.55;">${summary}</p>` : ""}
+  ${summary ? `<p style="margin:20px 0 8px;line-height:1.55;">${escapeHtml(summary)}</p>` : ""}
   ${
     links.length
       ? `<h3 style="margin:22px 0 8px;font-size:15px;">Ressources créées dans tes apps</h3><div>${linkButtons}</div>`

@@ -20,18 +20,22 @@ export function SubscribeButton({
 
   async function handleSubscribe() {
     setLoading(true);
-    const res = await fetch("/api/stripe/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listingId }),
-    });
-    const data = await res.json();
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
+    try {
+      const res = await fetch("/api/stripe/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+        return; // redirection en cours
+      }
       alert(data.error || data.message || "Erreur");
-      setLoading(false);
+    } catch {
+      alert("Erreur réseau — réessayez.");
     }
+    setLoading(false);
   }
 
   if (alreadySubscribed) {

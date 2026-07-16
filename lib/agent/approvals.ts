@@ -16,7 +16,7 @@ export async function createPendingApproval(params: {
   // de l'utilisateur (l'ancien défaut 60 min donnait l'impression que la
   // demande disparaissait si on ne répondait pas tout de suite).
   const expiresAt = new Date(Date.now() + (params.expiresInMinutes ?? 24 * 60) * 60 * 1000);
-  const { data } = await db()
+  const { data, error: insertErr } = await db()
     .from("agent_approvals")
     .insert({
       run_id: params.runId,
@@ -28,6 +28,12 @@ export async function createPendingApproval(params: {
     })
     .select("id")
     .single();
+
+  // Insert échoué → NE PAS mettre le run en pause (pause orpheline : la page
+  // Validations serait vide alors que le run attend indéfiniment).
+  if (insertErr || !data) {
+    throw new Error(`Création de l'approbation échouée${insertErr ? ` : ${insertErr.message}` : ""}`);
+  }
 
   // La ligne agent_approvals est la SOURCE DE VÉRITÉ de la pause. Le statut
   // « awaiting_approval » du run est cosmétique : si la contrainte de statut
@@ -47,8 +53,6 @@ export async function createPendingApproval(params: {
       .update({ paused_at_step: params.stepIndex })
       .eq("id", params.runId);
   }
-
-  if (!data) throw new Error("Création de l'approbation échouée");
 
   // Notification email best-effort (fire-and-forget) : l'utilisateur est
   // prévenu même s'il n'a pas l'app ouverte, avec le contenu à valider.

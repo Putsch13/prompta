@@ -366,7 +366,12 @@ export async function listComposioTools(toolkitSlug: string): Promise<ComposioTo
     }));
   }
 
-  toolCache.set(toolkitSlug, { at: now, items });
+  // Un résultat VIDE (timeout REST + timeout SDK, catalogue en panne) ne doit
+  // pas empoisonner le cache 15 min : « action introuvable » alors que le
+  // catalogue était juste lent. On ne met en cache que les listes non vides.
+  if (items.length > 0) {
+    toolCache.set(toolkitSlug, { at: now, items });
+  }
   return items;
 }
 

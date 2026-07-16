@@ -26,7 +26,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (user.email && currentPassword) {
+  // Un compte email/mot de passe DOIT prouver le mot de passe actuel (sinon une
+  // session volée suffit à verrouiller le compte). Les comptes OAuth purs n'ont
+  // pas de mot de passe actuel : ils peuvent en définir un.
+  const hasPasswordIdentity = (user.identities ?? []).some((i) => i.provider === "email");
+  if (hasPasswordIdentity) {
+    if (!currentPassword) {
+      return NextResponse.json({ error: "Mot de passe actuel requis." }, { status: 400 });
+    }
+    if (!user.email) {
+      return NextResponse.json({ error: "Compte sans email — changement impossible." }, { status: 400 });
+    }
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: user.email,
       password: currentPassword,

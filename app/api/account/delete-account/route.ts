@@ -24,7 +24,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (user.email && password) {
+  // Action irréversible : un compte email/mot de passe doit prouver son mot de
+  // passe (une session volée ne suffit pas). OAuth pur : pas de mot de passe.
+  const hasPasswordIdentity = (user.identities ?? []).some((i) => i.provider === "email");
+  if (hasPasswordIdentity) {
+    if (!password) {
+      return NextResponse.json({ error: "Mot de passe requis pour supprimer le compte." }, { status: 400 });
+    }
+    if (!user.email) {
+      return NextResponse.json({ error: "Compte sans email — suppression impossible ici." }, { status: 400 });
+    }
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: user.email,
       password,

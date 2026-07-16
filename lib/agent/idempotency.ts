@@ -71,6 +71,16 @@ export async function checkIdempotency(
   return { alreadyExecuted: false, previousOutput: null, executionId: data.id };
 }
 
+export interface BeginExecutionResult {
+  executionId: string;
+  /**
+   * Sortie d'une exécution DÉJÀ complétée (course : reprise de run, double
+   * worker). L'appelant DOIT court-circuiter l'appel externe et réutiliser
+   * cette sortie — sinon double envoi (email, écriture…).
+   */
+  completedOutput: string | null;
+}
+
 /**
  * Réserve l'exécution (status started) avant l'appel externe.
  */
@@ -79,7 +89,7 @@ export async function beginExecution(
   stepIndex: number,
   actionSlug: string,
   params?: Record<string, string>,
-): Promise<string> {
+): Promise<BeginExecutionResult> {
   const admin = createAdminClient();
   const executionKey = buildExecutionKey(runId, stepIndex, actionSlug, params);
   const now = new Date().toISOString();
@@ -98,7 +108,7 @@ export async function beginExecution(
     .single();
 
   if (!error) {
-    return data.id as string;
+    return { executionId: data.id as string, completedOutput: null };
   }
 
   if (error.code !== "23505") {
@@ -107,7 +117,7 @@ export async function beginExecution(
 
   const cached = await checkIdempotency(runId, stepIndex, actionSlug, params);
   if (cached.alreadyExecuted && cached.previousOutput != null) {
-    return cached.executionId ?? "";
+    return { executionId: cached.executionId ?? "", completedOutput: cached.previousOutput };
   }
 
   const { data: existing } = await admin
@@ -126,7 +136,7 @@ export async function beginExecution(
       .from("agent_action_executions")
       .update({ status: "started", error_message: null, updated_at: now })
       .eq("id", existing.id);
-    return existing.id as string;
+    return { executionId: existing.id as string, completedOutput: null };
   }
 
   throw new Error("Conflit idempotence — réessayez.");
@@ -174,7 +184,9 @@ export async function recordExecution(
   resultOutput: string,
   params?: Record<string, string>,
 ): Promise<string> {
-  const executionId = await beginExecution(runId, stepIndex, actionSlug, params);
-  await completeExecution(executionId, resultOutput);
-  return executionId;
+  const begun = await beginExecution(runId, stepIndex, actionSlug, params);
+  if (begun.completedOutput == null) {
+    await completeExecution(begun.executionId, resultOutput);
+  }
+  return begun.executionId;
 }

@@ -23,13 +23,18 @@ export function OrgBillingPanel({
 
   async function subscribe(plan: OrgPlanKey) {
     setLoading(plan);
-    const res = await fetch("/api/stripe/org-subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orgSlug, plan }),
-    });
-    const data = await res.json();
-    if (data.url) window.location.href = data.url;
+    try {
+      const res = await fetch("/api/stripe/org-subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgSlug, plan }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+        return; // redirection en cours
+      }
+    } catch { /* réseau — on rend la main */ }
     setLoading(null);
   }
 

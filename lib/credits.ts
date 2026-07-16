@@ -32,15 +32,37 @@ export async function addCredits(
   const admin = createAdminClient();
 
   // Idempotence : Stripe rejoue les webhooks (timeout/5xx) — un même checkout
-  // ne doit créditer qu'une seule fois.
+  // ne doit créditer qu'une seule fois. La ligne de ledger est insérée EN
+  // PREMIER : avec l'index unique (stripe_session_id, kind), une course entre
+  // deux webhooks fait échouer le doublon (23505) AVANT de toucher au solde.
   if (stripeSessionId) {
-    const { data: existing } = await admin
-      .from("credit_transactions")
-      .select("id")
-      .eq("stripe_session_id", stripeSessionId)
-      .eq("kind", kind)
-      .maybeSingle();
-    if (existing) return;
+    const { error: insertErr } = await admin.from("credit_transactions").insert({
+      user_id: userId,
+      amount_cents: amountCents,
+      kind,
+      description,
+      stripe_session_id: stripeSessionId,
+    });
+    if (insertErr) {
+      if (insertErr.code === "23505") return; // déjà crédité (retry/course)
+      // Fallback pré-migration (index unique absent) : check-then-act.
+      const { data: existing } = await admin
+        .from("credit_transactions")
+        .select("id")
+        .eq("stripe_session_id", stripeSessionId)
+        .eq("kind", kind)
+        .maybeSingle();
+      if (existing) return;
+      throw new Error(`Ledger crédits inaccessible : ${insertErr.message}`);
+    }
+  } else {
+    await admin.from("credit_transactions").insert({
+      user_id: userId,
+      amount_cents: amountCents,
+      kind,
+      description,
+      stripe_session_id: null,
+    });
   }
 
   const { data } = await admin
@@ -54,14 +76,6 @@ export async function addCredits(
     user_id: userId,
     balance_cents: current + amountCents,
     updated_at: new Date().toISOString(),
-  });
-
-  await admin.from("credit_transactions").insert({
-    user_id: userId,
-    amount_cents: amountCents,
-    kind,
-    description,
-    stripe_session_id: stripeSessionId ?? null,
   });
 }
 

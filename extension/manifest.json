@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Prompta Everywhere",
   "description": "Une barre de commande sur toutes vos pages : décrivez une mission, Prompta crée l'agent et l'exécute immédiatement.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

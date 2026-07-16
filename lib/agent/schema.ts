@@ -101,7 +101,9 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
     label: z.string().optional(),
     payloadTemplate: z.string().optional(),
     outputKey: z.string().optional(),
-    expiresInMinutes: z.number().default(60),
+    // Optionnel : le défaut (24 h) vit dans createPendingApproval — un default
+    // Zod ici l'écraserait systématiquement (bug du « défaut 24 h mort »).
+    expiresInMinutes: z.number().optional(),
   }),
   z.object({
     type: z.literal("retrieve"),

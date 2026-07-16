@@ -57,6 +57,7 @@ interface Live {
   status: string;
   error?: string | null;
   answer?: string | null;
+  approvalId?: string | null;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -195,7 +196,13 @@ export default function QuickPage() {
     pollRef.current = setInterval(async () => {
       const r = await fetch(`/api/run/agent/${runId}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
       if (!r) return;
-      setLive((l) => l && { ...l, planned: r.planned_steps ?? [], stepsDone: r.steps_completed ?? 0, status: r.status, error: r.error_message, answer: extractAnswer(r.output) });
+      setLive((l) => l && { ...l, planned: r.planned_steps ?? [], stepsDone: r.steps_completed ?? 0, status: r.status, error: r.error_message, answer: extractAnswer(r.output), approvalId: r.approval_id ?? null });
+      // awaiting_approval : on débloque le composer (la validation se fait dans
+      // le dashboard) mais on CONTINUE de suivre le run — quand l'utilisateur
+      // valide, la reprise s'affiche ici sans recharger la page.
+      if (r.status === "awaiting_approval" && busyRef.current) {
+        busyRef.current = false; setBusy(false);
+      }
       if (["completed", "failed", "cancelled"].includes(r.status) && pollRef.current) {
         clearInterval(pollRef.current); pollRef.current = null;
         busyRef.current = false; setBusy(false);
@@ -209,6 +216,12 @@ export default function QuickPage() {
     setGoal(text);
     inputRef.current?.focus();
     if (inputRef.current) { inputRef.current.style.height = "auto"; inputRef.current.style.height = Math.min(160, inputRef.current.scrollHeight) + "px"; }
+  }
+
+  async function cancelLive() {
+    const runId = live?.runId;
+    if (!runId || runId === "…") return;
+    try { await fetch(`/api/run/agent/${runId}/cancel`, { method: "POST" }); } catch { /* best-effort */ }
   }
 
   // Fil = historique chronologique + run en cours (si pas encore dans l'historique).
@@ -253,6 +266,14 @@ export default function QuickPage() {
             <div className="mt-10 text-center text-[#6b7595]">
               <p className="text-lg font-medium text-[#aab3cc]">Ton assistant du quotidien</p>
               <p className="mt-1 text-sm">Pose une question simple, ou confie-lui une vraie mission sur tes apps.</p>
+              <div className="mt-4 flex flex-col items-center gap-2">
+                {["Résume cette page en 5 points", "Rédige un email pro à partir de ce texte", "Crée un Sheet à partir de ces données"].map((s) => (
+                  <button key={s} onClick={() => reuse(s)}
+                          className="rounded-full border border-[#2a3350] bg-[#161d2e] px-3.5 py-1.5 text-xs text-[#aab3cc] transition-colors hover:border-[#7c6cff] hover:text-[#f3f5fb]">
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -264,6 +285,7 @@ export default function QuickPage() {
           {liveShown && (
             <Message goal={liveShown.goal} model={liveShown.model} status={liveShown.status} answer={liveShown.answer ?? null}
                      runId={liveShown.runId} planned={liveShown.planned} stepsDone={liveShown.stepsDone} error={liveShown.error}
+                     approvalId={liveShown.approvalId} onCancel={() => cancelLive()}
                      onReuse={() => reuse(liveShown.goal)} live />
           )}
 
@@ -354,10 +376,12 @@ function Message(props: {
   planned: string[];
   stepsDone: number;
   error?: string | null;
+  approvalId?: string | null;
   live?: boolean;
   onReuse: () => void;
+  onCancel?: () => void;
 }) {
-  const { goal, model, status, answer, runId, planned, stepsDone, error, live, onReuse } = props;
+  const { goal, model, status, answer, runId, planned, stepsDone, error, approvalId, live, onReuse, onCancel } = props;
   const isAgent = planned.length > 0 || (!answer && status !== "completed");
   return (
     <div className="flex flex-col gap-2">
@@ -395,9 +419,18 @@ function Message(props: {
             {status === "completed" ? "terminé" : status === "failed" ? "échec" : status === "awaiting_approval" ? "à valider" : status === "running" ? "en cours" : "en file"}
           </span>
           {model && <span className="text-[#6b7595]">· {model}</span>}
-          {status === "awaiting_approval" && <a href="/dashboard/validations" target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">valider</a>}
+          {status === "awaiting_approval" && (
+            <a href={approvalId ? `/dashboard/validations?focus=${approvalId}` : "/dashboard/validations"}
+               target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">valider</a>
+          )}
           {status === "completed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
           {status === "failed" && runId !== "…" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
+          {live && onCancel && runId !== "…" && (status === "running" || status === "pending") && (
+            <button onClick={onCancel} title="Arrêter la mission"
+                    className="ml-auto rounded-md border border-[#2a3350] px-2 py-0.5 text-[10px] text-[#aab3cc] hover:border-[#f87171] hover:text-[#f87171]">
+              ■ stop
+            </button>
+          )}
         </div>
         {status === "failed" && error && <div className="mt-1 text-xs text-rose-600">{error.slice(0, 140)}</div>}
       </div>

@@ -576,11 +576,25 @@ async function executeStep(
       let executionId: string | null = null;
       try {
         if (runId && !simulated) {
-          executionId = await beginExecution(runId, stepIndex, step.action, params);
+          const begun = await beginExecution(runId, stepIndex, step.action, params);
+          executionId = begun.executionId;
+          // Course (reprise / double worker) : l'exécution est DÉJÀ complétée →
+          // on réutilise sa sortie sans rejouer l'appel externe (double envoi).
+          if (begun.completedOutput != null) {
+            if (stepDbId) {
+              await logStepSuccess(stepDbId, begun.completedOutput.slice(0, 4000), undefined, stepStartedAt).catch(() => undefined);
+            }
+            return {
+              content: begun.completedOutput,
+              usage: { inputTokens: 0, outputTokens: 0, connectorAction: step.action },
+            };
+          }
         }
 
         const result = await executeConnectorAction(step.action, params, {
-          userId: ctx.userId,
+          // sharedEnv : le chemin Composio résout le compte via userId — il doit
+          // désigner le propriétaire de la connexion (créateur), pas l'abonné.
+          userId: connUserId,
           accessToken: conn?.accessToken,
           apiKey: step.connector === "telegram" ? conn?.accessToken : undefined,
           dryRun: simulated,
@@ -1085,6 +1099,18 @@ export async function runAgent(
               return { lastOutput, branchIdx, outputKey: branch.outputKey, newVars };
             })
           );
+
+          // Une branche en attente de validation humaine : ce N'EST PAS une
+          // erreur de branche — le signal de pause doit remonter tel quel
+          // (sinon il serait avalé en « [ERREUR] awaiting_approval » et le
+          // worker écraserait le statut du run déjà mis en pause).
+          const awaiting = branchResults.find(
+            (r): r is PromiseRejectedResult =>
+              r.status === "rejected" &&
+              r.reason instanceof Error &&
+              r.reason.message === "awaiting_approval",
+          );
+          if (awaiting) throw awaiting.reason;
 
           if (toolCalls > maxToolCalls) throw new Error("Plafond max_tool_calls atteint");
           if (tokensUsed > manifestWithLimits.limits.max_tokens) throw new Error("Plafond max_tokens atteint");

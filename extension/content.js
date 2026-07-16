@@ -162,13 +162,18 @@
   function statusText(s) { return { completed: "terminé", failed: "échec", awaiting_approval: "à valider", running: "en cours", pending: "en file" }[s] || s; }
   function card(it, live) {
     const isAgent = (it.planned?.length > 0) || (!it.answer && it.status !== "completed");
+    const hasRun = it.runId && it.runId !== "…";
     let body = it.answer ? `<div class="ans">${esc(it.answer).slice(0, 8000)}</div>` : "";
     if (isAgent && it.planned?.length) body += `<div>${it.planned.map((l, i) => { const d = it.stepsCompleted ?? it.stepsDone ?? 0; const k = i < d ? "✓" : i === d && (it.status === "running" || it.status === "pending") ? "▶" : "·"; return `<div class="step"><span class="k ${i < d ? "ok" : ""}">${k}</span><span>${esc(l)}</span></div>`; }).join("")}</div>`;
     else if (isAgent && (it.status === "running" || it.status === "pending")) body += `<div style="color:#aab3cc">🧠 Prompta conçoit l'agent…</div>`;
     let link = "";
-    if (it.status === "awaiting_approval") link = `<a href="${baseUrl}/dashboard/validations" target="_blank" rel="noopener">valider</a>`;
-    else if (it.runId && it.runId !== "…" && (it.status === "completed" || it.status === "failed")) link = `<a href="${baseUrl}/dashboard/runs/${esc(it.runId)}" target="_blank" rel="noopener">dossier ↗</a>`;
-    const err = it.status === "failed" && it.error ? `<div class="err">${esc(it.error).slice(0, 140)}</div>` : "";
+    if (it.status === "awaiting_approval") {
+      const vUrl = it.approvalId ? `${baseUrl}/dashboard/validations?focus=${esc(it.approvalId)}` : `${baseUrl}/dashboard/validations`;
+      link = `<a href="${vUrl}" target="_blank" rel="noopener">valider</a>`;
+    } else if (hasRun && (it.status === "completed" || it.status === "failed")) link = `<a href="${baseUrl}/dashboard/runs/${esc(it.runId)}" target="_blank" rel="noopener">dossier ↗</a>`;
+    else if (live && hasRun && (it.status === "running" || it.status === "pending")) link = `<button data-cancel="${esc(it.runId)}" style="margin-left:auto;background:none;border:1px solid #2a3350;color:#aab3cc;border-radius:6px;font-size:10px;padding:1px 7px;cursor:pointer">■ stop</button>`;
+    const connectLink = it.status === "failed" && it.needsConnect ? ` <a href="${baseUrl}/dashboard/connexions" target="_blank" rel="noopener">connecter ↗</a>` : "";
+    const err = it.status === "failed" && it.error ? `<div class="err">${esc(it.error).slice(0, 140)}${connectLink}</div>` : "";
     const pulse = live && !["completed", "failed", "awaiting_approval"].includes(it.status) ? " pulse" : "";
     return `<button class="req" data-reuse="${esc(it.goal)}">${esc(it.goal)}<span class="re">↺</span></button>
       <div class="res">${body}<div class="meta"><span class="dot d-${esc(it.status)}${pulse}"></span>${esc(statusText(it.status))}${it.model ? " · " + esc(it.model) : ""}${link}</div>${err}</div>`;
@@ -187,9 +192,12 @@
     const clarifyHtml = clarifyQ && clarifyQ.length
       ? `<div class="res" style="border-color:#7c6cff66"><div style="color:#f3f5fb;font-weight:600;margin-bottom:4px">Quelques précisions pour bien faire :</div><ul style="margin:0;padding-left:18px;color:#aab3cc">${clarifyQ.map((q) => `<li>${esc(q)}</li>`).join("")}</ul><div style="color:#6b7595;font-size:11px;margin-top:6px">Réponds ci-dessous, je m'occupe du reste.</div></div>`
       : "";
+    const suggestions = ["Résume cette page en 5 points", "Compare mes onglets ouverts", "Rédige un email pro à partir de ma sélection"];
+    const emptyHtml = `<div class="empty">Ton assistant du quotidien.<br>Pose une question, ou confie-lui une mission<br>sur tes onglets et tes apps.<br><br>${suggestions.map((s) => `<button data-reuse="${esc(s)}" style="display:block;margin:6px auto 0;background:#161d2e;border:1px solid #2a3350;color:#aab3cc;border-radius:999px;font-size:11px;padding:5px 12px;cursor:pointer">${esc(s)}</button>`).join("")}</div>`;
     const html = items.map((it) => card(it)).join("") + (live ? card(live, true) : "") + clarifyHtml;
-    feed.innerHTML = html || `<div class="empty">Ton assistant du quotidien.<br>Pose une question, ou confie-lui une mission<br>sur tes onglets et tes apps.</div>`;
+    feed.innerHTML = html || emptyHtml;
     feed.querySelectorAll("[data-reuse]").forEach((b) => b.addEventListener("click", () => { goalEl.value = b.dataset.reuse; goalEl.focus(); }));
+    feed.querySelectorAll("[data-cancel]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await send("prompta:cancel", { runId: b.dataset.cancel }); }));
     if (nearBottom) feed.scrollTop = feed.scrollHeight;
   }
   function renderCtx() {
@@ -228,6 +236,7 @@
       current.status = r.body.status; current.stepsCompleted = r.body.steps_completed ?? 0;
       current.planned = r.body.planned_steps?.length ? r.body.planned_steps : current.planned;
       current.error = r.body.error_message; current.answer = extractAnswer(r.body.output);
+      current.approvalId = r.body.approval_id ?? null;
       renderFeed();
       // Terminal OU en attente de validation : on cesse de poller (la validation
       // se fait dans le dashboard ; loadHistory rafraîchira à la réouverture).
@@ -258,7 +267,12 @@
     if (!r?.ok) {
       launching = false; sendBtn.disabled = false;
       current.status = "failed";
-      current.error = r?.status === 409 && r.body?.missingConnectors?.length ? `À connecter : ${r.body.missingConnectors.join(", ")}` : (r?.body?.message || (r?.status === 401 ? "Connecte-toi à Prompta." : `Erreur ${r?.status || "réseau"}`));
+      if (r?.status === 409 && r.body?.missingConnectors?.length) {
+        current.error = `À connecter : ${r.body.missingConnectors.join(", ")}`;
+        current.needsConnect = true;
+      } else {
+        current.error = r?.body?.message || (r?.status === 401 ? "Connecte-toi à Prompta." : `Erreur ${r?.status || "réseau"}`);
+      }
       renderFeed(); return;
     }
     current.runId = r.body.runId; current.title = r.body.title; current.status = "running";

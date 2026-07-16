@@ -36,6 +36,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(await api("/api/extension/execute", { method: "POST", body: JSON.stringify(msg.payload) }));
       } else if (msg?.type === "prompta:status") {
         sendResponse(await api(`/api/run/agent/${encodeURIComponent(msg.runId)}`));
+      } else if (msg?.type === "prompta:cancel") {
+        sendResponse(await api(`/api/run/agent/${encodeURIComponent(msg.runId)}/cancel`, { method: "POST" }));
       } else if (msg?.type === "prompta:connections") {
         sendResponse(await api("/api/extension/connections"));
       } else if (msg?.type === "prompta:models") {
@@ -81,10 +83,14 @@ chrome.commands.onCommand.addListener((command, tab) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "prompta-selection",
-    title: "Prompta : agir sur la sélection",
-    contexts: ["selection"],
+  // removeAll d'abord : sur une mise à jour de l'extension, l'id existe déjà
+  // et create échouerait (menu contextuel cassé).
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "prompta-selection",
+      title: "Prompta : agir sur la sélection",
+      contexts: ["selection"],
+    });
   });
 });
 

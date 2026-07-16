@@ -124,9 +124,17 @@ async function resolveConnectionRow(
   };
 }
 
+const GOOGLE_REFRESH = { url: "https://oauth2.googleapis.com/token", clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET" };
+
 const REFRESH_CONFIGS: Record<string, { url: string; clientIdEnv: string; clientSecretEnv: string }> = {
-  gmail: { url: "https://oauth2.googleapis.com/token", clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET" },
-  google_sheets: { url: "https://oauth2.googleapis.com/token", clientIdEnv: "GOOGLE_CLIENT_ID", clientSecretEnv: "GOOGLE_CLIENT_SECRET" },
+  // Tous les connecteurs Google partagent le même endpoint de refresh : sans
+  // entrée ici, leurs tokens (durée de vie ~1 h) expirent sans rafraîchissement
+  // et les runs échouent alors que refresh_token_enc est présent.
+  gmail: GOOGLE_REFRESH,
+  google_sheets: GOOGLE_REFRESH,
+  google_docs: GOOGLE_REFRESH,
+  google_drive: GOOGLE_REFRESH,
+  google_calendar: GOOGLE_REFRESH,
   slack: { url: "https://slack.com/api/oauth.v2.access", clientIdEnv: "SLACK_CLIENT_ID", clientSecretEnv: "SLACK_CLIENT_SECRET" },
   canva: { url: "https://api.canva.com/rest/v1/oauth/token", clientIdEnv: "CANVA_CLIENT_ID", clientSecretEnv: "CANVA_CLIENT_SECRET" },
 };

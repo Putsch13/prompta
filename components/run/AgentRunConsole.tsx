@@ -203,6 +203,9 @@ export function AgentRunConsole({
   // (le stream SSE se ferme sur `awaiting_approval`).
   const [reloadKey, setReloadKey] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  // Dernier id d'approbation vu — pour rouvrir la modale UNIQUEMENT sur une
+  // nouvelle demande, sans setState imbriqué dans un updater.
+  const lastApprovalIdRef = useRef<string | null>(null);
 
   async function cancelRun() {
     if (!runId) return;
@@ -217,16 +220,22 @@ export function AgentRunConsole({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function applyApproval(run: any) {
     if (run?.status === "awaiting_approval" && run?.approval) {
-      setApproval((prev) => {
-        // Nouvelle demande d'approbation → on rouvre la modale.
-        if (prev?.id !== run.approval.id) setModalDismissed(false);
-        return {
-          id: run.approval.id,
-          label: run.approval.label,
-          preview: run.approval.preview,
-          stepIndex: run.approval.step_index,
-        };
-      });
+      // Nouvelle demande d'approbation → on rouvre la modale. (Pas de setState
+      // imbriqué dans un updater : comportement imprévisible en Strict Mode.)
+      if (lastApprovalIdRef.current !== run.approval.id) {
+        lastApprovalIdRef.current = run.approval.id;
+        setModalDismissed(false);
+      }
+      setApproval((prev) =>
+        prev?.id === run.approval.id
+          ? prev
+          : {
+              id: run.approval.id,
+              label: run.approval.label,
+              preview: run.approval.preview,
+              stepIndex: run.approval.step_index,
+            },
+      );
     } else if (run?.status !== "awaiting_approval") {
       setApproval(null);
     }
@@ -234,11 +243,21 @@ export function AgentRunConsole({
 
   async function handleApprove(approvalId: string, modifiedContent: string) {
     if (!runId) return;
-    await fetch(`/api/run/agent/${runId}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ approvalId, decision: "approved", modifiedContent }),
-    });
+    // Ne pas passer l'UI en « running » si l'API a refusé : le run resterait
+    // en attente côté serveur alors que la modale a disparu.
+    try {
+      const res = await fetch(`/api/run/agent/${runId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalId, decision: "approved", modifiedContent }),
+      });
+      if (!res.ok) {
+        setReloadKey((k) => k + 1);
+        return;
+      }
+    } catch {
+      return;
+    }
     setApproval(null);
     setLiveStatus("running");
     setReloadKey((k) => k + 1);
@@ -246,11 +265,19 @@ export function AgentRunConsole({
 
   async function handleReject(approvalId: string) {
     if (!runId) return;
-    await fetch(`/api/run/agent/${runId}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ approvalId, decision: "rejected" }),
-    });
+    try {
+      const res = await fetch(`/api/run/agent/${runId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalId, decision: "rejected" }),
+      });
+      if (!res.ok) {
+        setReloadKey((k) => k + 1);
+        return;
+      }
+    } catch {
+      return;
+    }
     setApproval(null);
     setLiveStatus("failed");
     setReloadKey((k) => k + 1);

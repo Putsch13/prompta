@@ -8,16 +8,19 @@ export function evaluateCondition(expression: string, vars: Record<string, strin
   const trimmed = expression.trim();
   if (!trimmed) return false;
 
+  // Opérateur le plus à GAUCHE (pas le premier de la liste) : sinon
+  // `{{x}} == "a >= b"` serait parsé comme `>=` trouvé dans le littéral.
+  // À index égal, le plus long gagne (`>=` avant `>`).
   const ops = [">=", "<=", "!=", "==", ">", "<", "contains"];
   let op = "";
   let opIdx = -1;
 
   for (const candidate of ops) {
     const idx = trimmed.indexOf(candidate);
-    if (idx !== -1) {
+    if (idx === -1) continue;
+    if (opIdx === -1 || idx < opIdx || (idx === opIdx && candidate.length > op.length)) {
       op = candidate;
       opIdx = idx;
-      break;
     }
   }
 
