@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Prompta partout — l'assistant IA qui agit",
+  "short_name": "Prompta",
+  "description": "L'assistant qui voit vos pages, agit sur vos apps (Gmail, Sheets, Notion…) et pilote votre navigateur sous vos yeux. Chaque action sensible attend votre feu vert.",
+  "version": "0.6.0",
+  "homepage_url": "https://prompta-sjtf.onrender.com",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Prompta — ouvrir le panneau",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "commands": {
+    "toggle-bar": {
+      "suggested_key": {
+        "default": "Alt+P",
+        "mac": "Alt+P"
+      },
+      "description": "Ouvrir / fermer le panneau Prompta"
+    }
+  },
+  "background": {
+    "scripts": ["bg.js"],
+    "service_worker": "bg.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*", "file://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["storage", "contextMenus", "activeTab", "scripting", "tabs", "alarms"],
+  "host_permissions": ["https://prompta-sjtf.onrender.com/*"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "prompta@prompta.fr",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["websiteContent", "websiteActivity"]
+      }
+    }
+  }
+}

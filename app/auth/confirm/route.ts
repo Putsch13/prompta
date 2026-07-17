@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { grantWelcomeCredits } from "@/lib/billing/entitlements";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,17 @@ export async function GET(request: Request) {
     });
 
     if (!error) {
+      // Inscription par email : mêmes 2 € + email de bienvenue qu'en OAuth.
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const firstGrant = await grantWelcomeCredits(user.id);
+        if (firstGrant && user.email) {
+          const { sendWelcomeEmail } = await import("@/lib/email");
+          void sendWelcomeEmail({ to: user.email });
+        }
+      }
       return NextResponse.redirect(`${origin}${redirect}`);
     }
   }

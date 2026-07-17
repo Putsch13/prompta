@@ -28,7 +28,9 @@
   let clarifyQ = null;    // questions à afficher
   let pendingConnect = null; // { goal, missing:[slug…], expired } mission en attente de connexion
   let connectTimer = null;   // poll des connexions (reprise auto)
-  const send = (type, extra) => new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => res(r || { ok: false, status: 0, body: {} })));
+  // lastError lu volontairement : sinon Chrome/Firefox loguent « Unchecked
+  // runtime.lastError » quand le worker/event page est momentanément absent.
+  const send = (type, extra) => new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => { void chrome.runtime.lastError; res(r || { ok: false, status: 0, body: {} }); }));
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const slugLabel = (s) => String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
   const connKey = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");

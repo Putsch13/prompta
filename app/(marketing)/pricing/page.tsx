@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 const FAQ = [
   {
     q: "Le plan gratuit suffit pour démarrer ?",
-    a: "Oui. Tu installes Prompta partout, tu as 2 € de crédits IA à l'inscription, et avec tes propres clés API (BYOK) le tac au tac et les missions n'entament pas tes crédits Prompta.",
+    a: "Oui. Tu installes Prompta partout et tu as 2 € de crédits IA à l'inscription. Une fois épuisés, ajoute tes propres clés API (BYOK) — tac au tac et missions en illimité, sans toucher tes crédits — ou recharge à la carte.",
   },
   {
     q: "Que paient les crédits IA ?",
@@ -31,7 +31,7 @@ const FAQ = [
   },
   {
     q: "C'est quoi un « agent gardé » ?",
-    a: "Une mission réussie que tu enregistres depuis l'extension pour la relancer plus tard. Le quota dépend du plan (1 / 5 / 20 / illimité).",
+    a: "Un agent actif dans ta bibliothèque, prêt à être relancé — créé depuis l'extension ou le builder. Le quota d'agents actifs dépend du plan (1 / 5 / 20 / illimité).",
   },
   {
     q: "Que se passe-t-il si je dépasse mes crédits inclus ?",
@@ -39,7 +39,7 @@ const FAQ = [
   },
   {
     q: "Puis-je changer de plan ou annuler ?",
-    a: "À tout moment. L'annulation prend effet en fin de période.",
+    a: "Tu peux annuler à tout moment — l'annulation prend effet en fin de période et tu gardes l'accès jusque-là. Pour changer de formule, annule ton plan actuel puis souscris le nouveau.",
   },
   {
     q: "L'extension marche sur Safari / Firefox ?",

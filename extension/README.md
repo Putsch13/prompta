@@ -63,7 +63,7 @@ privé éditable dans le builder, relançable à volonté.
 | Opera | `opera://extensions` |
 
 4. Active **Mode développeur** → **Charger l'extension non empaquetée** → le dossier dézippé
-5. **Épingler Prompta** : icône puzzle 🧩 → punaise à côté de « Prompta Everywhere »
+5. **Épingler Prompta** : icône puzzle 🧩 → punaise à côté de « Prompta partout »
 6. Être connecté à Prompta dans un onglet du **même** navigateur (session partagée)
 7. Après une mise à jour : ⟳ Recharger l'extension, puis recharger l'onglet
 

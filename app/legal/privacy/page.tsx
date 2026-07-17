@@ -26,14 +26,16 @@ export default function PrivacyPage() {
 
         <h2>2. Responsable du traitement</h2>
         <p>
-          Le responsable du traitement des données est Prompta SAS, dont le siège social
-          est situé à [adresse à compléter], France.
+          Le responsable du traitement des données est <strong>Puccini EI</strong>{" "}
+          (entrepreneur individuel, SIREN 932 699 697), représenté par Florent
+          Puccini — 824 chemin de la Daby, 83330 Le Beausset, France.
         </p>
         <p>
-          Contact DPO :{" "}
-          <a href="mailto:dpo@prompta.fr" className="text-accent hover:underline">
-            dpo@prompta.fr
-          </a>
+          Contact :{" "}
+          <a href="mailto:contact@prompta.fr" className="text-accent hover:underline">
+            contact@prompta.fr
+          </a>{" "}
+          · 06 74 81 80 67
         </p>
 
         <h2>3. Données collectées</h2>
@@ -42,13 +44,22 @@ export default function PrivacyPage() {
           <li>Informations de compte : nom, prénom, email, nom d&apos;utilisateur</li>
           <li>Informations de profil : bio, photo, localisation (optionnel)</li>
           <li>Données de paiement : traitées par Stripe (nous ne stockons pas vos données bancaires)</li>
-          <li>Contenus publiés : prompts, descriptions, commentaires</li>
+          <li>Ordres donnés à l&apos;assistant et agents créés (missions, historique de runs)</li>
+          <li>Clés API personnelles (BYOK) et jetons de connexion à vos applications : chiffrés au repos, jamais exposés</li>
         </ul>
-        <h3>3.2 Données collectées automatiquement</h3>
+        <h3>3.2 Contenus de pages traités à votre demande</h3>
+        <p>
+          Quand vous demandez à l&apos;assistant de lire une page ou des onglets, leur
+          contenu est transmis à nos serveurs puis au fournisseur du modèle d&apos;IA
+          que vous avez choisi (OpenAI, Anthropic, Google ou Mistral) pour générer
+          la réponse. Ces contenus ne sont traités que pour exécuter votre demande,
+          sont conservés dans votre historique de missions (que vous pouvez
+          supprimer) et ne servent jamais à entraîner des modèles de notre fait.
+        </p>
+        <h3>3.3 Données collectées automatiquement</h3>
         <ul>
-          <li>Données de navigation : pages visitées, durée des sessions</li>
-          <li>Données techniques : adresse IP, type de navigateur, appareil</li>
-          <li>Cookies : voir notre section dédiée ci-dessous</li>
+          <li>Données techniques : adresse IP, type de navigateur, appareil (journaux serveur)</li>
+          <li>Cookies : uniquement essentiels — voir la section dédiée ci-dessous</li>
         </ul>
 
         <h2>4. Finalités du traitement</h2>
@@ -73,11 +84,14 @@ export default function PrivacyPage() {
         <h2>6. Partage des données</h2>
         <p>Nous pouvons partager vos données avec :</p>
         <ul>
-          <li><strong>Stripe :</strong> pour le traitement des paiements</li>
-          <li><strong>Supabase :</strong> pour l&apos;hébergement des données</li>
-          <li><strong>Resend :</strong> pour l&apos;envoi d&apos;emails</li>
-          <li><strong>PostHog :</strong> pour l&apos;analyse d&apos;usage (anonymisée)</li>
-          <li><strong>Sentry :</strong> pour le monitoring des erreurs</li>
+          <li><strong>Render :</strong> hébergement du site et des serveurs (UE)</li>
+          <li><strong>Supabase :</strong> base de données et authentification (UE)</li>
+          <li><strong>Stripe :</strong> traitement des paiements</li>
+          <li><strong>Fournisseurs de modèles IA</strong> (OpenAI, Anthropic, Google, Mistral) : uniquement les contenus nécessaires à l&apos;exécution de vos demandes</li>
+          <li><strong>Composio :</strong> exécution des actions sur les applications que vous connectez (OAuth)</li>
+          <li><strong>Resend :</strong> envoi d&apos;emails transactionnels</li>
+          <li><strong>Sentry :</strong> monitoring des erreurs</li>
+          <li><strong>Plausible</strong> (si activé) : mesure d&apos;audience agrégée <em>sans cookie</em> et sans identification individuelle</li>
         </ul>
         <p>
           Nous ne vendons jamais vos données personnelles à des tiers.
@@ -102,21 +116,20 @@ export default function PrivacyPage() {
         </ul>
         <p>
           Pour exercer ces droits, contactez-nous à{" "}
-          <a href="mailto:dpo@prompta.fr" className="text-accent hover:underline">
-            dpo@prompta.fr
+          <a href="mailto:contact@prompta.fr" className="text-accent hover:underline">
+            contact@prompta.fr
           </a>
         </p>
 
         <h2>9. Cookies</h2>
-        <h3>9.1 Cookies essentiels</h3>
         <p>
-          Nécessaires au fonctionnement du site (authentification, préférences).
-          Ne peuvent pas être désactivés.
-        </p>
-        <h3>9.2 Cookies analytiques</h3>
-        <p>
-          Utilisés pour comprendre comment vous utilisez le site (PostHog).
-          Vous pouvez les refuser via les paramètres de votre navigateur.
+          Prompta n&apos;utilise <strong>que des cookies strictement nécessaires</strong> au
+          fonctionnement du service : la session d&apos;authentification (Supabase).
+          Ils sont exemptés de consentement au sens des lignes directrices de la
+          CNIL — c&apos;est pourquoi aucune bannière de cookies n&apos;est affichée. Nous
+          n&apos;utilisons aucun cookie publicitaire ni traceur d&apos;audience tiers. Les
+          pages de paiement Stripe peuvent déposer leurs propres cookies, régis
+          par la politique de Stripe.
         </p>
 
         <h2>10. Sécurité</h2>
@@ -151,8 +164,8 @@ export default function PrivacyPage() {
         <h2>14. Contact et réclamations</h2>
         <p>
           Pour toute question ou réclamation concernant vos données :{" "}
-          <a href="mailto:dpo@prompta.fr" className="text-accent hover:underline">
-            dpo@prompta.fr
+          <a href="mailto:contact@prompta.fr" className="text-accent hover:underline">
+            contact@prompta.fr
           </a>
         </p>
         <p>

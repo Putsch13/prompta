@@ -52,7 +52,11 @@ export async function getUserPlan(userId: string): Promise<UserPlanInfo> {
   };
 }
 
-/** Agents/workflows publiés (les prompts ne comptent pas dans le quota). */
+/**
+ * Agents « gardés » (réutilisables) — les prompts ne comptent pas dans le
+ * quota. Les drafts comptent : un agent sauvegardé depuis l'extension est
+ * relançable, donc « gardé », quel que soit son statut de publication.
+ */
 export async function publishedAgentCount(
   userId: string,
   opts?: { excludeListingId?: string },
@@ -63,7 +67,7 @@ export async function publishedAgentCount(
     .select("*", { count: "exact", head: true })
     .eq("creator_id", userId)
     .neq("type", "prompt")
-    .in("status", ["published", "under_review"]);
+    .in("status", ["draft", "published", "under_review"]);
   if (opts?.excludeListingId) query = query.neq("id", opts.excludeListingId);
   const { count } = await query;
   return count ?? 0;
@@ -102,15 +106,32 @@ export async function canPublishAgent(
 /**
  * Crédits de bienvenue (2 €) — idempotent : la transaction est marquée
  * `welcome_<userId>` et addCredits refuse les doublons sur cette clé.
+ * Renvoie true UNIQUEMENT au premier octroi (déclenche l'email de bienvenue
+ * une seule fois).
  */
-export async function grantWelcomeCredits(userId: string): Promise<void> {
-  await addCredits(
-    userId,
-    WELCOME_CREDIT_CENTS,
-    "bonus",
-    "Bienvenue sur Prompta — crédits IA offerts",
-    `welcome_${userId}`,
-  ).catch((e) => console.warn("[entitlements] welcome grant failed:", e));
+export async function grantWelcomeCredits(userId: string): Promise<boolean> {
+  try {
+    const admin = createAdminClient();
+    const { data: existing } = await admin
+      .from("credit_transactions")
+      .select("id")
+      .eq("stripe_session_id", `welcome_${userId}`)
+      .eq("kind", "bonus")
+      .maybeSingle();
+    if (existing) return false;
+
+    await addCredits(
+      userId,
+      WELCOME_CREDIT_CENTS,
+      "bonus",
+      "Bienvenue sur Prompta — crédits IA offerts",
+      `welcome_${userId}`,
+    );
+    return true;
+  } catch (e) {
+    console.warn("[entitlements] welcome grant failed:", e);
+    return false;
+  }
 }
 
 /**

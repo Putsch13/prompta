@@ -80,6 +80,23 @@ export async function POST(request: NextRequest) {
     inputs: [...manifest.inputs.filter((i) => !contextKeys.has(i.key)), ...extraInputs],
   };
 
+  // Quota « agents gardés » du plan — même porte que la publication (sinon la
+  // limite 1/5/20 serait contournable en accumulant des drafts relançables).
+  const { canPublishAgent } = await import("@/lib/billing/entitlements");
+  const gate = await canPublishAgent(user.id);
+  if (!gate.allowed) {
+    return NextResponse.json(
+      {
+        error: "agent_quota",
+        message:
+          gate.message ??
+          "Limite d'agents gardés atteinte pour ton plan — passe au plan supérieur ou supprime un agent existant.",
+        upgradeUrl: "/pricing",
+      },
+      { status: 402 },
+    );
+  }
+
   const title = (inputs.__title || inputs.__goal || "Agent Prompta").slice(0, 120);
   const { data: listing, error: listingErr } = await admin
     .from("listings")

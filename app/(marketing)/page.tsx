@@ -16,7 +16,7 @@ import Link from "next/link";
 import { PLANS } from "@/lib/billing/plans";
 import { Logo } from "@/components/Logo";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 900;
 
 export const metadata: Metadata = {
   title: "Prompta — l'IA qui voit ton écran et fait le travail",

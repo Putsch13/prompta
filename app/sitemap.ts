@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
 
-export const dynamic = "force-dynamic";
 
 /**
  * Sitemap — pages MARKETING uniquement. Plus de cas d'usage, marketplace,

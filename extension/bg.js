@@ -354,9 +354,9 @@ chrome.commands.onCommand.addListener((command, tab) => {
   if (command === "toggle-bar") toggleBarInTab(tab?.id);
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-  // removeAll d'abord : sur une mise à jour de l'extension, l'id existe déjà
-  // et create échouerait (menu contextuel cassé).
+function ensureContextMenu() {
+  // removeAll d'abord : sur une mise à jour de l'extension (ou une recréation
+  // au démarrage), l'id existe déjà et create échouerait (menu cassé).
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "prompta-selection",
@@ -364,7 +364,12 @@ chrome.runtime.onInstalled.addListener(() => {
       contexts: ["selection"],
     });
   });
-});
+}
+// Chrome persiste les menus (onInstalled suffit) ; Firefox (event page MV3) ne
+// les persiste PAS entre deux démarrages du navigateur et onInstalled ne se
+// re-déclenche pas au restart → on recrée aussi sur onStartup (no-op ailleurs).
+chrome.runtime.onInstalled.addListener(ensureContextMenu);
+chrome.runtime.onStartup.addListener(ensureContextMenu);
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "prompta-selection" && tab?.id) {

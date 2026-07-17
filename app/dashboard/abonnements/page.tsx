@@ -203,8 +203,8 @@ export default function AbonnementsPage() {
       <div className="mt-10">
         <h2 className="font-display text-xl font-bold text-ink">Les formules</h2>
         <p className="mb-4 mt-1 text-sm text-ink-soft">
-          Change de plan à tout moment — effet immédiat à l&apos;upgrade, fin de période au
-          downgrade.
+          Pour changer de formule : annule d&apos;abord ton plan actuel (tu gardes l&apos;accès
+          jusqu&apos;à la fin de la période payée), puis choisis le nouveau.
         </p>
         <PlanGrid
           plans={PLAN_ORDER.map((id) => ({

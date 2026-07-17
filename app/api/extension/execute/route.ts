@@ -34,7 +34,7 @@ function estimatePlanningCostCents(
 }
 
 /**
- * Extension « Prompta Everywhere » : ordre en langage naturel + contexte de la
+ * Extension « Prompta partout » : ordre en langage naturel + contexte de la
  * page courante → manifeste instantané → run lancé immédiatement (worker,
  * console live, validations humaines : le circuit standard).
  */

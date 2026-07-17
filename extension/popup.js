@@ -44,7 +44,9 @@ function extractAnswer(output) {
   const vals = Object.entries(output).filter(([k, v]) => !k.startsWith("__") && !k.endsWith("_output") && typeof v === "string");
   return vals.length ? vals[vals.length - 1][1] : null;
 }
-const send = (type, extra) => new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => res(r || { ok: false, status: 0, body: {} })));
+// lastError lu volontairement : sinon le navigateur logue « Unchecked
+// runtime.lastError » quand le worker/event page est momentanément absent.
+const send = (type, extra) => new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => { void chrome.runtime.lastError; res(r || { ok: false, status: 0, body: {} }); }));
 
 // ── Capture ─────────────────────────────────────────────────────────────────
 function pageCaptureFn(allowExplore, maxContent, maxLinks) {

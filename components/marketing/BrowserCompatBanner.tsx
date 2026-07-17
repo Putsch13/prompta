@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, FlaskConical } from "lucide-react";
 
-/** Détecte Safari / Firefox : l'extension Chromium n'y tourne pas. */
+/**
+ * Détecte le navigateur du visiteur :
+ *  - Safari  → l'extension n'y est pas encore distribuée (conversion en cours) ;
+ *  - Firefox → supporté en bêta (ZIP dédié) : bandeau informatif, pas bloquant.
+ */
 export function BrowserCompatBanner() {
   const [kind, setKind] = useState<"safari" | "firefox" | null>(null);
 
@@ -25,7 +29,37 @@ export function BrowserCompatBanner() {
 
   if (!kind) return null;
 
-  const name = kind === "safari" ? "Safari" : "Firefox";
+  if (kind === "firefox") {
+    return (
+      <div
+        role="status"
+        className="mb-8 flex gap-3 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3.5 text-sm text-ink sm:px-5"
+      >
+        <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+        <div>
+          <p className="font-semibold text-accent">
+            Tu es sur Firefox — le support est en bêta.
+          </p>
+          <p className="mt-1 leading-relaxed text-ink-soft">
+            Télécharge le{" "}
+            <a
+              href="/downloads/prompta-firefox.zip"
+              download="prompta-firefox.zip"
+              className="font-semibold text-accent underline underline-offset-2 hover:text-accent-hover"
+            >
+              ZIP Firefox
+            </a>{" "}
+            et suis la section « Installation sur Firefox » plus bas. C&apos;est
+            une bêta : si quelque chose coince,{" "}
+            <a href="/quick" className="font-semibold text-accent underline underline-offset-2 hover:text-accent-hover">
+              /quick
+            </a>{" "}
+            reste toujours dispo (même cerveau, sans extension).
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -35,12 +69,13 @@ export function BrowserCompatBanner() {
       <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
       <div>
         <p className="font-semibold text-warning">
-          Tu es sur {name} — l&apos;extension ne s&apos;installe pas ici.
+          Tu es sur Safari — l&apos;extension n&apos;y est pas encore disponible.
         </p>
         <p className="mt-1 leading-relaxed text-ink-soft">
-          Prompta partout tourne sur <strong className="text-ink">Chrome, Edge, Brave, Arc ou Opera</strong>.
-          Ouvre ce guide dans l&apos;un de ces navigateurs pour installer le panneau
-          latéral. En attendant, tu peux{" "}
+          La version Safari est en préparation (conversion prête, distribution
+          App Store à venir). En attendant, Prompta partout tourne sur{" "}
+          <strong className="text-ink">Chrome, Edge, Brave, Arc, Opera</strong> et
+          Firefox (bêta). Tu peux aussi{" "}
           <a href="/quick" className="font-semibold text-accent underline underline-offset-2 hover:text-accent-hover">
             essayer /quick
           </a>{" "}

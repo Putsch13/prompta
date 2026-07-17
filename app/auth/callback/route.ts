@@ -21,7 +21,15 @@ export async function GET(request: Request) {
       if (user) {
         // 2 € de bienvenue dès la première connexion (idempotent) — sans
         // attendre la première visite du dashboard, promesse de la landing.
-        await grantWelcomeCredits(user.id);
+        // Premier octroi → email de bienvenue (une seule fois, best-effort).
+        const firstGrant = await grantWelcomeCredits(user.id);
+        if (firstGrant && user.email) {
+          const { sendWelcomeEmail } = await import("@/lib/email");
+          void sendWelcomeEmail({
+            to: user.email,
+            displayName: (user.user_metadata?.display_name as string | undefined) ?? undefined,
+          });
+        }
 
         const { data: profile } = await supabase
           .from("profiles")

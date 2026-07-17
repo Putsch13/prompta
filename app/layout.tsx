@@ -27,6 +27,12 @@ export const metadata: Metadata = {
     siteName: "Prompta",
     type: "website",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "Prompta — l'IA qui voit ton écran et fait le travail",
+    description:
+      "Réponse instantanée sur n'importe quelle page, missions cross-app, pilotage du navigateur — avec ton feu vert.",
+  },
 };
 
 export default function RootLayout({

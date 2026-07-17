@@ -20,7 +20,7 @@ import { ExtensionPanelDemo } from "@/components/marketing/ExtensionPanelDemo";
 export const metadata: Metadata = {
   title: "Installer Prompta partout — guide",
   description:
-    "Installer Prompta partout sur Chrome, Edge, Brave, Arc ou Opera : panneau latéral, raccourcis, connexions apps. Firefox et Safari non supportés pour l'instant.",
+    "Installer Prompta partout sur Chrome, Edge, Brave, Arc, Opera — et Firefox (bêta) : panneau latéral, raccourcis, connexions apps. Safari en préparation.",
   alternates: { canonical: "/prompta-partout" },
 };
 
@@ -29,6 +29,13 @@ export const metadata: Metadata = {
  * la page bascule en « Ajouter à Chrome » et relègue le ZIP en méthode avancée.
  */
 const STORE_URL = process.env.NEXT_PUBLIC_CHROME_STORE_URL;
+
+/**
+ * URL d'install Firefox (page AMO ou .xpi signé) — même logique : dès qu'elle
+ * est renseignée, la section Firefox bascule en « Ajouter à Firefox » et
+ * relègue le ZIP + about:debugging en méthode de test.
+ */
+const FIREFOX_ADDON_URL = process.env.NEXT_PUBLIC_FIREFOX_ADDON_URL;
 
 const BROWSERS_OK = [
   {
@@ -61,16 +68,18 @@ const BROWSERS_OK = [
     url: "opera://extensions",
     note: "Activer le mode développeur, puis charger le dossier.",
   },
+  {
+    name: "Firefox",
+    badge: "Bêta",
+    url: "about:debugging",
+    note: "ZIP dédié (manifest Firefox, version 128+). Install de test via about:debugging — version signée en un clic à venir.",
+  },
 ];
 
 const BROWSERS_NO = [
   {
-    name: "Firefox",
-    why: "APIs proches, mais il faut adapter (polyfill browser.*, background, packaging Add-ons). Pas supporté tel quel.",
-  },
-  {
     name: "Safari",
-    why: "Conversion en Safari Web Extension + compte Apple / packaging Mac. Plus lourd — pas supporté pour l’instant.",
+    why: "En préparation : la conversion Safari (app macOS + extension) est prête côté code. Reste la signature Apple et la distribution App Store — pas encore installable.",
   },
 ];
 
@@ -93,7 +102,7 @@ const INSTALL_STEPS = [
   {
     n: "4",
     title: "Épingle le « P »",
-    body: "Clique l'icône puzzle 🧩 en haut à droite de Chrome, puis la punaise à côté de « Prompta Everywhere ». Le P reste visible.",
+    body: "Clique l'icône puzzle 🧩 en haut à droite de Chrome, puis la punaise à côté de « Prompta partout ». Le P reste visible.",
   },
   {
     n: "5",
@@ -184,7 +193,7 @@ export default function PromptaPartoutPage() {
             </Link>
           </div>
           <p className="mt-3 text-sm text-ink-faint">
-            Chrome, Edge, Brave, Arc ou Opera — pas Safari, pas Firefox.
+            Chrome, Edge, Brave, Arc ou Opera — Firefox en bêta, Safari en préparation.
           </p>
 
           <ExtensionPanelDemo />
@@ -201,8 +210,8 @@ export default function PromptaPartoutPage() {
             Sur quels navigateurs ?
           </h2>
           <p className="mt-2 max-w-2xl text-ink-soft">
-            Même ZIP, même geste « charger non empaquetée » sur tout Chromium.
-            Firefox et Safari : pas encore.
+            Même code partout : un ZIP pour tout Chromium (geste « charger non
+            empaquetée »), un ZIP dédié pour Firefox (bêta). Safari : en préparation.
           </p>
 
           <h3 className="hud-label mt-10">[ Ça marche ]</h3>
@@ -224,7 +233,7 @@ export default function PromptaPartoutPage() {
             ))}
           </div>
 
-          <h3 className="mt-10 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-faint">[ Pas supporté tel quel ]</h3>
+          <h3 className="mt-10 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-faint">[ En préparation ]</h3>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {BROWSERS_NO.map((b) => (
               <div
@@ -265,10 +274,91 @@ export default function PromptaPartoutPage() {
           <div className="hud-card mt-8 flex flex-wrap items-center gap-3 px-5 py-4 text-sm text-ink-soft">
             <Pin className="h-5 w-5 shrink-0 text-accent" />
             <span>
-              Après une mise à jour : page Extensions → ⟳ sur Prompta Everywhere,
+              Après une mise à jour : page Extensions → ⟳ sur Prompta partout,
               puis recharge aussi l&apos;onglet de la page (sinon l&apos;ancien
               panneau reste en mémoire).
             </span>
+          </div>
+
+          <div className="hud-card mt-10 px-6 py-6">
+            <div className="flex items-center gap-3">
+              <h3 className="font-display text-lg font-semibold text-ink">
+                Installation sur Firefox
+              </h3>
+              <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider text-accent">
+                Bêta
+              </span>
+            </div>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-soft">
+              Même extension, ZIP dédié (Firefox 128+). C&apos;est une bêta : le
+              cœur fonctionne, on fiabilise encore les longues missions.
+            </p>
+            {FIREFOX_ADDON_URL ? (
+              <>
+                <a
+                  href={FIREFOX_ADDON_URL}
+                  target="_blank"
+                  rel="noopener"
+                  className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-accent-ink shadow-glow-sm transition-all hover:bg-accent-hover hover:shadow-glow"
+                >
+                  <Download className="h-4 w-4" />
+                  Ajouter à Firefox — gratuit
+                </a>
+                <p className="mt-3 text-xs text-ink-faint">
+                  Version signée par Mozilla : installation durable en un clic.
+                  Pense à autoriser l&apos;accès au site Prompta si Firefox le demande.
+                </p>
+              </>
+            ) : (
+              <ol className="mt-5 space-y-3 text-sm leading-relaxed text-ink-soft">
+                <li className="flex gap-3">
+                  <span className="hud-corners flex h-8 w-8 shrink-0 items-center justify-center border border-accent/30 bg-accent/10 font-mono text-xs font-bold text-accent">
+                    01
+                  </span>
+                  <span>
+                    <a
+                      href="/downloads/prompta-firefox.zip"
+                      download="prompta-firefox.zip"
+                      className="font-semibold text-accent hover:underline"
+                    >
+                      Télécharge le ZIP Firefox
+                    </a>{" "}
+                    (différent du ZIP Chrome — le manifest est adapté). Pas besoin
+                    de le dézipper.
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="hud-corners flex h-8 w-8 shrink-0 items-center justify-center border border-accent/30 bg-accent/10 font-mono text-xs font-bold text-accent">
+                    02
+                  </span>
+                  <span>
+                    Dans la barre d&apos;adresse, colle{" "}
+                    <code className="rounded border border-line bg-bg px-1.5 py-0.5 font-mono text-xs">
+                      about:debugging#/runtime/this-firefox
+                    </code>{" "}
+                    → « Charger un module complémentaire temporaire… » → choisis le ZIP.
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="hud-corners flex h-8 w-8 shrink-0 items-center justify-center border border-accent/30 bg-accent/10 font-mono text-xs font-bold text-accent">
+                    03
+                  </span>
+                  <span>
+                    Vérifie l&apos;accès au site : <code className="rounded border border-line bg-bg px-1.5 py-0.5 font-mono text-xs">about:addons</code>{" "}
+                    → Prompta partout → onglet Permissions → autorise
+                    l&apos;accès à ton instance Prompta (sinon l&apos;extension ne
+                    peut pas parler au serveur).
+                  </span>
+                </li>
+              </ol>
+            )}
+            {!FIREFOX_ADDON_URL && (
+              <p className="mt-4 text-xs leading-relaxed text-ink-faint">
+                Limite de la bêta : une extension « temporaire » disparaît quand tu
+                fermes Firefox (il faudra la recharger). La version signée Mozilla
+                — installation durable en un clic — est en cours de soumission.
+              </p>
+            )}
           </div>
         </div>
       </section>

@@ -22,6 +22,16 @@ export default function TermsPage() {
           assistant dans le navigateur et un back-office permettant de créer, exécuter
           et superviser des agents connectés à vos applications.
         </p>
+        <p>
+          Le service est édité par <strong>Puccini EI</strong> (entrepreneur
+          individuel, SIREN 932 699 697), 824 chemin de la Daby, 83330 Le Beausset,
+          France — contact@prompta.fr. TVA non applicable, art. 293 B du CGI.
+          Voir les{" "}
+          <a href="/legal/mentions" className="text-accent hover:underline">
+            mentions légales
+          </a>
+          .
+        </p>
 
         <h2>2. Acceptation des conditions</h2>
         <p>

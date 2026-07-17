@@ -20,6 +20,70 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+interface WelcomeEmailParams {
+  to: string;
+  displayName?: string;
+}
+
+/** Email de bienvenue — envoyé une seule fois, à l'octroi des 2 € offerts. */
+export async function sendWelcomeEmail(params: WelcomeEmailParams) {
+  const { to, displayName } = params;
+  const prenom = displayName?.trim() ? escapeHtml(displayName.trim()) : "";
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Bienvenue sur Prompta</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #E4EDF9; background: #05070D; max-width: 600px; margin: 0 auto; padding: 24px;">
+  <div style="text-align: center; margin-bottom: 28px;">
+    <div style="display: inline-block; width: 48px; height: 48px; line-height: 48px; border-radius: 48px; border: 2px solid rgba(56,189,248,0.7); background: rgba(56,189,248,0.12); color: #E4EDF9; font-size: 22px; font-weight: 700;">P</div>
+    <h1 style="color: #E4EDF9; font-size: 22px; margin: 12px 0 0;">Bienvenue sur Prompta${prenom ? ` , ${prenom}` : ""} !</h1>
+  </div>
+
+  <div style="background: #0A0F1B; border: 1px solid #172136; border-radius: 12px; padding: 22px; margin-bottom: 20px;">
+    <p style="margin: 0 0 12px; color: #8FA1BC;">
+      Tes <strong style="color: #38BDF8;">2 € de crédits IA</strong> sont sur ton compte — de quoi tester
+      l'assistant sans carte bancaire.
+    </p>
+    <p style="margin: 0; color: #8FA1BC;">
+      Prochaine étape : installe <strong style="color: #E4EDF9;">Prompta partout</strong> pour avoir
+      l'assistant sur toutes tes pages — il lit ce que tu vois, agit sur tes apps,
+      et attend ton feu vert pour tout ce qui est sensible.
+    </p>
+  </div>
+
+  <div style="text-align: center; margin-bottom: 28px;">
+    <a href="${APP_URL}/prompta-partout" style="display: inline-block; background: #38BDF8; color: #04121F; padding: 13px 30px; border-radius: 10px; text-decoration: none; font-weight: 700;">
+      Installer Prompta partout
+    </a>
+    <p style="margin: 14px 0 0; font-size: 13px; color: #5B6B85;">
+      ou <a href="${APP_URL}/quick" style="color: #38BDF8;">essaie directement dans le navigateur</a>
+    </p>
+  </div>
+
+  <div style="border-top: 1px solid #172136; padding-top: 18px; font-size: 12px; color: #5B6B85; text-align: center;">
+    <p style="margin: 0 0 6px;">Des questions ? Réponds simplement à cet email.</p>
+    <p style="margin: 0;">
+      <a href="${APP_URL}/aide" style="color: #5B6B85;">Aide</a> ·
+      <a href="${APP_URL}/legal/privacy" style="color: #5B6B85;">Confidentialité</a>
+    </p>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  try {
+    await getResend().emails.send({
+      from: FROM_EMAIL,
+      to,
+      subject: "Bienvenue sur Prompta — tes 2 € de crédits IA sont prêts",
+      html,
+    });
+  } catch (error) {
+    console.error("Erreur envoi email de bienvenue:", error);
+  }
+}
+
 interface SubscriptionConfirmationParams {
   to: string;
   listingTitle: string;

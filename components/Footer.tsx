@@ -68,6 +68,11 @@ export function Footer() {
             <h3 className="text-sm font-semibold">Légal</h3>
             <ul className="mt-3 space-y-2">
               <li>
+                <Link href="/legal/mentions" className="text-sm text-ink-soft transition-colors hover:text-ink">
+                  Mentions légales
+                </Link>
+              </li>
+              <li>
                 <Link href="/legal/terms" className="text-sm text-ink-soft transition-colors hover:text-ink">
                   CGU
                 </Link>
@@ -81,8 +86,17 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 border-t border-line pt-6 text-center text-sm text-ink-faint">
-          &copy; {new Date().getFullYear()} Prompta. Tous droits réservés.
+        <div className="mt-10 space-y-2 border-t border-line pt-6 text-center">
+          <p className="text-xs leading-relaxed text-ink-faint">
+            Prompta est édité par <span className="text-ink-soft">Puccini EI</span> — SIREN 932 699 697 —
+            824 chemin de la Daby, 83330 Le Beausset, France — contact@prompta.fr · 06 74 81 80 67
+          </p>
+          <p className="text-xs text-ink-faint">
+            TVA non applicable, art. 293 B du CGI · Hébergé par Render · Données Supabase (UE) · Paiements Stripe
+          </p>
+          <p className="text-sm text-ink-faint">
+            &copy; {new Date().getFullYear()} Prompta. Tous droits réservés.
+          </p>
         </div>
       </div>
     </footer>

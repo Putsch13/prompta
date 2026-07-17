@@ -27,6 +27,56 @@ export async function POST(request: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const stripe = getStripe();
 
+  // Changement de plan : un abonnement actif existe déjà → on le MET À JOUR
+  // (proration immédiate) au lieu d'ouvrir un 2ᵉ checkout qui créerait un
+  // double abonnement facturé en parallèle.
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const admin = createAdminClient();
+  const { data: existing } = await admin
+    .from("platform_subscriptions")
+    .select("stripe_subscription_id, plan, status")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existing?.stripe_subscription_id && existing.status === "active") {
+    if (existing.plan === plan.id) {
+      return NextResponse.json({
+        url: `${appUrl}/dashboard/abonnements?plan=${plan.id}`,
+      });
+    }
+    try {
+      const sub = await stripe.subscriptions.retrieve(existing.stripe_subscription_id);
+      if (["active", "trialing", "past_due"].includes(sub.status)) {
+        await stripe.subscriptions.update(sub.id, {
+          items: [
+            {
+              id: sub.items.data[0].id,
+              price_data: {
+                currency: "eur",
+                product: sub.items.data[0].price.product as string,
+                unit_amount: plan.priceCents,
+                recurring: { interval: "month" },
+              },
+            },
+          ],
+          proration_behavior: "always_invoice",
+          cancel_at_period_end: false,
+          metadata: { type: "platform_plan", buyer_id: user.id, plan: plan.id },
+        });
+        await admin
+          .from("platform_subscriptions")
+          .update({ plan: plan.id, cancel_at_period_end: false })
+          .eq("user_id", user.id);
+        return NextResponse.json({
+          url: `${appUrl}/dashboard/abonnements?plan=${plan.id}&changed=1`,
+        });
+      }
+    } catch (e) {
+      // Abonnement Stripe introuvable/résilié → nouveau checkout classique.
+      console.warn("[platform-subscribe] plan change fallback to checkout:", e);
+    }
+  }
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer_email: user.email,

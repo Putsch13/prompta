@@ -129,7 +129,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    router.push("/quick");
+    router.push("/prompta-partout");
     router.refresh();
   }
 
