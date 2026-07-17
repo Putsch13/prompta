@@ -748,6 +748,7 @@ async function executeStep(
         modelId: step.model,
         apiKeys: ctx.apiKeys,
         maxActions: step.maxActions,
+        tabHint: step.tabHint,
       });
       const content = pilot.finalUrl ? `${pilot.summary}\n(page finale : ${pilot.finalUrl})` : pilot.summary;
       await logRunActivity({

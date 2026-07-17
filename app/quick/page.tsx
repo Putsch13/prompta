@@ -192,6 +192,25 @@ export default function QuickPage() {
     } catch { approvalSeenRef.current = null; }
   }, []);
 
+  /**
+   * Historique conversationnel (échanges + résultats de missions, échecs
+   * compris) : « tu as oublié… » est compris comme la suite de la précédente.
+   */
+  const buildConvoHistory = useCallback(() => {
+    const hist: { role: "user" | "assistant"; content: string }[] = [];
+    for (const h of [...history].reverse().slice(-8)) {
+      if (!h.goal) continue;
+      hist.push({ role: "user", content: h.goal.slice(0, 1500) });
+      if (h.status === "completed" && h.answer) {
+        hist.push({ role: "assistant", content: h.answer.slice(0, 1500) });
+      } else {
+        const err = h.error ? ` — ${h.error.slice(0, 250)}` : "";
+        hist.push({ role: "assistant", content: `[Mission « ${(h.title || h.goal).slice(0, 90)} » — statut : ${h.status}${err}]` });
+      }
+    }
+    return hist.slice(-8);
+  }, [history]);
+
   /** Pipeline MISSION : plan agent → run live → validations humaines. */
   const launchMission = useCallback(async (g: string, page: PageCtx, notice?: string) => {
     setApproval(null); setApprovalErr(null); approvalSeenRef.current = null;
@@ -202,7 +221,7 @@ export default function QuickPage() {
       res = await fetch("/api/extension/execute", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined }),
+        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined, history: buildConvoHistory() }),
       });
     } catch {
       busyRef.current = false; setBusy(false); setLive(null);
@@ -252,7 +271,7 @@ export default function QuickPage() {
         setTimeout(() => setLive(null), 400); // le run rejoint l'historique
       }
     }, 2500);
-  }, [explore, model, loadHistory, fetchApproval]);
+  }, [explore, model, loadHistory, fetchApproval, buildConvoHistory]);
 
   /** Décision de validation envoyée depuis la carte in-feed. */
   const decideApproval = useCallback(async (decision: "approved" | "rejected") => {

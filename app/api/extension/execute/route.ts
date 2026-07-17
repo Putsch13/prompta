@@ -58,7 +58,19 @@ export async function POST(request: NextRequest) {
     goal?: string;
     page?: PageContext;
     modelId?: string;
+    /** Derniers échanges (continuité conversationnelle), plus récent en dernier. */
+    history?: { role: "user" | "assistant"; content: string }[];
   } | null;
+
+  const history = (body?.history ?? [])
+    .filter(
+      (m) =>
+        (m?.role === "user" || m?.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim(),
+    )
+    .slice(-8)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
 
   const goal = body?.goal?.trim();
   if (!goal || goal.length < 5) {
@@ -110,6 +122,7 @@ export async function POST(request: NextRequest) {
       apiKey: keyResult.apiKey,
       resolved: keyResult.resolved,
       usableConnectors: usable,
+      history,
     });
   } catch (err) {
     return NextResponse.json(

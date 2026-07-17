@@ -119,6 +119,75 @@ async function main() {
   { const r = await instant("Résume en 2 points ce que je vois sur cette page.", { url: DOC.url, title: DOC.title, content: DOC.content, openTabs: [DOC, tab("https://vide.fr","Vide","")] });
     const ok = !r.error && /(50|gamma|delta|objectif|réunion)/i.test(r.text); rec("robustesse/onglet-vide+page-active", ok, r.error ?? r.text); }
 
+
+  // 13. CONTINUITÉ : correction d'une mission précédente (scénario PagesJaunes)
+  {
+    const SHEETS = tab("https://docs.google.com/spreadsheets/d/1DAbx/edit", "Feuille de calcul - Google Sheets",
+      "Feuille1\nNom | Ville | Téléphone\nL'Atelier de Plomberie | Marseille | 04.13.94.09.32\nAlpha Plomberie | Marseille |\nSanit Chauffage | Marseille |\nJC Plomberie | Marseille |");
+    const PJ = tab("https://www.pagesjaunes.fr/recherche/marseille-13/plombiers", "Plombiers à Marseille - PagesJaunes",
+      "PagesJaunes — plombiers Marseille\nL'Atelier de Plomberie — Marseille — 04 13 94 09 32\nAlpha Plomberie — Marseille — [Afficher le numéro]\nSanit Chauffage — Marseille — [Afficher le numéro]\nJC Plomberie — Marseille — [Afficher le numéro]");
+    const historique = [
+      { role: "user", content: "peux-tu me faire un tableau dans l'excel ouvert et recenser les plombiers nom ville téléphone dedans (grâce au site des pages jaunes sur la droite)" },
+      { role: "assistant", content: "[Mission « Recenser les plombiers dans le Sheet » — statut : completed] Ajout de 6 contacts de plomberie au Google Sheets, avec un numéro renseigné uniquement pour L'Atelier de Plomberie, les numéros des autres entrées étant absents du contenu source." },
+    ];
+    const res = await fetch(`${BASE}/api/extension/execute`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        goal: "attention ton agent ne m'a pas recensé tous les numéros, hésite pas à cliquer sur afficher le numéro pour les recenser dans l'excel",
+        page: { url: SHEETS.url, title: SHEETS.title, content: SHEETS.content, openTabs: [SHEETS, PJ] },
+        history: historique,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.status !== 200 || !body.runId) {
+      rec("continuité/correction→plan ciblé", false, `status ${res.status} ${JSON.stringify(body).slice(0, 200)}`);
+    } else {
+      // Le plan doit contenir une étape browser avec tabHint vers PagesJaunes.
+      const { data: run } = await sb.from("listing_agent_runs").select("inputs").eq("id", String(body.runId)).single();
+      const manifest = JSON.parse(((run?.inputs as Record<string, string>)?.__manifest) ?? "{}");
+      const steps = (manifest.steps ?? []) as Array<Record<string, unknown>>;
+      const browserStep = steps.find((st) => st.type === "browser");
+      const hint = String(browserStep?.tabHint ?? "").toLowerCase();
+      const ok = !!browserStep && (hint.includes("pagesjaunes") || hint.includes("pages jaunes") || hint.includes("plombier"));
+      rec("continuité/correction→plan ciblé", ok,
+        browserStep ? `browser step, tabHint="${browserStep.tabHint ?? "(absent)"}" pilots=${body.pilots}` : `pas d'étape browser — steps: ${steps.map((st) => st.type).join(",")}`);
+      // Pas d'extension ici pour exécuter le pilotage : on annule proprement.
+      await sb.from("listing_agent_runs").update({ status: "cancelled", error_message: "QA plan-check" }).eq("id", String(body.runId));
+    }
+  }
+
+  // 14. CONTINUITÉ instant : question de suivi qui référence la réponse précédente
+  {
+    const r = await instant("et en pourcentage du total, ça représente combien ?", {
+      url: CRM.url, title: CRM.title, content: CRM.content, openTabs: [CRM],
+      // l'historique passe par le body instant (déjà supporté)
+    });
+    // NB: l'API instant lit history dans le body — on refait l'appel complet :
+    const res = await fetch(`${BASE}/api/extension/instant`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        goal: "et en pourcentage du total, ça représente combien ?",
+        page: { url: CRM.url, title: CRM.title, content: CRM.content },
+        history: [
+          { role: "user", content: "Quel est le montant du deal Gamma Inc dans mon CRM ?" },
+          { role: "assistant", content: "Le deal Gamma Inc est de 30000€ (étape Découverte)." },
+        ],
+      }),
+    });
+    let text = ""; let err;
+    if (res.ok && res.body) {
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline) { const { done, value } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true });
+        for (const line of buf.split("\n\n")) { if (!line.startsWith("data: ")) continue; try { const ev = JSON.parse(line.slice(6)); if (ev.delta) text += ev.delta; if (ev.error) err = ev.error; } catch {} }
+        const i = buf.lastIndexOf("\n\n"); if (i >= 0) buf = buf.slice(i + 2); }
+    } else err = `HTTP ${res.status}`;
+    void r;
+    // 30000 / 54500 ≈ 55 %
+    const ok = !err && /5[3-8]([.,]\d+)?\s?%/.test(text) && /(54|52)\s?500/.test(text.replace(/ | /g, ' '));
+    rec("continuité/instant follow-up", ok, err ?? text.slice(0, 150));
+  }
+
   console.log("\n=== BILAN OMNISCIENCE ===");
   for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}`);
   const fails = results.filter(r => !r.ok);

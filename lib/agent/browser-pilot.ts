@@ -208,8 +208,10 @@ export async function runBrowserPilot(params: {
   modelId?: string;
   apiKeys: Record<string, string>;
   maxActions?: number;
+  /** Onglet cible (extrait d'URL/titre) — l'extension le retrouve et bascule dessus. */
+  tabHint?: string;
 }): Promise<BrowserPilotResult> {
-  const { goal, runId, stepIndex, apiKeys } = params;
+  const { goal, runId, stepIndex, apiKeys, tabHint } = params;
   const resolved = resolveModelOrDefault(params.modelId ?? "gpt-5.4-mini");
   const apiKey = apiKeys[resolved.provider];
   if (!apiKey) throw new Error(`Clé ${resolved.provider} manquante pour le pilotage du navigateur.`);
@@ -222,8 +224,12 @@ export async function runBrowserPilot(params: {
   // on abandonne tout de suite au lieu de brûler maxActions × 60 s d'attente.
   let transportFailures = 0;
 
+  // Le hint d'onglet accompagne chaque tâche : le service worker de
+  // l'extension résout l'onglet correspondant (URL/titre) et bascule dessus.
+  const hintFields = tabHint?.trim() ? { tabHint: tabHint.trim().slice(0, 200) } : {};
+
   // Snapshot initial : où en est la page ?
-  let taskId = await createTask(runId, stepIndex, { kind: "snapshot", label: "observation de la page" });
+  let taskId = await createTask(runId, stepIndex, { kind: "snapshot", label: "observation de la page", ...hintFields });
   let resp = await waitForResponse(taskId);
   if (!resp.ok || !resp.snapshot) throw new Error(resp.error ?? "Snapshot de page impossible.");
   let snapshot: BrowserSnapshot = resp.snapshot;
@@ -279,7 +285,7 @@ export async function runBrowserPilot(params: {
       : null;
     if (!action) throw new Error(`Action de pilotage invalide (« ${decision.action} »).`);
 
-    taskId = await createTask(runId, stepIndex, { kind: "act", action, label });
+    taskId = await createTask(runId, stepIndex, { kind: "act", action, label, ...hintFields });
     resp = await waitForResponse(taskId);
 
     if (resp.declined) {

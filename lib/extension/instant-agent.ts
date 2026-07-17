@@ -261,7 +261,9 @@ A) Si l'ordre est exécutable (avec au besoin une hypothèse raisonnable) → le
 B) Si une info CRITIQUE manque pour une VRAIE mission (quel fichier/ressource précise, quel format de livrable, quel destinataire, quel périmètre) OU si l'ordre est si ambigu que plusieurs interprétations très différentes sont possibles → demande des précisions AU LIEU d'un plan :
 { "clarify": ["question courte 1", "question courte 2"] }  (1 à 3 questions max, courtes, concrètes)
 N'utilise "clarify" QUE si c'est vraiment bloquant. JAMAIS pour une question simple/conversationnelle. Si une hypothèse raisonnable existe (destinataire = l'utilisateur, format = Doc, etc.), PRENDS-LA et produis le plan plutôt que de demander.
-CAS OBLIGATOIRES de clarify : l'ordre référence une SOURCE DE DONNÉES (« la bdd », « mon CRM », « le fichier », « la liste ») qui n'est NI visible dans le contexte fourni, NI identifiée par une URL/un nom précis, ET que plusieurs ressources pourraient correspondre → demande LAQUELLE (ex. « Quelle bdd exactement : un Google Sheet, un Airtable, une page Notion ? Donne son nom ou son lien »). Ne planifie JAMAIS une lecture de ressource que tu ne sais pas identifier.
+CAS OBLIGATOIRES de clarify : l'ordre référence une SOURCE DE DONNÉES (« la bdd », « mon CRM », « le fichier », « la liste ») qui n'est NI visible dans le contexte fourni, NI identifiée par une URL/un nom précis, NI identifiable via l'HISTORIQUE RÉCENT, ET que plusieurs ressources pourraient correspondre → demande LAQUELLE (ex. « Quelle bdd exactement : un Google Sheet, un Airtable, une page Notion ? Donne son nom ou son lien »). Ne planifie JAMAIS une lecture de ressource que tu ne sais pas identifier. INTERDIT de clarifier une question dont la réponse figure déjà dans l'historique.
+
+SUITES ET CORRECTIONS (prioritaire) : quand un HISTORIQUE RÉCENT est fourni et que l'ordre s'y réfère (« tu as oublié… », « corrige », « continue », « il manque… », « refais avec… », « attention ton agent n'a pas… »), c'est la SUITE de la mission précédente : reprends la MÊME cible (même document, mêmes onglets, même périmètre), ne refais PAS ce qui est déjà fait, et corrige précisément ce qui est signalé. Si la mission précédente écrivait dans un document (Sheet, Doc, Notion…), la correction met à jour CE document (retrouve-le via l'onglet ouvert ou l'historique). Ne repose aucune question déjà réglée.
 
 TYPES D'ÉTAPES DISPONIBLES (format RUNTIME strict) :
 - {"type":"llm","model":"MODEL_ID","prompt":"…{{variable}}…","outputKey":"cle"}
@@ -270,7 +272,7 @@ TYPES D'ÉTAPES DISPONIBLES (format RUNTIME strict) :
 - {"type":"action","connector":"google_sheets","action":"google_sheets.create_spreadsheet","params":{"title":"…"},"outputKey":"creation"} puis extraction d'id par étape llm ("Réponds UNIQUEMENT le spreadsheetId de : {{creation}}") puis {"action":"google_sheets.append_row","params":{"spreadsheet_id":"{{id}}","values":"COL1;COL2\\nval1;val2"}}
 - {"type":"action","connector":"gmail","action":"gmail.send","params":{"from":"EMAIL_UTILISATEUR","to":"…","subject":"…","body":"…"}}
 - {"type":"approval","label":"…","payloadTemplate":"{{cle}}","outputKey":"valide"} — validation humaine
-- {"type":"browser","goal":"objectif précis en langage naturel (quoi faire, sur quelle page, quand s'arrêter)","outputKey":"pilotage"} — PILOTE le navigateur de l'utilisateur : clique, remplit des formulaires, navigue DANS son onglet actif, avec sa session, sous ses yeux (il confirme chaque action risquée dans la page). Résultat = résumé de ce qui a été fait/observé.
+- {"type":"browser","goal":"objectif précis en langage naturel (quoi faire, sur quelle page, quand s'arrêter)","tabHint":"pagesjaunes","outputKey":"pilotage"} — PILOTE le navigateur de l'utilisateur : clique, remplit des formulaires, navigue, avec sa session, sous ses yeux (il confirme chaque action risquée dans la page). "tabHint" (optionnel) = extrait d'URL ou de titre d'un onglet OUVERT (repris de la liste des onglets fournie) : le pilotage bascule sur CET onglet — indispensable quand l'action vise un AUTRE onglet que la page active (ex. cliquer « Afficher le numéro » dans l'onglet PagesJaunes pendant que l'utilisateur est sur Sheets). Sans tabHint : onglet actif. Résultat = résumé de ce qui a été fait/observé.
 - {"type":"condition","expression":"{{cle}} contains X"}
 - {"type":"parallel","branches":[{"steps":[…],"outputKey":"b1"},…],"outputKey":"tout"}
 - Autres apps (notion, trello, shopify, hubspot…) : {"type":"action","connector":"<app>","action":"<app>.<verbe_objet>","params":{…}} — le résolveur trouve le bon outil.
@@ -289,7 +291,12 @@ RÈGLES DURES :
    • SIMPLE / CONVERSATIONNEL (question, traduction, réécriture, explication, calcul, brainstorming, résumé d'un texte fourni) → réponds DIRECTEMENT : UNE seule étape llm dont l'outputKey est "reponse". N'ajoute NI email, NI action externe, NI validation. La réponse s'affiche à l'utilisateur.
    • MISSION / AGENT (produire un livrable, écrire dans une app, envoyer, publier, recenser, croiser des pages) → enchaîne les étapes utiles ; termine par le livrable. N'ajoute un gmail.send de restitution QUE si l'ordre demande un envoi/rapport par email OU si le livrable est un lien (Sheets/Doc créé) à te transmettre — sinon la dernière étape llm "reponse" résume ce qui a été fait.
 9. Ne fabrique JAMAIS une étape d'envoi/action externe que l'ordre ne justifie pas (une simple question ne déclenche pas d'email). 1 étape pour le simple, jusqu'à 12 pour une grosse mission.
-10. Étape "browser" (pilotage) : UNIQUEMENT quand l'ordre exige d'INTERAGIR avec l'interface de la page affichée (cliquer, remplir un formulaire, dérouler des résultats, agir sur un site SANS connecteur ni API). Ordre de préférence STRICT : connecteur > web_fetch/web_search > browser (le pilotage est lent et mobilise l'utilisateur). JAMAIS de browser pour lire la page ({{page_active}} suffit) ni pour un site public statique (web_fetch suffit). JAMAIS pour se connecter ou payer. Le goal doit être autoportant et borné (« remplis le formulaire de contact avec …, ne l'envoie qu'après confirmation »). 1 seule étape browser par mission.`;
+10. Étape "browser" (pilotage) : UNIQUEMENT quand l'ordre exige d'INTERAGIR avec l'interface d'une page OUVERTE — l'onglet actif ou un AUTRE onglet ouvert via "tabHint" (cliquer, remplir un formulaire, dérouler des résultats, révéler des infos masquées type « Afficher le numéro », agir sur un site SANS connecteur ni API). Ordre de préférence STRICT : connecteur > web_fetch/web_search > browser (le pilotage est lent et mobilise l'utilisateur). JAMAIS de browser pour lire la page ({{page_active}} suffit) ni pour un site public statique (web_fetch suffit). JAMAIS pour se connecter ou payer. Le goal doit être autoportant et borné (« remplis le formulaire de contact avec …, ne l'envoie qu'après confirmation »). 1 seule étape browser par mission.`;
+
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
 
 export async function buildInstantAgent(params: {
   goal: string;
@@ -298,12 +305,28 @@ export async function buildInstantAgent(params: {
   apiKey: string;
   resolved: ResolvedModel;
   usableConnectors: Set<string>;
+  /** Derniers échanges (ordres, réponses, résultats de missions) — plus récent en dernier. */
+  history?: ConversationTurn[];
 }): Promise<InstantAgentResult> {
-  const { goal, page, userEmail, apiKey, resolved, usableConnectors } = params;
+  const { goal, page, userEmail, apiKey, resolved, usableConnectors, history } = params;
+
+  // Continuité conversationnelle : « tu as oublié les numéros », « corrige »,
+  // « continue » doivent être compris comme la SUITE de la mission précédente.
+  const historyBlock =
+    history && history.length
+      ? [
+          "HISTORIQUE RÉCENT DE LA CONVERSATION (du plus ancien au plus récent — l'ordre ci-dessus peut en être la suite) :",
+          ...history
+            .slice(-8)
+            .map((h) => `[${h.role === "user" ? "utilisateur" : "assistant"}] ${h.content.slice(0, 1200)}`),
+          "",
+        ]
+      : [];
 
   const userPrompt = [
     `ORDRE DE L'UTILISATEUR : ${goal}`,
     "",
+    ...historyBlock,
     `Email de l'utilisateur (rapports/livrables) : ${userEmail}`,
     `Connecteurs DÉJÀ CONNECTÉS : ${[...usableConnectors].join(", ") || "aucun"}. Si l'ordre vise une app précise NON connectée (ex. HubSpot, Notion…), planifie QUAND MÊME avec ce connecteur : le système proposera la connexion à l'utilisateur puis relancera la mission. NE contourne JAMAIS une app manquante par une étape llm qui ferait semblant, et ne substitue pas une autre app.`,
     "",

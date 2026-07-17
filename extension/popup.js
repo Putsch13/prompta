@@ -410,7 +410,7 @@ async function launchMission(goal, notice) {
     page.openTabs = (cap?.ok && Array.isArray(cap.tabs) ? cap.tabs : targeted).filter((t) => t.url !== page.url);
   }
 
-  const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined } });
+  const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, history: buildConvoHistory() } });
   if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
     launching = false; sendBtn.disabled = false;
     pendingClarify = { goal, questions: r.body.clarify }; clarifyQ = r.body.clarify; current = null;
@@ -450,16 +450,31 @@ async function armPilot(runId) {
   } catch { /* pas d'onglet pilotable */ }
 }
 
+/**
+ * Historique conversationnel (échanges + résultats de missions, échecs compris)
+ * — même logique que le panneau : les suites/corrections gardent le contexte.
+ */
+function buildConvoHistory() {
+  const hist = [];
+  for (const it of [...history, ...session].slice(-8)) {
+    if (!it || !it.goal) continue;
+    hist.push({ role: "user", content: String(it.goal).slice(0, 1500) });
+    if (it.status === "completed" && it.answer) {
+      hist.push({ role: "assistant", content: String(it.answer).slice(0, 1500) });
+    } else if (it.runId || it.kind === "mission") {
+      const t = (it.title || it.goal || "mission").slice(0, 90);
+      const err = it.error ? ` — ${String(it.error).slice(0, 250)}` : "";
+      hist.push({ role: "assistant", content: `[Mission « ${t} » — statut : ${it.status || "?"}${err}]` });
+    }
+  }
+  return hist.slice(-8);
+}
+
 /** Tac au tac streamé ; bascule automatiquement en mission si le modèle le décide. */
 function launchInstant(goal, page) {
   current = { kind: "instant", goal, model: modelEl.value || null, status: "streaming", answer: "" };
   renderFeed();
-  const hist = [];
-  for (const it of [...history, ...session].slice(-6)) {
-    if (it.goal && it.answer && it.status === "completed") {
-      hist.push({ role: "user", content: it.goal }, { role: "assistant", content: it.answer });
-    }
-  }
+  const hist = buildConvoHistory();
   const port = chrome.runtime.connect({ name: "prompta:instant" });
   let closed = false;
   // Watchdog : aucun événement SSE pendant 90 s → coupure propre (fini le

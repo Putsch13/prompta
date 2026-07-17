@@ -239,8 +239,55 @@ async function tabSnapshot(tabId) {
   return r.snapshot;
 }
 
+/**
+ * Résout l'onglet cible d'une tâche de pilotage. Sans tabHint : l'onglet de la
+ * mission. Avec tabHint (extrait d'URL/titre) : retrouve l'onglet OUVERT
+ * correspondant, le met au premier plan (l'utilisateur voit le pilotage) et
+ * s'assure que le content script y est injecté.
+ */
+async function resolvePilotTab(s, request) {
+  const hint = (request.tabHint || "").trim().toLowerCase();
+  if (!hint) return s.tabId;
+  if (s.hintKey === hint && s.hintTabId != null) return s.hintTabId;
+  const tabs = await chrome.tabs.query({});
+  const scored = tabs
+    .filter((t) => t.id != null && /^https?:/i.test(t.url || ""))
+    .map((t) => {
+      const url = (t.url || "").toLowerCase();
+      const title = (t.title || "").toLowerCase();
+      let score = 0;
+      if (url.includes(hint)) score += 3;
+      if (title.includes(hint)) score += 2;
+      // correspondance par mots (« pages jaunes » ↔ pagesjaunes.fr)
+      const words = hint.split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+      for (const w of words) { if (url.includes(w)) score += 1; if (title.includes(w)) score += 1; }
+      return { t, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (!scored.length) {
+    throw new Error(`Onglet « ${request.tabHint} » introuvable parmi les onglets ouverts — ouvre-le puis relance la mission.`);
+  }
+  const tab = scored[0].t;
+  // Premier plan : le pilotage se fait sous les yeux de l'utilisateur.
+  try { await chrome.tabs.update(tab.id, { active: true }); } catch { /* fenêtre fermée entre-temps */ }
+  try { if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true }); } catch { /* multi-fenêtres */ }
+  // Content script absent (onglet ouvert avant l'install) → injection à la volée.
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: "prompta:ping" });
+  } catch {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+      await new Promise((r) => setTimeout(r, 400));
+    } catch { /* page protégée (chrome://…) : le snapshot échouera avec un message clair */ }
+  }
+  s.hintKey = hint;
+  s.hintTabId = tab.id;
+  return tab.id;
+}
+
 async function runPilotTask(s, request) {
-  const { tabId } = s;
+  const tabId = await resolvePilotTab(s, request);
   if (request.kind === "snapshot") {
     return { ok: true, snapshot: await tabSnapshot(tabId) };
   }

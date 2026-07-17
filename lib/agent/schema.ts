@@ -123,6 +123,13 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
     type: z.literal("browser"),
     /** Objectif de la séquence de pilotage, en langage naturel. */
     goal: z.string(),
+    /**
+     * Onglet cible : extrait d'URL ou de titre d'un onglet OUVERT (repris de la
+     * liste des onglets). Sans hint, le pilotage opère sur l'onglet actif.
+     * Permet « clique dans PagesJaunes » pendant que l'utilisateur est sur
+     * Sheets : l'extension retrouve l'onglet et le met au premier plan.
+     */
+    tabHint: z.string().optional(),
     /** Modèle qui décide les actions (défaut : modèle de la mission). */
     model: z.string().optional(),
     maxActions: z.number().optional(),
