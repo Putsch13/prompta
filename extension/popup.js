@@ -17,6 +17,7 @@ let connectTimer = null;   // poll des connexions (reprise auto)
 let activePage = null;   // capture de l'onglet actif
 let openTabs = [];       // [{title, url, checked}]
 let session = [];        // échanges instantanés terminés (cette session popup)
+let convoStart = 0;      // frontière « nouvelle conversation » (timestamp)
 
 const $ = (id) => document.getElementById(id);
 const feed = $("feed");
@@ -208,7 +209,7 @@ let lastFeedSig = "";
 function renderFeed(force) {
   const seen = new Set(history.map((h) => (h.goal || "").slice(0, 200)));
   const localItems = session.filter((s) => !seen.has((s.goal || "").slice(0, 200)));
-  const items = [...history, ...localItems];
+  const items = [...history, ...localItems].filter(inConvo);
   // Signature : ne reconstruire le DOM que si quelque chose a changé — sinon
   // chaque tick de poll effacerait ce que l'utilisateur tape dans la carte
   // de validation (textarea éditable).
@@ -454,9 +455,16 @@ async function armPilot(runId) {
  * Historique conversationnel (échanges + résultats de missions, échecs compris)
  * — même logique que le panneau : les suites/corrections gardent le contexte.
  */
+/** Un item appartient-il à la conversation courante ? (frontière ✚) */
+function inConvo(it) {
+  if (!convoStart) return true;
+  const t = it.at ?? (it.createdAt ? Date.parse(it.createdAt) : 0);
+  return t >= convoStart;
+}
+
 function buildConvoHistory() {
   const hist = [];
-  for (const it of [...history, ...session].slice(-8)) {
+  for (const it of [...history, ...session].filter(inConvo).slice(-8)) {
     if (!it || !it.goal) continue;
     hist.push({ role: "user", content: String(it.goal).slice(0, 1500) });
     if (it.status === "completed" && it.answer) {
@@ -493,7 +501,7 @@ function launchInstant(goal, page) {
     try { port.disconnect(); } catch { /* déjà fermé */ }
     launching = false; sendBtn.disabled = false;
     if (fail) { current.status = "failed"; current.error = msg || "Réponse interrompue."; }
-    else if (current.answer) { current.status = "completed"; session.push(current); current = null; }
+    else if (current.answer) { current.status = "completed"; current.at = Date.now(); session.push(current); current = null; }
     else { current = null; }
     renderFeed(true);
   };
@@ -531,6 +539,16 @@ async function launch() {
 
 // ── Interactions ────────────────────────────────────────────────────────────
 sendBtn.addEventListener("click", launch);
+// ✚ Nouvelle conversation : le fil repart à zéro, l'historique d'avant n'est
+// plus envoyé au cerveau (fini les fausses « suites de mission »).
+$("newconvo-btn").addEventListener("click", () => {
+  convoStart = Date.now();
+  pendingClarify = null; clarifyQ = null;
+  setPendingConnect(null);
+  clearInterval(pollTimer); pollTimer = null;
+  current = null; launching = false; sendBtn.disabled = false;
+  renderFeed(true); goalEl.focus();
+});
 // Entrée = envoyer, Shift+Entrée = nouvelle ligne (même convention que la barre
 // flottante et /quick — cohérence entre les surfaces).
 goalEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); launch(); } });

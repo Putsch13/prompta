@@ -23,6 +23,7 @@
   let openTabs = [];      // [{title,url,checked}]
   let history = [];       // items serveur
   let session = [];       // échanges instantanés terminés (cette page)
+  let convoStart = 0;     // frontière « nouvelle conversation » (timestamp)
   let current = null;     // échange en cours (instant ou mission)
   let pendingClarify = null; // { goal, questions } en attente de précisions
   let clarifyQ = null;    // questions à afficher
@@ -281,7 +282,7 @@
         <span class="logo">P</span>
         <b>Prompta <span class="sub">· partout</span></b>
         <select data-r="model"><option>…</option></select>
-        <a class="ico" data-r="conns" target="_blank" title="Apps connectées">🔌</a>
+        <button class="ico" data-r="newconvo" title="Nouvelle conversation">✚</button>\n        <a class="ico" data-r="conns" target="_blank" title="Apps connectées">🔌</a>
         <button class="ico" data-r="close" title="Fermer">✕</button>
       </header>
       <div class="feed" data-r="feed"></div>
@@ -423,7 +424,7 @@
   function renderFeed(force) {
     const seen = new Set(history.map((h) => (h.goal || "").slice(0, 200)));
     const localItems = session.filter((s) => !seen.has((s.goal || "").slice(0, 200)));
-    const items = [...history].reverse().concat(localItems);
+    const items = [...history].reverse().concat(localItems).filter(inConvo);
     const live = current && !history.some((h) => current.runId && h.runId === current.runId) ? current : null;
     // Signature : on ne reconstruit le DOM que si quelque chose a VRAIMENT changé
     // (sinon un tick de poll identique effacerait la sélection de texte de l'user).
@@ -591,9 +592,16 @@
    * échanges textuels + résultats de missions (réussies OU échouées), pour que
    * « tu as oublié les numéros » soit compris comme la suite de la précédente.
    */
+  /** Un item appartient-il à la conversation courante ? (frontière ✚) */
+  function inConvo(it) {
+    if (!convoStart) return true;
+    const t = it.at ?? (it.createdAt ? Date.parse(it.createdAt) : 0);
+    return t >= convoStart;
+  }
+
   function buildConvoHistory() {
     const hist = [];
-    for (const it of [...history].reverse().concat(session).slice(-8)) {
+    for (const it of [...history].reverse().concat(session).filter(inConvo).slice(-8)) {
       if (!it || !it.goal) continue;
       hist.push({ role: "user", content: String(it.goal).slice(0, 1500) });
       if (it.status === "completed" && it.answer) {
@@ -673,7 +681,7 @@
       try { port.disconnect(); } catch { /* déjà fermé */ }
       launching = false; sendBtn.disabled = false;
       if (fail) { current.status = "failed"; current.error = msg || "Réponse interrompue."; }
-      else if (current.answer) { current.status = "completed"; session.push(current); current = null; }
+      else if (current.answer) { current.status = "completed"; current.at = Date.now(); session.push(current); current = null; }
       else { current = null; }
       renderFeed(true);
     };
@@ -724,6 +732,16 @@
     }
   }
   $("close").addEventListener("click", () => toggle(false));
+  // ✚ Nouvelle conversation : frontière nette — le fil repart à zéro et
+  // l'historique d'avant n'est plus envoyé au cerveau (fini les fausses suites).
+  $("newconvo").addEventListener("click", () => {
+    convoStart = Date.now();
+    pendingClarify = null; clarifyQ = null;
+    if (pendingConnect) { pendingConnect = null; stopConnectPoll(); }
+    stopPoll();
+    current = null; launching = false; sendBtn.disabled = false;
+    renderFeed(true); goalEl.focus();
+  });
   scrim.addEventListener("click", () => toggle(false));
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && panelOpen) { e.stopPropagation(); toggle(false); }

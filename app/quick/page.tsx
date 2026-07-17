@@ -110,6 +110,8 @@ export default function QuickPage() {
   const [approvalText, setApprovalText] = useState("");
   const [approvalErr, setApprovalErr] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
+  /** Frontière « nouvelle conversation » : le fil et l'historique envoyé au cerveau repartent d'ici. */
+  const [convoStart, setConvoStart] = useState(0);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const busyRef = useRef(false);
@@ -198,7 +200,7 @@ export default function QuickPage() {
    */
   const buildConvoHistory = useCallback(() => {
     const hist: { role: "user" | "assistant"; content: string }[] = [];
-    for (const h of [...history].reverse().slice(-8)) {
+    for (const h of [...history].reverse().filter((x) => !convoStart || Date.parse(x.createdAt) >= convoStart).slice(-8)) {
       if (!h.goal) continue;
       hist.push({ role: "user", content: h.goal.slice(0, 1500) });
       if (h.status === "completed" && h.answer) {
@@ -209,7 +211,7 @@ export default function QuickPage() {
       }
     }
     return hist.slice(-8);
-  }, [history]);
+  }, [history, convoStart]);
 
   /** Pipeline MISSION : plan agent → run live → validations humaines. */
   const launchMission = useCallback(async (g: string, page: PageCtx, notice?: string) => {
@@ -411,6 +413,16 @@ export default function QuickPage() {
     }
   }, [goal, ctx, manualUrl, model, clarify, history, launchMission, loadHistory]);
 
+  /** ✚ Nouvelle conversation : frontière nette — le cerveau ne reçoit plus l'historique d'avant. */
+  function newConversation() {
+    setConvoStart(Date.now());
+    setClarify(null); setPendingConnect(null); setError(null);
+    setApproval(null); setApprovalErr(null); approvalSeenRef.current = null;
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    setLive(null); busyRef.current = false; setBusy(false);
+    inputRef.current?.focus();
+  }
+
   function reuse(text: string) {
     setGoal(text);
     inputRef.current?.focus();
@@ -424,7 +436,7 @@ export default function QuickPage() {
   }
 
   // Fil = historique chronologique + run en cours (si pas encore dans l'historique).
-  const thread = [...history].reverse();
+  const thread = [...history].reverse().filter((h) => !convoStart || Date.parse(h.createdAt) >= convoStart);
   const liveShown =
     live &&
     !history.some(
@@ -442,6 +454,14 @@ export default function QuickPage() {
       <header className="flex items-center gap-2 border-b border-line px-4 py-3">
         <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-sm font-bold text-accent-ink shadow-glow-sm">P</span>
         <span className="flex-1 font-display text-sm font-bold">Prompta <span className="font-normal text-ink-faint">· assistant</span></span>
+        <button
+          type="button"
+          onClick={newConversation}
+          title="Nouvelle conversation"
+          className="flex h-7 items-center gap-1.5 rounded-lg border border-line bg-card2 px-2.5 font-mono text-xs text-ink-soft transition-colors hover:border-accent/50 hover:text-ink"
+        >
+          ✚ <span className="hidden sm:inline">Nouvelle</span>
+        </button>
         {models.length > 0 && (
           <select
             value={model}
