@@ -38,9 +38,10 @@ export default function CreditsPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="font-display text-2xl font-bold text-ink">Crédits plateforme</h1>
+      <h1 className="font-display text-2xl font-bold text-ink">Crédits IA</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Lancez des prompts sans clé API personnelle — débit à 0,10 € par run.
+        Lance tes missions sans clé API personnelle — le coût réel des tokens est
+        débité de ton solde. En BYOK, aucun crédit n&apos;est consommé.
       </p>
 
       <div className="mt-8 rounded-xl border border-line bg-card p-6">
@@ -68,7 +69,7 @@ export default function CreditsPage() {
             <button
               onClick={() => buyPack(pack.id)}
               disabled={buying === pack.id}
-              className="mt-4 w-full rounded-lg bg-accent py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
+              className="mt-4 w-full rounded-lg bg-accent py-2 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover disabled:opacity-50"
             >
               {buying === pack.id ? "…" : "Acheter"}
             </button>

@@ -132,7 +132,7 @@ function ConnexionsContent() {
   return (
     <div>
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-lg bg-ink px-4 py-2 text-sm text-white shadow-lg">
+        <div className="fixed bottom-6 right-6 z-50 rounded-lg border border-line bg-card2 px-4 py-2 text-sm text-ink shadow-lg">
           {toast}
         </div>
       )}
@@ -149,7 +149,7 @@ function ConnexionsContent() {
             setRotateProvider(undefined);
             setShowWizard(true);
           }}
-          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white"
+          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover"
         >
           <Plus className="h-4 w-4" />
           Ajouter une clé LLM
@@ -168,7 +168,7 @@ function ConnexionsContent() {
             <p className="text-ink-soft">Aucune clé configurée</p>
             <button
               onClick={() => setShowWizard(true)}
-              className="mt-4 rounded-lg bg-accent px-6 py-2 text-sm font-medium text-white"
+              className="mt-4 rounded-lg bg-accent px-6 py-2 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover"
             >
               Configurer mes clés
             </button>
@@ -186,11 +186,11 @@ function ConnexionsContent() {
                     <p className="font-mono text-sm text-ink-soft">sk-…{key.last4}</p>
                   </div>
                   {key.is_valid ? (
-                    <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                    <span className="flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs text-success">
                       <Check className="h-3 w-3" /> Valide
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                    <span className="flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs text-warning">
                       <AlertTriangle className="h-3 w-3" /> Invalide
                     </span>
                   )}
@@ -208,14 +208,14 @@ function ConnexionsContent() {
                   {deleteConfirm === key.provider ? (
                     <button
                       onClick={() => handleDelete(key.provider)}
-                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs text-white"
+                      className="rounded-lg bg-destructive/90 px-3 py-1.5 text-xs font-semibold text-[#1a0505] hover:bg-destructive"
                     >
                       Supprimer
                     </button>
                   ) : (
                     <button
                       onClick={() => setDeleteConfirm(key.provider)}
-                      className="rounded-lg border border-line p-2 text-red-600 hover:bg-red-50"
+                      className="rounded-lg border border-line p-2 text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -249,13 +249,13 @@ function ConnexionsContent() {
             <button
               onClick={saveTelegram}
               disabled={savingTelegram}
-              className="rounded-lg bg-accent px-4 py-2 text-sm text-white disabled:opacity-50"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
             >
               Enregistrer
             </button>
           </div>
           {connections.some((c) => c.connectorId === "telegram" && c.status === "connected") && (
-            <p className="mt-2 flex items-center gap-1 text-xs text-green-600">
+            <p className="mt-2 flex items-center gap-1 text-xs text-success">
               <Check className="h-3 w-3" /> Telegram connecté
             </p>
           )}

@@ -50,7 +50,7 @@ export function AgentsGrid({ agents }: { agents: AgentOverview[] }) {
         </div>
         <Link
           href="/dashboard/new"
-          className="mt-6 inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover"
+          className="mt-6 inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover"
         >
           <Plus className="h-4 w-4" /> Ou partir d&apos;une page blanche
         </Link>

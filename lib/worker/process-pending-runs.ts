@@ -294,7 +294,49 @@ export async function processPendingAgentRuns(
                 apiKeys: billing.apiKeys,
                 usableConnectors: usable,
               });
+              // Facturation du replan : l'appel LLM de réparation tourne sur
+              // les clés du run — s'il est en crédits, on le débite (markup).
+              if (replan && claimed.used_credits) {
+                const { debitPlatformUsage } = await import("@/lib/credits");
+                const planChars =
+                  (rawInputs.__goal?.length ?? 0) +
+                  Math.min(JSON.stringify(manifest).length, 20_000) +
+                  2_000;
+                await debitPlatformUsage(
+                  claimed.user_id,
+                  // ~4 car./token, prix fallback prudent appliqué dans le débit via markup
+                  ((planChars / 4) * 300 + 500 * 1200) / 1_000_000,
+                  "Réparation de plan (replan)",
+                  claimed.id,
+                );
+              }
               if (replan?.kind === "repaired") {
+                // Le plan réparé peut être plus lourd que le hold initial :
+                // top-up best-effort (jamais bloquant pour un run en vol).
+                if (claimed.used_credits && claimed.credit_hold_estimate_cents != null) {
+                  try {
+                    const { estimateMaxCostForManifest } = await import("@/lib/billing/estimate-manifest-cost");
+                    const { holdAgentRunCredits } = await import("@/lib/billing/agent-run-billing");
+                    const newEstimate = estimateMaxCostForManifest(replan.manifest);
+                    const currentHold = Number(claimed.credit_hold_estimate_cents);
+                    if (newEstimate > currentHold) {
+                      const topped = await holdAgentRunCredits(
+                        claimed.user_id,
+                        claimed.id,
+                        newEstimate - currentHold,
+                      );
+                      if (topped) {
+                        await admin
+                          .from("listing_agent_runs")
+                          .update({ credit_hold_estimate_cents: newEstimate })
+                          .eq("id", claimed.id);
+                        claimed.credit_hold_estimate_cents = newEstimate;
+                      }
+                    }
+                  } catch (e) {
+                    console.warn("[worker] hold top-up after replan failed:", e);
+                  }
+                }
                 await admin
                   .from("listing_agent_runs")
                   .update({

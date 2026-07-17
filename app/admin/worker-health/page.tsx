@@ -36,14 +36,14 @@ interface RecentRun {
 
 function StatusDot({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    pending: "bg-amber-400",
-    running: "bg-blue-400 animate-pulse",
-    completed: "bg-emerald-400",
-    failed: "bg-red-400",
-    suspended: "bg-orange-400",
-    awaiting_approval: "bg-purple-400",
+    pending: "bg-warning",
+    running: "bg-accent animate-pulse",
+    completed: "bg-success",
+    failed: "bg-destructive",
+    suspended: "bg-warning",
+    awaiting_approval: "bg-accent-dim",
   };
-  return <span className={`inline-block h-2.5 w-2.5 rounded-full ${colors[status] ?? "bg-gray-400"}`} />;
+  return <span className={`inline-block h-2.5 w-2.5 rounded-full ${colors[status] ?? "bg-ink-faint"}`} />;
 }
 
 function ago(dateStr: string | null): string {
@@ -99,7 +99,7 @@ export default function WorkerHealthPage() {
           <button
             onClick={handleReap}
             disabled={reaping || !stats?.staleRuns}
-            className="flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
+            className="flex items-center gap-2 rounded-lg border border-destructive/30 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40"
           >
             {reaping ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
             Nettoyer stale ({stats?.staleRuns ?? 0})
@@ -107,7 +107,7 @@ export default function WorkerHealthPage() {
           <button
             onClick={load}
             disabled={loading}
-            className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent/90"
+            className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Actualiser
           </button>
@@ -122,25 +122,25 @@ export default function WorkerHealthPage() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
-              icon={<Clock className="h-5 w-5 text-amber-500" />}
+              icon={<Clock className="h-5 w-5 text-warning" />}
               label="Pending"
               value={stats.pendingRuns}
               color="amber"
             />
             <StatCard
-              icon={<Zap className="h-5 w-5 text-blue-500" />}
+              icon={<Zap className="h-5 w-5 text-accent" />}
               label="Running"
               value={stats.runningRuns}
               color="blue"
             />
             <StatCard
-              icon={<AlertTriangle className="h-5 w-5 text-red-500" />}
+              icon={<AlertTriangle className="h-5 w-5 text-destructive" />}
               label="Stale"
               value={stats.staleRuns}
               color="red"
             />
             <StatCard
-              icon={<XCircle className="h-5 w-5 text-red-400" />}
+              icon={<XCircle className="h-5 w-5 text-destructive" />}
               label="Failed (24h)"
               value={stats.failedLast24h}
               color="red"
@@ -189,7 +189,7 @@ export default function WorkerHealthPage() {
                         <td className="px-4 py-3 font-mono text-[11px] text-ink-faint">
                           {run.claimed_by?.slice(0, 16) ?? "—"}
                         </td>
-                        <td className="max-w-[200px] truncate px-4 py-3 text-xs text-red-500">
+                        <td className="max-w-[200px] truncate px-4 py-3 text-xs text-destructive">
                           {run.error_message ?? ""}
                         </td>
                       </tr>
@@ -213,7 +213,7 @@ export default function WorkerHealthPage() {
                 Auto-refresh : <span className="font-medium text-ink">10 secondes</span>.
               </p>
             </div>
-            <CheckCircle className="ml-auto h-5 w-5 text-emerald-500" />
+            <CheckCircle className="ml-auto h-5 w-5 text-success" />
           </div>
         </>
       )}
@@ -233,10 +233,10 @@ function StatCard({
   color: string;
 }) {
   const borderColors: Record<string, string> = {
-    amber: "border-amber-200",
-    blue: "border-blue-200",
-    red: "border-red-200",
-    green: "border-emerald-200",
+    amber: "border-warning/30",
+    blue: "border-accent/30",
+    red: "border-destructive/30",
+    green: "border-success/30",
   };
 
   return (

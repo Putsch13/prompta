@@ -82,6 +82,11 @@ export interface OrchestratorContext {
    */
   resolvedInterface?: ResolvedInput[];
   contract?: AgentContract;
+  /**
+   * Usage LLM annexe (aiFills…) accumulé pendant l'exécution des étapes —
+   * fusionné dans le usageLog final pour être settlé comme le reste.
+   */
+  sideUsage?: StepUsage[];
 }
 
 export interface OrchestratorResult {
@@ -491,6 +496,12 @@ async function executeStep(
             tokenParam: fillModel.tokenParam,
           });
           params[key] = sanitizeAiFillValue(filled.content);
+          // Facturation : l'appel de remplissage IA rejoint le usage du run.
+          (ctx.sideUsage ??= []).push({
+            inputTokens: filled.inputTokens ?? Math.ceil(fillPrompt.length / 4),
+            outputTokens: filled.outputTokens ?? Math.ceil(filled.content.length / 4),
+            model: fillModel.apiModel,
+          });
           await logRunActivity({
             userId: ctx.userId,
             runId: ctx.runId,
@@ -1055,6 +1066,9 @@ export async function runAgent(
     const outputs: Record<string, string> = { ...resumeOutputs };
     latestOutputs = outputs;
     const usageLog: StepUsage[] = [];
+    // Les appels LLM annexes (aiFills…) poussent directement dans le usageLog
+    // du run : ils sont settlés avec le reste (plus de tokens fantômes).
+    effectiveContext.sideUsage = usageLog;
     const stepTrace: StepTraceEntry[] = [];
     let stepsCompleted = startFromStep;
     let tokensUsed = 0;

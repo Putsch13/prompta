@@ -739,7 +739,7 @@ export function CreateWizard({ categories: _categories, edit, initialObjective }
                   <span
                     className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold transition-all ${
                       done
-                        ? "border-accent bg-accent text-white"
+                        ? "border-accent bg-accent text-accent-ink"
                         : current
                           ? "border-accent bg-accent/10 text-accent ring-4 ring-accent/10"
                           : "border-line bg-card text-ink-faint"
@@ -804,7 +804,7 @@ export function CreateWizard({ categories: _categories, edit, initialObjective }
             type="button"
             onClick={handleGeneratePlan}
             disabled={planLoading}
-            className="mt-4 inline-flex h-11 items-center gap-2 rounded-lg bg-accent px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent/90 disabled:opacity-50"
+            className="mt-4 inline-flex h-11 items-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-accent-ink shadow-glow-sm transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {planLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
             {planLoading ? "Analyse en cours…" : "Générer mon agent"}
@@ -822,7 +822,7 @@ export function CreateWizard({ categories: _categories, edit, initialObjective }
             </div>
           )}
           {planGraph && (
-            <p className="mt-3 text-xs text-green-700">
+            <p className="mt-3 text-xs text-success">
               Plan généré — passez à l&apos;étape « Construire » pour configurer chaque nœud.
             </p>
           )}
@@ -839,7 +839,7 @@ export function CreateWizard({ categories: _categories, edit, initialObjective }
             </p>
           </div>
           {!planGraph ? (
-            <p className="text-sm text-amber-700">Générez d&apos;abord un plan à l&apos;étape « Décrire ».</p>
+            <p className="text-sm text-warning">Générez d&apos;abord un plan à l&apos;étape « Décrire ».</p>
           ) : (
             <>
               <GuidedBuilder
@@ -926,7 +926,7 @@ export function CreateWizard({ categories: _categories, edit, initialObjective }
                 </button>
               )}
               {flowPreviewConfirmed && (
-                <p className="mt-2 flex items-center gap-1 text-xs text-green-700">
+                <p className="mt-2 flex items-center gap-1 text-xs text-success">
                   <Check className="h-3.5 w-3.5" /> Arborescence validée
                 </p>
               )}
@@ -1024,7 +1024,7 @@ export function CreateWizard({ categories: _categories, edit, initialObjective }
             <button
               onClick={() => void runPreview(false)}
               disabled={testRunning || (form.agentSteps.length > 0 && !flowPreviewConfirmed)}
-              className="flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
             >
               {testRunning && !testDryRun && <Loader2 className="h-4 w-4 animate-spin" />}
               {testRunning && !testDryRun ? "Exécution…" : "Exécuter pour de vrai"}
@@ -1040,13 +1040,13 @@ export function CreateWizard({ categories: _categories, edit, initialObjective }
           </div>
 
           {form.agentSteps.length > 0 && !flowPreviewConfirmed && (
-            <p className="mt-2 text-xs text-amber-700">
+            <p className="mt-2 text-xs text-warning">
               Validez l&apos;arborescence ci-dessus avant de lancer le test.
             </p>
           )}
 
           {testResult?.error && !showTestImmersive && (
-            <p className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-destructive">
+            <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {testResult.error}
             </p>
           )}
@@ -1076,7 +1076,7 @@ export function CreateWizard({ categories: _categories, edit, initialObjective }
             onClick={() => {
               if (canContinueFromStep(step)) setStep((s) => s + 1);
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent/90"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-accent-ink shadow-glow-sm transition-colors hover:bg-accent-hover"
           >
             Continuer
             <ArrowRight className="h-4 w-4" />
@@ -1093,7 +1093,7 @@ export function CreateWizard({ categories: _categories, edit, initialObjective }
             <button
               onClick={() => handleSubmit(true)}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent/90 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-accent-ink shadow-glow-sm transition-colors hover:bg-accent-hover disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
               {saving

@@ -134,11 +134,11 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-bg px-4 py-12">
-      <div className="w-full max-w-[420px] rounded-xl border border-line bg-card p-8 shadow-sm">
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-bg bg-hud-grid px-4 py-12">
+      <div className="hud-corners w-full max-w-[420px] rounded-xl border border-line bg-card p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent">
-            <span className="font-display text-xl font-bold text-white">P</span>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent shadow-glow-sm">
+            <span className="font-display text-xl font-bold text-accent-ink">P</span>
           </div>
           <h1 className="mt-4 font-display text-2xl font-bold text-ink">
             Complète ton profil
@@ -151,7 +151,7 @@ export default function OnboardingPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="flex justify-center">
             <label className="group relative cursor-pointer">
-              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-line bg-card transition-colors group-hover:border-accent">
+              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-line bg-card2 transition-colors group-hover:border-accent">
                 {avatarPreview ? (
                   <img // eslint-disable-line @next/next/no-img-element
                     src={avatarPreview}
@@ -195,7 +195,7 @@ export default function OnboardingPage() {
                     e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "")
                   )
                 }
-                className="h-10 w-full rounded-lg border border-line bg-card pl-8 pr-10 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="h-10 w-full rounded-lg border border-line bg-card2 pl-8 pr-10 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent/60 focus:ring-1 focus:ring-accent/40"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
                 {checkingUsername && (
@@ -227,7 +227,7 @@ export default function OnboardingPage() {
               required
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card2 px-4 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent/60 focus:ring-1 focus:ring-accent/40"
               placeholder="Jean Dupont"
             />
           </div>
@@ -244,7 +244,7 @@ export default function OnboardingPage() {
               type="text"
               value={headline}
               onChange={(e) => setHeadline(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card2 px-4 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent/60 focus:ring-1 focus:ring-accent/40"
               placeholder="Expert en prompts de copywriting IA"
             />
           </div>
@@ -258,7 +258,7 @@ export default function OnboardingPage() {
           <button
             type="submit"
             disabled={saving || usernameAvailable === false}
-            className="flex h-10 w-full items-center justify-center rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+            className="flex h-10 w-full items-center justify-center rounded-lg bg-accent text-sm font-semibold text-accent-ink shadow-glow-sm transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />

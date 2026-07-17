@@ -190,8 +190,8 @@ export default function AgentsControlPanel({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-[#1B1B18]">Centre de contrôle des agents</h1>
-        <p className="text-sm text-[#9E9B90]">
+        <h1 className="text-xl font-bold text-ink">Centre de contrôle des agents</h1>
+        <p className="text-sm text-ink-soft">
           Active, planifie et valide tes 7 agents. Rien n&apos;est publié sans ton accord.
         </p>
       </div>
@@ -199,24 +199,20 @@ export default function AgentsControlPanel({
       {/* Bandeau Sandbox / Sécurité */}
       {budget && (
         <div
-          className="rounded-xl border p-4"
-          style={{
-            borderColor: isSandbox ? "#0A66C2" : "#16A34A",
-            background: isSandbox ? "#E9F0FB" : "#FAFAF7",
-          }}
+          className={`rounded-xl border p-4 ${
+            isSandbox ? "border-accent/30 bg-accent/10" : "border-success/30 bg-success/10"
+          }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span
-                className="rounded-full px-3 py-1 text-xs font-bold"
-                style={{
-                  background: isSandbox ? "#0A66C2" : "#16A34A",
-                  color: "#fff",
-                }}
+                className={`rounded-full px-3 py-1 text-xs font-bold text-accent-ink ${
+                  isSandbox ? "bg-accent" : "bg-success"
+                }`}
               >
                 {isSandbox ? "🧪 MODE SANDBOX" : "🟢 MODE LIVE"}
               </span>
-              <span className="text-xs text-[#5C5A52]">
+              <span className="text-xs text-ink-soft">
                 {isSandbox
                   ? "Réponses simulées, coût API = 0 $. Aucune donnée réelle créée."
                   : "Appels API réels. Budget surveillé et débité."}
@@ -225,15 +221,16 @@ export default function AgentsControlPanel({
             <button
               onClick={() => sandboxAction("set_mode", isSandbox ? "live" : "sandbox")}
               disabled={busy === "sandbox"}
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-              style={{ background: isSandbox ? "#16A34A" : "#0A66C2" }}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-accent-ink shadow-glow-sm disabled:opacity-50 ${
+                isSandbox ? "bg-success" : "bg-accent hover:bg-accent-hover"
+              }`}
             >
               {isSandbox ? "→ Passer en LIVE" : "→ Repasser en SANDBOX"}
             </button>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#E4E1D8] pt-3">
-            <span className="text-xs text-[#5C5A52]">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+            <span className="text-xs text-ink-soft">
               Budget : <strong>${budget.daily_spent_usd.toFixed(2)}</strong>/${budget.daily_cap_usd}{" "}
               aujourd&apos;hui · <strong>${budget.monthly_spent_usd.toFixed(2)}</strong>/$
               {budget.monthly_cap_usd} ce mois
@@ -243,7 +240,7 @@ export default function AgentsControlPanel({
                 <button
                   onClick={() => sandboxAction("purge")}
                   disabled={busy === "sandbox"}
-                  className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#5C5A52] ring-1 ring-[#E4E1D8] disabled:opacity-50"
+                  className="rounded-lg bg-card2 px-3 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line disabled:opacity-50"
                 >
                   🗑 Vider la sandbox
                 </button>
@@ -251,8 +248,9 @@ export default function AgentsControlPanel({
               <button
                 onClick={() => sandboxAction("toggle_pause")}
                 disabled={busy === "sandbox"}
-                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                style={{ background: budget.is_paused ? "#16A34A" : "#DC2626" }}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-accent-ink disabled:opacity-50 ${
+                  budget.is_paused ? "bg-success" : "bg-destructive"
+                }`}
               >
                 {budget.is_paused ? "▶ Réactiver les agents" : "⏸ Tout couper (coupe-circuit)"}
               </button>
@@ -262,16 +260,16 @@ export default function AgentsControlPanel({
       )}
 
       {/* Onglets */}
-      <div className="flex gap-1 rounded-lg border border-[#E4E1D8] bg-white p-1">
+      <div className="flex gap-1 rounded-lg border border-line bg-card p-1">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className="flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition"
-            style={{
-              background: tab === t.key ? "#0A66C2" : "transparent",
-              color: tab === t.key ? "#fff" : "#5C5A52",
-            }}
+            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              tab === t.key
+                ? "bg-accent text-accent-ink shadow-glow-sm"
+                : "bg-transparent text-ink-soft hover:text-ink"
+            }`}
           >
             {t.label}
           </button>
@@ -282,28 +280,28 @@ export default function AgentsControlPanel({
       {tab === "agents" && (
         <div className="space-y-3">
           {localDefs.map((a) => (
-            <div key={a.slug} className="rounded-xl border border-[#E4E1D8] bg-white p-4">
+            <div key={a.slug} className="rounded-xl border border-line bg-card p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-[#1B1B18]">{a.name}</span>
+                    <span className="font-semibold text-ink">{a.name}</span>
                     <span
-                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                      style={{
-                        background: a.is_enabled ? "#DCFCE7" : "#E4E1D8",
-                        color: a.is_enabled ? "#16A34A" : "#9E9B90",
-                      }}
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                        a.is_enabled
+                          ? "border-success/30 bg-success/10 text-success"
+                          : "border-line bg-card2 text-ink-faint"
+                      }`}
                     >
                       {a.is_enabled ? "ACTIF" : "INACTIF"}
                     </span>
                     {a.requires_review && (
-                      <span className="rounded-full bg-[#FEF3C7] px-2 py-0.5 text-[10px] font-semibold text-[#D97706]">
+                      <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning">
                         validation requise
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-xs text-[#9E9B90]">{a.description}</p>
-                  <p className="mt-1 text-[10px] text-[#9E9B90]">
+                  <p className="mt-1 text-xs text-ink-soft">{a.description}</p>
+                  <p className="mt-1 text-[10px] text-ink-faint">
                     Max {a.max_runs_per_day} exécution(s)/jour
                   </p>
                 </div>
@@ -311,25 +309,25 @@ export default function AgentsControlPanel({
                   <button
                     onClick={() => toggleAgent(a.slug, !a.is_enabled)}
                     disabled={busy === `toggle-${a.slug}`}
-                    className="rounded-lg border border-[#E4E1D8] px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                    className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink-soft hover:text-ink disabled:opacity-50"
                   >
                     {a.is_enabled ? "Désactiver" : "Activer"}
                   </button>
                   <button
                     onClick={() => testAgent(a.slug)}
                     disabled={busy === `test-${a.slug}`}
-                    className="rounded-lg border border-[#E4E1D8] px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                    className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink-soft hover:text-ink disabled:opacity-50"
                   >
                     {busy === `test-${a.slug}` ? "⏳" : "Test dry-run"}
                   </button>
                   <button
                     onClick={() => runAgent(a.slug)}
                     disabled={busy === a.slug || !a.is_enabled}
-                    className="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
-                    style={{
-                      background: a.is_enabled ? "#0A66C2" : "#E4E1D8",
-                      color: a.is_enabled ? "#fff" : "#9E9B90",
-                    }}
+                    className={`shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${
+                      a.is_enabled
+                        ? "bg-accent text-accent-ink shadow-glow-sm hover:bg-accent-hover"
+                        : "bg-card2 text-ink-faint"
+                    }`}
                   >
                     {busy === a.slug ? "⏳ En cours…" : "▶ Lancer"}
                   </button>
@@ -337,7 +335,7 @@ export default function AgentsControlPanel({
               </div>
             </div>
           ))}
-          <p className="text-xs text-[#9E9B90]">
+          <p className="text-xs text-ink-faint">
             Activez/désactivez un agent, testez la config (dry-run), puis lancez manuellement.
             Si bloqué : vérifiez ANTHROPIC_API_KEY, AGENT_MODEL, mode sandbox/live et le worker.
           </p>
@@ -347,22 +345,22 @@ export default function AgentsControlPanel({
       {/* ── ONGLET PLANNING ── */}
       {tab === "schedule" && (
         <div className="space-y-3">
-          <p className="text-sm text-[#5C5A52]">
+          <p className="text-sm text-ink-soft">
             Choisis quels jours et à quelles heures chaque agent tourne automatiquement.
             Le cron Render vérifie ce planning chaque heure.
           </p>
           {localDefs.map((a) => {
             const sched = schedules.find((s) => s.agent_slug === a.slug);
             return (
-              <div key={a.slug} className="rounded-xl border border-[#E4E1D8] bg-white p-4">
+              <div key={a.slug} className="rounded-xl border border-line bg-card p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <span className="font-semibold text-[#1B1B18]">{a.name}</span>
+                  <span className="font-semibold text-ink">{a.name}</span>
                   <span
-                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                    style={{
-                      background: sched?.is_enabled ? "#DCFCE7" : "#E4E1D8",
-                      color: sched?.is_enabled ? "#16A34A" : "#9E9B90",
-                    }}
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                      sched?.is_enabled
+                        ? "border-success/30 bg-success/10 text-success"
+                        : "border-line bg-card2 text-ink-faint"
+                    }`}
                   >
                     {sched?.is_enabled ? "PLANIFIÉ" : "MANUEL"}
                   </span>
@@ -371,23 +369,23 @@ export default function AgentsControlPanel({
                   {DAYS.map((d, i) => (
                     <span
                       key={i}
-                      className="rounded-md px-2 py-1 text-[11px] font-medium"
-                      style={{
-                        background: sched?.days.includes(i) ? "#E9F0FB" : "#F4F2EE",
-                        color: sched?.days.includes(i) ? "#0A66C2" : "#9E9B90",
-                      }}
+                      className={`rounded-md border px-2 py-1 text-[11px] font-medium ${
+                        sched?.days.includes(i)
+                          ? "border-accent/30 bg-accent/10 text-accent"
+                          : "border-line bg-card2 text-ink-faint"
+                      }`}
                     >
                       {d}
                     </span>
                   ))}
-                  <span className="ml-2 text-[11px] text-[#9E9B90]">
+                  <span className="ml-2 text-[11px] text-ink-faint">
                     à {sched?.hours.map((h) => `${h}h`).join(", ") || "—"}
                   </span>
                 </div>
               </div>
             );
           })}
-          <p className="text-xs text-[#9E9B90]">
+          <p className="text-xs text-ink-faint">
             💡 Pour modifier jours/heures : table <code>agent_schedules</code> dans Supabase,
             ou ajoute des sélecteurs ici (colonnes <code>days</code> et <code>hours</code>).
           </p>
@@ -398,7 +396,7 @@ export default function AgentsControlPanel({
       {tab === "review" && (
         <div className="space-y-3">
           {pendingOutputs.length === 0 && (
-            <div className="rounded-xl border border-[#E4E1D8] bg-white p-10 text-center text-sm text-[#9E9B90]">
+            <div className="rounded-xl border border-line bg-card p-10 text-center text-sm text-ink-faint">
               ✅ Rien à valider. Les agents n&apos;ont rien produit en attente.
             </div>
           )}
@@ -415,7 +413,7 @@ export default function AgentsControlPanel({
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-lg bg-[#1B1B18] px-4 py-2.5 text-sm font-medium text-white shadow-lg">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-lg border border-accent/30 bg-card2 px-4 py-2.5 text-sm font-medium text-ink shadow-glow-sm">
           {toast}
         </div>
       )}
@@ -437,39 +435,39 @@ function OutputReviewCard({
   const p = output.payload;
 
   return (
-    <div className="rounded-xl border border-[#E4E1D8] bg-white p-4">
+    <div className="rounded-xl border border-line bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <span className="rounded-full bg-[#E9F0FB] px-2 py-0.5 text-[10px] font-semibold text-[#0A66C2]">
+            <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
               {output.kind}
             </span>
             {output.is_sandbox && (
-              <span className="rounded-full bg-[#0A66C2] px-2 py-0.5 text-[10px] font-semibold text-white">
+              <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-ink">
                 🧪 sandbox
               </span>
             )}
-            <span className="text-xs text-[#9E9B90]">{output.agent_slug}</span>
+            <span className="text-xs text-ink-faint">{output.agent_slug}</span>
             {output.quality_score != null && (
-              <span className="text-xs font-bold text-[#16A34A]">
+              <span className="text-xs font-bold text-success">
                 {output.quality_score}/100
               </span>
             )}
           </div>
-          <div className="mt-1 text-sm font-semibold text-[#1B1B18]">{output.title}</div>
+          <div className="mt-1 text-sm font-semibold text-ink">{output.title}</div>
         </div>
         <div className="flex shrink-0 gap-2">
           <button
             onClick={() => onReview(output.id, "reject")}
             disabled={busy}
-            className="rounded-lg bg-[#FEE2E2] px-3 py-1.5 text-xs font-semibold text-[#DC2626] disabled:opacity-50"
+            className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive disabled:opacity-50"
           >
             Rejeter
           </button>
           <button
             onClick={() => onReview(output.id, "approve")}
             disabled={busy}
-            className="rounded-lg bg-[#16A34A] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-accent-ink disabled:opacity-50"
           >
             {busy ? "⏳" : "✓ Approuver"}
           </button>
@@ -478,18 +476,18 @@ function OutputReviewCard({
 
       <button
         onClick={() => setOpen((v) => !v)}
-        className="mt-2 text-xs text-[#0A66C2] hover:underline"
+        className="mt-2 text-xs text-accent hover:underline"
       >
         {open ? "▲ Masquer le détail" : "▼ Voir le détail"}
       </button>
 
       {open && (
-        <div className="mt-2 rounded-lg bg-[#FAFAF7] p-3 text-xs text-[#5C5A52]">
+        <div className="mt-2 rounded-lg bg-card2 p-3 text-xs text-ink-soft">
           {/* Affichage adapté au type d'output */}
           {output.kind === "prompt" && (
             <>
               <p className="mb-1">{String(p.description ?? "")}</p>
-              <pre className="whitespace-pre-wrap rounded bg-[#1A1A1A] p-2 font-mono text-[11px] text-[#8BE0A4]">
+              <pre className="whitespace-pre-wrap rounded border border-line bg-bg p-2 font-mono text-[11px] text-success">
                 {String(p.prompt_body ?? "")}
               </pre>
               <p className="mt-1">

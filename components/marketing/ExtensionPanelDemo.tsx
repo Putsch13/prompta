@@ -3,14 +3,14 @@
 import { useState } from "react";
 
 /**
- * Démo visuelle du panneau style Joko : glisse depuis la droite.
+ * Démo visuelle du panneau style HUD : glisse depuis la droite.
  * Permet de voir le comportement attendu même sans extension (ex. Safari).
  */
 export function ExtensionPanelDemo() {
   const [open, setOpen] = useState(true);
 
   return (
-    <div className="relative mx-auto mt-12 w-full max-w-3xl overflow-hidden rounded-2xl border border-line bg-[#0b1020] shadow-2xl shadow-accent/10">
+    <div className="relative mx-auto mt-12 w-full max-w-3xl overflow-hidden rounded-2xl border border-line bg-card shadow-glow-sm">
       <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
         <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
         <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
@@ -21,7 +21,7 @@ export function ExtensionPanelDemo() {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#8b7cff] to-[#5b4fe0] text-[11px] font-bold text-white shadow-md shadow-indigo-500/40 transition hover:scale-105"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#67D0FF] to-[#1E7FC2] text-[11px] font-bold text-accent-ink shadow-glow-sm transition hover:scale-105"
           title="Clic sur l'icône P"
           aria-pressed={open}
         >
@@ -55,22 +55,22 @@ export function ExtensionPanelDemo() {
         />
 
         <aside
-          className={`absolute inset-y-0 right-0 flex w-[min(100%,280px)] flex-col border-l border-[#8b7cff]/35 bg-[#0d111c]/97 shadow-[-12px_0_40px_rgba(0,0,0,.5)] transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)] sm:w-[300px] ${
+          className={`absolute inset-y-0 right-0 flex w-[min(100%,280px)] flex-col border-l border-accent/35 bg-card2/95 shadow-[-12px_0_40px_rgba(0,0,0,.5)] transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)] sm:w-[300px] ${
             open ? "translate-x-0" : "translate-x-full"
           }`}
           aria-hidden={!open}
         >
           <header className="flex items-center gap-2 border-b border-white/10 px-3 py-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#8b7cff] to-[#5b4fe0] text-[11px] font-bold text-white">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#67D0FF] to-[#1E7FC2] text-[11px] font-bold text-accent-ink">
               P
             </span>
-            <span className="flex-1 text-sm font-semibold text-white">
+            <span className="flex-1 text-sm font-semibold text-ink">
               Prompta <span className="font-normal text-white/40">· partout</span>
             </span>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-lg border border-white/10 px-2 py-0.5 text-xs text-white/50 hover:text-white"
+              className="rounded-lg border border-white/10 px-2 py-0.5 text-xs text-white/50 hover:text-ink"
             >
               ✕
             </button>
@@ -93,7 +93,7 @@ export function ExtensionPanelDemo() {
               <div className="h-8 flex-1 rounded text-[11px] leading-8 text-white/30">
                 Demande ou mission…
               </div>
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#8b7cff] to-[#5b4fe0] text-sm text-white">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#67D0FF] to-[#1E7FC2] text-sm text-accent-ink">
                 ↑
               </span>
             </div>

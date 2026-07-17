@@ -85,13 +85,13 @@ export function DashboardNav() {
         <Icon className="h-4 w-4 shrink-0" />
         <span className="flex-1">{item.label}</span>
         {badge > 0 && (
-          <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+          <span className="rounded-full bg-warning px-1.5 py-0.5 text-[10px] font-bold text-accent-ink">
             {badge}
           </span>
         )}
         {runningBadge > 0 && (
-          <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+          <span className="flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[10px] font-bold text-accent">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
             {runningBadge}
           </span>
         )}

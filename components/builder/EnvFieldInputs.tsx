@@ -74,7 +74,7 @@ export function EnvFieldInputs({
             </ul>
           )}
           {provisioningMode === "managed" && visible.length < fields.filter((f) => f.key).length && (
-            <p className="mt-2 text-xs text-violet-700">
+            <p className="mt-2 text-xs text-violet-300">
               Mode clé en main : l&apos;agent créera automatiquement la feuille Google Sheets et
               les ressources techniques. Vous ne renseignez que le métier.
             </p>

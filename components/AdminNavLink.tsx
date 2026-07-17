@@ -20,7 +20,7 @@ export async function AdminNavLink() {
   return (
     <Link
       href="/admin"
-      className="hidden text-sm font-medium text-muted hover:text-accent transition-colors md:block"
+      className="hidden text-sm font-medium text-ink-soft hover:text-accent transition-colors md:block"
     >
       Admin
     </Link>

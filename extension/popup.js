@@ -10,8 +10,10 @@
 let baseUrl = "https://prompta-sjtf.onrender.com";
 let pollTimer = null;
 let launching = false;
-let pendingClarify = null; // { goal } en attente de précisions
+let pendingClarify = null; // { goal, questions } en attente de précisions
 let clarifyQ = null;       // questions à afficher
+let pendingConnect = null; // { goal, missing:[slug…], expired } mission en attente de connexion
+let connectTimer = null;   // poll des connexions (reprise auto)
 let activePage = null;   // capture de l'onglet actif
 let openTabs = [];       // [{title, url, checked}]
 let session = [];        // échanges instantanés terminés (cette session popup)
@@ -31,6 +33,8 @@ const alltabsEl = $("alltabs");
 const exploreEl = $("explore");
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const slugLabel = (s) => String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
+const connKey = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /** Réponse texte d'une mission simple : la clé "reponse" sinon le 1er output. */
 function extractAnswer(output) {
@@ -115,15 +119,44 @@ function renderContext() {
 
 // ── Rendu conversation ──────────────────────────────────────────────────────
 function statusLabel(s) {
-  return { completed: "terminé", failed: "échec", awaiting_approval: "à valider", running: "en cours", pending: "en file", streaming: "répond…" }[s] || s;
+  return { completed: "terminé", failed: "échec", awaiting_approval: "à valider", running: "en cours", pending: "en file", streaming: "répond…", needs_connect: "connexion requise" }[s] || s;
 }
 function msgCard(item, liveSteps) {
   const model = item.model ? ` · ${esc(item.model)}` : "";
   // Un run refusé AVANT création (connecteur manquant, clarification…) a un
   // runId placeholder « … » : aucun lien dossier ne doit pointer dessus.
   const hasRun = item.runId && item.runId !== "…";
-  let body = "";
+  let body = item.notice ? `<div style="color:var(--green);font-size:12px;margin-bottom:6px">${esc(item.notice)}</div>` : "";
   if (item.status === "streaming" && !item.answer) body += `<div class="think"><span class="orb"></span> Prompta réfléchit…</div>`;
+  // Connexion manquante : carte avec un bouton OAuth par app + reprise auto.
+  if (item.status === "needs_connect") {
+    const btns = (item.missing || []).map((s) => `<button class="mact" data-connect="${esc(s)}" style="border-color:var(--accent);color:var(--accent);padding:5px 12px;font-size:12px;font-weight:600">🔌 Connecter ${esc(slugLabel(s))}</button>`).join(" ");
+    body += `<div style="margin-top:4px">
+      <div style="font-weight:600;color:var(--ink);margin-bottom:3px">Connexion requise</div>
+      <div style="color:var(--soft);font-size:12px;line-height:1.5">${esc(item.error || "Cette mission a besoin d'apps pas encore connectées.")}</div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px">${btns}</div>
+      ${item.connectExpired
+        ? `<button class="mact" data-resume="1" style="margin-top:8px">↻ Reprendre la mission</button>`
+        : `<div style="margin-top:7px;font-size:11px;color:var(--faint)">⏳ Je surveille tes connexions — la mission repartira toute seule.</div>`}
+    </div>`;
+  }
+  // Validation humaine : carte in-feed (contenu éditable, décision ici même).
+  if (item.status === "awaiting_approval" && liveSteps) {
+    if (item.approval) {
+      const p = item.approval.payload || {};
+      body += `<div style="margin-top:8px;border:1px solid var(--accent);border-radius:11px;padding:9px;background:var(--panel)">
+        <div style="font-weight:600;color:var(--ink);font-size:12px">✋ Validation requise${p.label ? ` — ${esc(p.label)}` : ""}</div>
+        <textarea data-aptext style="width:100%;margin-top:7px;min-height:80px;max-height:170px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:12px;padding:7px;resize:vertical;outline:none;line-height:1.45;box-sizing:border-box">${esc(p.full || p.preview || "")}</textarea>
+        <div style="display:flex;gap:7px;margin-top:7px;justify-content:flex-end">
+          <button class="mact" data-apreject="1" style="border-color:var(--red);color:var(--red);padding:5px 11px;font-size:12px">Refuser</button>
+          <button data-approve="1" style="background:var(--accent);color:#04121F;border:none;border-radius:8px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer">Valider</button>
+        </div>
+        ${item.approvalError ? `<div class="err" style="margin-top:5px;font-size:11px">${esc(item.approvalError)}</div>` : ""}
+      </div>`;
+    } else {
+      body += `<div class="think" style="margin-top:6px"><span class="orb"></span> Je récupère la demande de validation…</div>`;
+    }
+  }
   if (liveSteps && liveSteps.length) {
     body += `<div class="steps">${liveSteps.map((label, i) => {
       const done = item.stepsCompleted ?? 0;
@@ -139,7 +172,7 @@ function msgCard(item, liveSteps) {
     const validateUrl = item.approvalId
       ? `${baseUrl}/dashboard/validations?focus=${esc(item.approvalId)}`
       : `${baseUrl}/dashboard/validations`;
-    footer += `<div class="warn" style="margin-top:6px">⏸ <a href="${validateUrl}" target="_blank" rel="noopener">valider dans Prompta</a></div>`;
+    footer += `<div class="warn" style="margin-top:6px;font-size:11px">⏸ <a href="${validateUrl}" target="_blank" rel="noopener">${liveSteps ? "ouvrir dans le dashboard ↗" : "valider dans Prompta"}</a></div>`;
   } else if (item.status === "completed" && hasRun) footer += `<div style="margin-top:6px"><a href="${baseUrl}/dashboard/runs/${esc(item.runId)}" target="_blank" rel="noopener">voir le dossier ↗</a></div>`;
   else if (item.status === "failed") {
     const detailLink = hasRun ? ` — <a href="${baseUrl}/dashboard/runs/${esc(item.runId)}" target="_blank" rel="noopener">détails</a>` : "";
@@ -152,10 +185,11 @@ function msgCard(item, liveSteps) {
   const saveBtn = hasRun && item.status === "completed" && (item.stepsCompleted ?? 0) > 1 && !item.instant && !item.savedAgent
     ? `<button class="mact" data-save="${esc(item.runId)}">💾 garder comme agent</button>` : "";
   const savedNote = item.savedAgent ? `<a href="${esc(item.savedAgent)}" target="_blank" rel="noopener">agent enregistré ↗</a>` : "";
+  const dotCls = item.status === "needs_connect" ? "s-awaiting_approval" : `s-${esc(item.status)}`;
   return `<div class="msg" data-run="${esc(item.runId || "")}">
     <div class="goal">${esc(item.goal || item.title || "Mission")}</div>
     ${body}${footer}
-    <div class="meta"><span class="dot s-${esc(item.status)}"></span>${statusLabel(item.status)}${model}${saveBtn}${savedNote}${cancelBtn}</div>
+    <div class="meta"><span class="dot ${dotCls}"></span>${statusLabel(item.status)}${model}${saveBtn}${savedNote}${cancelBtn}</div>
   </div>`;
 }
 let history = [];
@@ -168,10 +202,19 @@ const SUGGESTIONS = [
 function emptyState() {
   return `<div class="empty"><span style="font-size:14px;color:var(--soft);font-weight:600">Ton assistant, partout.</span><br>Réponse immédiate aux questions,<br>agent complet pour les missions.<br><br>${SUGGESTIONS.map((s) => `<button class="sugg" data-suggest="${esc(s)}">${esc(s)}</button>`).join("")}</div>`;
 }
-function renderFeed() {
+let lastFeedSig = "";
+function renderFeed(force) {
   const seen = new Set(history.map((h) => (h.goal || "").slice(0, 200)));
   const localItems = session.filter((s) => !seen.has((s.goal || "").slice(0, 200)));
   const items = [...history, ...localItems];
+  // Signature : ne reconstruire le DOM que si quelque chose a changé — sinon
+  // chaque tick de poll effacerait ce que l'utilisateur tape dans la carte
+  // de validation (textarea éditable).
+  const sig = items.map((h) => (h.runId || h.goal) + h.status + (h.savedAgent || "")).join("|")
+    + "#" + (current ? `${current.runId}:${current.status}:${current.stepsCompleted}:${(current.answer || "").length}:${(current.planned || []).length}:${current.approval ? current.approval.id : ""}:${current.approvalError || ""}:${current.connectExpired ? "x" : ""}:${(current.missing || []).join(",")}:${current.notice || ""}` : "")
+    + "?" + (clarifyQ ? clarifyQ.join("|") : "");
+  if (!force && sig === lastFeedSig) return;
+  lastFeedSig = sig;
   const list = items.map((it) => msgCard(it)).join("");
   const cur = current ? msgCard(current, current.kind === "mission" ? (current.planned || []) : null) : "";
   const clar = clarifyQ && clarifyQ.length
@@ -189,10 +232,78 @@ function renderFeed() {
     if (r?.ok && r.body?.url) {
       const target = [...history, ...session, current].find((x) => x && x.runId === b.dataset.save);
       if (target) target.savedAgent = baseUrl + r.body.url;
-      renderFeed();
+      renderFeed(true);
     } else { b.disabled = false; b.textContent = "💾 garder comme agent"; }
   }));
+  // Connexion manquante : OAuth dans un nouvel onglet ; la reprise est gérée
+  // par le poll des connexions (qui survit à la fermeture du popup via storage).
+  feed.querySelectorAll("[data-connect]").forEach((b) => b.addEventListener("click", () => {
+    const slug = b.dataset.connect;
+    window.open(`${baseUrl}/api/connectors/${encodeURIComponent(slug)}/connect?returnUrl=${encodeURIComponent(`${baseUrl}/dashboard/connexions?connected=${slug}`)}`, "_blank");
+  }));
+  feed.querySelectorAll("[data-resume]").forEach((b) => b.addEventListener("click", () => {
+    if (!pendingConnect) return;
+    const g = pendingConnect.goal;
+    setPendingConnect(null);
+    launching = true; sendBtn.disabled = true;
+    launchMission(g);
+  }));
+  // Validation in-feed : décision ici même, puis reprise du suivi du run.
+  const apText = feed.querySelector("[data-aptext]");
+  feed.querySelectorAll("[data-approve],[data-apreject]").forEach((b) => b.addEventListener("click", async () => {
+    if (!current || !current.approval) return;
+    const decision = b.hasAttribute("data-approve") ? "approved" : "rejected";
+    feed.querySelectorAll("[data-approve],[data-apreject]").forEach((x) => { x.disabled = true; });
+    const r = await send("prompta:approve", {
+      runId: current.runId,
+      approvalId: current.approval.id,
+      decision,
+      modifiedContent: decision === "approved" && apText ? apText.value : undefined,
+    });
+    if (r?.ok) {
+      current.decidedApprovalId = current.approval.id;
+      current.approval = null; current.approvalError = null;
+      current.status = "running"; // optimiste — le poll (toujours actif) corrige
+      renderFeed(true);
+    } else {
+      current.approvalError = r?.body?.error || r?.body?.message || `Décision refusée (${r?.status || "réseau"}) — réessaie.`;
+      renderFeed(true);
+    }
+  }));
   feed.scrollTop = feed.scrollHeight;
+}
+
+// ── Connexion manquante : mémorisation + reprise automatique ────────────────
+// Persistée dans chrome.storage.session : le popup FERME quand l'onglet OAuth
+// s'ouvre — au retour, la mission en attente est restaurée et le poll repart.
+function setPendingConnect(v) {
+  pendingConnect = v;
+  if (!v) { clearInterval(connectTimer); connectTimer = null; }
+  try { chrome.storage.session.set({ popup_pending_connect: v ? { goal: v.goal, missing: v.missing, startedAt: v.startedAt } : null }).catch(() => { /* */ }); } catch { /* storage indispo */ }
+}
+const CONNECT_POLL_MS = 5000;
+const CONNECT_MAX_MS = 10 * 60 * 1000;
+function startConnectPoll() {
+  clearInterval(connectTimer);
+  connectTimer = setInterval(async () => {
+    if (!pendingConnect) { clearInterval(connectTimer); connectTimer = null; return; }
+    if (Date.now() - (pendingConnect.startedAt || 0) > CONNECT_MAX_MS) {
+      // Timeout : mission gardée, reprise MANUELLE via le bouton « Reprendre ».
+      clearInterval(connectTimer); connectTimer = null;
+      pendingConnect.expired = true;
+      if (current && current.status === "needs_connect") { current.connectExpired = true; renderFeed(true); }
+      return;
+    }
+    const r = await send("prompta:connections");
+    if (!r?.ok || !Array.isArray(r.body?.connections)) return;
+    const usable = new Set(r.body.connections.filter((c) => c.usable).map((c) => connKey(c.connectorId)));
+    const still = pendingConnect.missing.filter((s) => !usable.has(connKey(s)));
+    if (still.length) return;
+    const { goal: g, missing } = pendingConnect;
+    setPendingConnect(null);
+    launching = true; sendBtn.disabled = true;
+    launchMission(g, `✓ ${missing.map(slugLabel).join(", ")} connecté — je reprends la mission`);
+  }, CONNECT_POLL_MS);
 }
 
 async function loadHistory() {
@@ -255,18 +366,38 @@ function pollRun() {
     // redémarrage du worker ET un plan réparé qui introduit du pilotage.
     if (r.body.browser_task) armPilot(current.runId);
     renderFeed();
-    // awaiting_approval est TERMINAL pour le poll : la validation se fait dans
-    // le dashboard — sinon le composer reste bloqué indéfiniment.
-    if (["completed", "failed", "cancelled", "awaiting_approval"].includes(r.body.status)) {
+    if (["completed", "failed", "cancelled"].includes(r.body.status)) {
       stopPolling(); launching = false; sendBtn.disabled = false;
       loadHistory(); // le run terminé (et sa réponse) rejoint le fil
+    } else if (r.body.status === "awaiting_approval") {
+      // La validation se fait ICI, dans le popup : carte in-feed éditable,
+      // et on CONTINUE de poller le run jusqu'au terme.
+      launching = false; sendBtn.disabled = false;
+      ensureApproval();
     }
   }, 2500);
 }
 
+/** Charge la demande de validation du run courant (carte in-feed éditable). */
+async function ensureApproval() {
+  const c = current;
+  if (!c || c.approval || c.approvalLoading) return;
+  if (c.approvalId && c.decidedApprovalId === c.approvalId) return; // décision déjà envoyée
+  c.approvalLoading = true;
+  try {
+    const r = await send("prompta:approvals");
+    if (!r?.ok || !Array.isArray(r.body?.items)) return;
+    const item = r.body.items.find((a) => (c.approvalId && a.id === c.approvalId) || a.runId === c.runId || a.run_id === c.runId);
+    if (item && current === c && item.id !== c.decidedApprovalId) {
+      c.approval = { id: item.id, payload: item.payload || {} };
+      renderFeed(true);
+    }
+  } finally { c.approvalLoading = false; }
+}
+
 /** Bascule mission : capture des onglets cochés (session incluse) puis pipeline agent. */
-async function launchMission(goal) {
-  current = { kind: "mission", runId: "…", goal, model: modelEl.value || null, status: "pending", stepsCompleted: 0, planned: [] };
+async function launchMission(goal, notice) {
+  current = { kind: "mission", runId: "…", goal, model: modelEl.value || null, status: "pending", stepsCompleted: 0, planned: [], notice: notice || null };
   renderFeed();
   activePage = await captureActivePage();
   const page = { ...activePage };
@@ -280,15 +411,19 @@ async function launchMission(goal) {
   const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined } });
   if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
     launching = false; sendBtn.disabled = false;
-    pendingClarify = { goal }; clarifyQ = r.body.clarify; current = null;
+    pendingClarify = { goal, questions: r.body.clarify }; clarifyQ = r.body.clarify; current = null;
     renderFeed(); goalEl.focus(); return;
   }
   if (!r?.ok) {
     launching = false; sendBtn.disabled = false;
     if (r?.status === 409 && r.body?.missingConnectors?.length) {
-      current.status = "failed";
-      current.error = `À connecter : ${r.body.missingConnectors.join(", ")}`;
-      current.needsConnect = true;
+      // Mission MÉMORISÉE : carte « Connexion requise » + reprise automatique
+      // dès que toutes les apps manquantes sont connectées (poll 5 s).
+      current.status = "needs_connect";
+      current.missing = r.body.missingConnectors;
+      current.error = r.body.message || `Cette mission a besoin de : ${r.body.missingConnectors.join(", ")}.`;
+      setPendingConnect({ goal, missing: [...r.body.missingConnectors], startedAt: Date.now() });
+      startConnectPoll();
     } else {
       current.status = "failed";
       current.error = r?.body?.message || (r?.status === 401 ? "Connecte-toi à Prompta." : `Erreur ${r?.status || "réseau"}`);
@@ -325,23 +460,36 @@ function launchInstant(goal, page) {
   }
   const port = chrome.runtime.connect({ name: "prompta:instant" });
   let closed = false;
+  // Watchdog : aucun événement SSE pendant 90 s → coupure propre (fini le
+  // « streaming » infini quand le serveur s'est tu sans fermer le flux).
+  let watchdogT = null;
+  const armWatchdog = () => {
+    clearTimeout(watchdogT);
+    watchdogT = setTimeout(() => {
+      try { port.postMessage({ type: "abort" }); } catch { /* port fermé */ }
+      finish(true, "La réponse a expiré — réessaie.");
+    }, 90_000);
+  };
   const finish = (fail, msg) => {
     if (closed) return; closed = true;
+    clearTimeout(watchdogT);
     try { port.disconnect(); } catch { /* déjà fermé */ }
     launching = false; sendBtn.disabled = false;
     if (fail) { current.status = "failed"; current.error = msg || "Réponse interrompue."; }
     else if (current.answer) { current.status = "completed"; session.push(current); current = null; }
     else { current = null; }
-    renderFeed();
+    renderFeed(true);
   };
   port.onMessage.addListener((m) => {
-    if (m?.delta) { current.answer += m.delta; renderFeed(); }
-    else if (m?.mission) { closed = true; try { port.disconnect(); } catch { /* */ } launchMission(goal); }
+    armWatchdog();
+    if (m?.delta) { current.answer += m.delta; renderFeed(true); }
+    else if (m?.mission) { closed = true; clearTimeout(watchdogT); try { port.disconnect(); } catch { /* */ } launchMission(goal); }
     else if (m?.done) finish(false);
     else if (m?.error) finish(true, m.error + (m.status === 401 ? " — connecte-toi à Prompta." : ""));
     else if (m?.closed && !closed) finish(current.answer ? false : true, "Connexion interrompue.");
   });
   port.onDisconnect.addListener(() => { if (!closed) finish(current?.answer ? false : true, "Connexion interrompue."); });
+  armWatchdog();
   port.postMessage({ type: "start", payload: { goal, page, modelId: modelEl.value || undefined, history: hist.slice(-6) } });
 }
 
@@ -351,8 +499,11 @@ async function launch() {
   if (goal.length < 2) return;
   launching = true; sendBtn.disabled = true;
   goalEl.value = ""; goalEl.style.height = "auto";
+  // Nouvelle demande explicite : la mission en attente de connexion est
+  // abandonnée (sinon sa reprise auto écraserait le suivi de celle-ci).
+  if (pendingConnect) setPendingConnect(null);
   if (pendingClarify) {
-    goal = `${pendingClarify.goal}\n\nPrécisions de l'utilisateur : ${goal}`;
+    goal = `${pendingClarify.goal}\n\nQuestions posées : ${(pendingClarify.questions || []).join(" | ")}\nRéponses de l'utilisateur : ${goal}`;
     pendingClarify = null; clarifyQ = null;
     launchMission(goal); return;
   }
@@ -384,6 +535,24 @@ alltabsEl.addEventListener("change", async () => { openTabs = await collectTabs(
   const b = await send("prompta:baseUrl");
   if (b?.baseUrl) baseUrl = b.baseUrl;
   await Promise.all([loadModels(), loadHistory()]);
+  // Mission en attente de connexion (le popup a fermé pendant l'OAuth) :
+  // on restaure la carte « Connexion requise » et le poll de reprise.
+  try {
+    const { popup_pending_connect } = await chrome.storage.session.get("popup_pending_connect");
+    if (popup_pending_connect?.goal && Array.isArray(popup_pending_connect.missing) && popup_pending_connect.missing.length) {
+      pendingConnect = { ...popup_pending_connect };
+      current = {
+        kind: "mission", runId: "…", goal: pendingConnect.goal, model: modelEl.value || null,
+        status: "needs_connect", stepsCompleted: 0, planned: [],
+        missing: pendingConnect.missing,
+        error: `Cette mission a besoin de : ${pendingConnect.missing.join(", ")}.`,
+        connectExpired: Date.now() - (pendingConnect.startedAt || 0) > CONNECT_MAX_MS,
+      };
+      if (current.connectExpired) pendingConnect.expired = true;
+      else startConnectPoll();
+      renderFeed(true);
+    }
+  } catch { /* storage.session indispo */ }
   activePage = await captureActivePage();
   openTabs = await collectTabs();
   renderContext();

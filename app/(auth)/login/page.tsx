@@ -89,11 +89,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-bg px-4 py-12">
-      <div className="w-full max-w-[420px] rounded-xl border border-line bg-card p-8 shadow-sm">
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-bg bg-hud-grid px-4 py-12">
+      <div className="hud-corners w-full max-w-[420px] rounded-xl border border-line bg-card p-8 shadow-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent">
-            <span className="font-display text-xl font-bold text-white">P</span>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent shadow-glow-sm">
+            <span className="font-display text-xl font-bold text-accent-ink">P</span>
           </div>
           <h1 className="mt-4 font-display text-2xl font-bold text-ink">
             Connexion
@@ -166,7 +166,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="h-10 w-full rounded-lg border border-line bg-card pl-10 pr-4 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="h-10 w-full rounded-lg border border-line bg-card2 pl-10 pr-4 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent/60 focus:ring-1 focus:ring-accent/40"
                 placeholder="ton@email.com"
               />
             </div>
@@ -186,7 +186,7 @@ export default function LoginPage() {
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card px-4 text-sm text-ink outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="mt-1.5 h-10 w-full rounded-lg border border-line bg-card2 px-4 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent/60 focus:ring-1 focus:ring-accent/40"
               placeholder="••••••••"
             />
           </div>
@@ -200,7 +200,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="flex h-10 w-full items-center justify-center rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+            className="flex h-10 w-full items-center justify-center rounded-lg bg-accent text-sm font-semibold text-accent-ink shadow-glow-sm transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -230,7 +230,7 @@ export default function LoginPage() {
               value={samlDomain}
               onChange={(e) => setSamlDomain(e.target.value)}
               placeholder="votre-entreprise.com"
-              className="h-9 w-full rounded-lg border border-line bg-card px-3 text-sm"
+              className="h-9 w-full rounded-lg border border-line bg-card px-3 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-accent/60 focus:ring-1 focus:ring-accent/40"
             />
             <button
               type="submit"

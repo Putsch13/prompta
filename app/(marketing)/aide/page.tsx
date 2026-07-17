@@ -92,9 +92,11 @@ const SECTIONS: Array<{ title: string; items: Array<{ q: string; a: string }> }>
 
 export default function AidePage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-      <p className="text-xs font-semibold uppercase tracking-wider text-accent">Aide</p>
-      <h1 className="mt-1 font-display text-4xl font-bold text-ink">
+    <div className="relative min-h-screen bg-bg">
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[320px] bg-hud-halo" />
+      <div className="relative mx-auto max-w-3xl px-4 py-16 sm:px-6">
+      <p className="hud-label">[ Aide ]</p>
+      <h1 className="mt-3 font-display text-4xl font-bold text-ink">
         Questions fréquentes
       </h1>
       <p className="mt-3 text-ink-soft">
@@ -105,14 +107,19 @@ export default function AidePage() {
       </p>
 
       <div className="mt-10 space-y-10">
-        {SECTIONS.map((section) => (
+        {SECTIONS.map((section, i) => (
           <section key={section.title}>
-            <h2 className="mb-4 font-display text-xl font-bold text-ink">{section.title}</h2>
+            <h2 className="mb-4 flex items-baseline gap-2.5 font-display text-xl font-bold text-ink">
+              <span className="font-mono text-sm font-semibold text-accent">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              {section.title}
+            </h2>
             <div className="space-y-3">
               {section.items.map((item) => (
                 <details
                   key={item.q}
-                  className="group rounded-xl border border-line bg-card p-4 open:border-accent/40"
+                  className="hud-card group p-4 open:border-accent/40 open:shadow-glow-sm"
                 >
                   <summary className="cursor-pointer list-none font-medium text-ink marker:hidden">
                     {item.q}
@@ -125,20 +132,20 @@ export default function AidePage() {
         ))}
       </div>
 
-      <div className="mt-14 rounded-2xl border border-accent/30 bg-accent/5 p-8 text-center">
+      <div className="hud-corners mt-14 rounded-lg border border-accent/30 bg-accent/5 p-8 text-center">
         <p className="font-display text-lg font-semibold text-ink">
           Prêt à installer Prompta partout ?
         </p>
         <div className="mt-4 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
             href="/prompta-partout"
-            className="inline-flex rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover"
+            className="inline-flex rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-accent-ink shadow-glow-sm transition-all hover:bg-accent-hover hover:shadow-glow"
           >
             Guide d&apos;installation
           </Link>
           <Link
             href="/quick"
-            className="inline-flex rounded-xl border border-line bg-card px-6 py-2.5 text-sm font-medium text-ink hover:border-accent"
+            className="inline-flex rounded-lg border border-line bg-card px-6 py-2.5 text-sm font-medium text-ink transition-all hover:border-accent/50 hover:shadow-glow-sm"
           >
             Essayer sans extension
           </Link>
@@ -161,6 +168,7 @@ export default function AidePage() {
           }),
         }}
       />
+      </div>
     </div>
   );
 }

@@ -51,9 +51,9 @@ interface TypeBadgeProps {
 
 export function TypeBadge({ type, size = "md" }: TypeBadgeProps) {
   const colors = {
-    prompt: "bg-blue-50 text-blue-600",
-    agent: "bg-purple-50 text-purple-600",
-    workflow: "bg-orange-50 text-orange-600",
+    prompt: "bg-sky-400/10 text-sky-300",
+    agent: "bg-violet-400/10 text-violet-300",
+    workflow: "bg-orange-400/10 text-orange-300",
   };
 
   const labels = {
@@ -187,13 +187,13 @@ export type StatusTone =
   | "neutral";
 
 const STATUS_TONE_CLASSES: Record<StatusTone, string> = {
-  running: "bg-blue-50 text-blue-700",
-  success: "bg-emerald-50 text-emerald-700",
-  failed: "bg-red-50 text-red-700",
-  pending: "bg-amber-50 text-amber-700",
-  warning: "bg-amber-50 text-amber-800",
-  cancelled: "bg-line text-ink-faint",
-  neutral: "bg-card2 text-ink-soft",
+  running: "border border-accent/30 bg-accent/10 text-accent",
+  success: "border border-success/30 bg-success/10 text-success",
+  failed: "border border-destructive/30 bg-destructive/10 text-destructive",
+  pending: "border border-warning/30 bg-warning/10 text-warning",
+  warning: "border border-warning/30 bg-warning/10 text-warning",
+  cancelled: "border border-line bg-card2 text-ink-faint",
+  neutral: "border border-line bg-card2 text-ink-soft",
 };
 
 /** Mappe un statut de run vers une tonalité de pastille. */
@@ -248,10 +248,12 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md";
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-white hover:bg-accent-hover",
-  secondary: "border border-line bg-card text-ink hover:border-accent",
+  primary:
+    "bg-accent font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover hover:shadow-glow",
+  secondary:
+    "border border-line bg-card text-ink hover:border-accent/50 hover:shadow-glow-sm",
   ghost: "text-ink-soft hover:bg-card2 hover:text-ink",
-  danger: "bg-destructive text-white hover:bg-destructive/90",
+  danger: "bg-destructive/90 font-semibold text-[#1a0505] hover:bg-destructive",
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {

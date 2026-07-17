@@ -1,6 +1,6 @@
 /**
  * app/admin/layout.tsx
- * Coquille de l'espace admin — KPI, agents, modération.
+ * Coquille de l'espace admin — KPI, agents, worker.
  */
 
 import Link from "next/link";
@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <div className="mx-auto flex max-w-page items-center justify-between px-6 py-3">
           <div className="flex items-center gap-6">
             <Link href="/admin" className="flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-sm text-white">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-sm text-accent-ink shadow-glow-sm">
                 ⚙
               </span>
               <span className="font-display font-bold text-ink">Prompta Admin</span>
@@ -34,12 +34,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-card2 hover:text-ink"
               >
                 Agents
-              </Link>
-              <Link
-                href="/admin/moderation"
-                className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-card2 hover:text-ink"
-              >
-                Modération
               </Link>
               <Link
                 href="/admin/worker-health"

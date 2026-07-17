@@ -126,6 +126,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     listingId: listing.id,
     title,
-    url: `/dashboard/listing/${listing.id}/edit`,
+    url: `/dashboard/runs`,
   });
 }

@@ -24,10 +24,14 @@
   let history = [];       // items serveur
   let session = [];       // échanges instantanés terminés (cette page)
   let current = null;     // échange en cours (instant ou mission)
-  let pendingClarify = null; // { goal } en attente de précisions
+  let pendingClarify = null; // { goal, questions } en attente de précisions
   let clarifyQ = null;    // questions à afficher
+  let pendingConnect = null; // { goal, missing:[slug…], expired } mission en attente de connexion
+  let connectTimer = null;   // poll des connexions (reprise auto)
   const send = (type, extra) => new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => res(r || { ok: false, status: 0, body: {} })));
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const slugLabel = (s) => String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
+  const connKey = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   function extractAnswer(o) {
     if (!o || typeof o !== "object") return null;
     if (typeof o.reponse === "string") return o.reponse;
@@ -191,76 +195,83 @@
         transition:opacity .22s ease; }
       .scrim.on { opacity:1; pointer-events:auto; }
       .panel { position:fixed; top:0; right:0; bottom:0; width:min(400px,100vw); height:100vh;
-        background:rgba(13,17,28,.97); backdrop-filter:blur(20px) saturate(1.25); -webkit-backdrop-filter:blur(20px) saturate(1.25);
-        color:#f3f5fb; border-left:1px solid rgba(124,108,255,.22);
-        box-shadow:-12px 0 48px rgba(0,0,0,.45);
+        background:rgba(6,9,16,.97); backdrop-filter:blur(20px) saturate(1.25); -webkit-backdrop-filter:blur(20px) saturate(1.25);
+        color:#E4EDF9; border-left:1px solid rgba(56,189,248,.25);
+        box-shadow:-12px 0 48px rgba(0,0,0,.45), -2px 0 28px rgba(56,189,248,.12);
         display:flex; flex-direction:column; overflow:hidden; pointer-events:auto;
         transform:translateX(105%); transition:transform .28s cubic-bezier(.22,1,.36,1); }
       .panel.open { transform:translateX(0); }
-      header { display:flex; align-items:center; gap:9px; padding:14px 14px 12px; border-bottom:1px solid rgba(124,108,255,.12); flex-shrink:0; }
-      .logo { width:28px; height:28px; border-radius:9px; background:linear-gradient(135deg,#8b7cff,#5b4fe0); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; color:#fff; box-shadow:0 2px 8px rgba(91,79,224,.4); }
-      header b { flex:1; font-size:14px; letter-spacing:.1px; }
-      header .sub { color:#6b7595; font-weight:400; }
-      select { appearance:none; background:rgba(30,39,64,.8); color:#dfe4f2; border:1px solid rgba(124,108,255,.18); border-radius:9px; padding:4px 9px; font-size:11px; cursor:pointer; max-width:122px; outline:none; }
-      select:hover { border-color:rgba(124,108,255,.45); }
-      .ico { background:none; border:1px solid rgba(124,108,255,.18); color:#aab3cc; border-radius:9px; padding:4px 8px; font-size:11px; cursor:pointer; text-decoration:none; transition:border-color .15s,color .15s; }
-      .ico:hover { border-color:#8b7cff; color:#f3f5fb; }
-      .feed { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:12px; scrollbar-width:thin; scrollbar-color:#2a3350 transparent; }
-      .feed::-webkit-scrollbar { width:6px; } .feed::-webkit-scrollbar-thumb { background:#2a3350; border-radius:3px; }
-      .empty { margin:auto 0; text-align:center; color:#6b7595; font-size:13px; line-height:1.65; }
-      .empty .big { font-size:15px; color:#aab3cc; font-weight:600; }
-      .sugg { display:block; margin:7px auto 0; background:rgba(22,29,46,.9); border:1px solid rgba(124,108,255,.16); color:#aab3cc; border-radius:999px; font-size:11.5px; padding:6px 14px; cursor:pointer; transition:border-color .15s,color .15s,transform .12s; }
-      .sugg:hover { border-color:#8b7cff; color:#f3f5fb; transform:translateY(-1px); }
-      .req { margin-left:auto; max-width:85%; background:linear-gradient(135deg,#8b7cff,#5b4fe0); color:#fff; border-radius:16px 16px 5px 16px; padding:9px 12px; font-size:13px; cursor:pointer; text-align:left; border:none; box-shadow:0 3px 12px rgba(91,79,224,.25); line-height:1.45; }
+      header { display:flex; align-items:center; gap:9px; padding:14px 14px 12px; border-bottom:1px solid rgba(56,189,248,.12); flex-shrink:0; }
+      .logo { width:28px; height:28px; border-radius:9px; background:#0A0F1B; border:1px solid rgba(56,189,248,.5); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; color:#38BDF8; text-shadow:0 0 8px rgba(56,189,248,.8); box-shadow:0 0 14px rgba(56,189,248,.45); animation:pglow 2.6s ease-in-out infinite; }
+      .logo:hover { animation:none; box-shadow:0 0 22px rgba(56,189,248,.75); }
+      @keyframes pglow { 0%,100% { box-shadow:0 0 14px rgba(56,189,248,.45); } 50% { box-shadow:0 0 22px rgba(56,189,248,.65); } }
+      header b { flex:1; font-size:11.5px; font-family:ui-monospace,monospace; text-transform:uppercase; letter-spacing:.18em; }
+      header .sub { color:#5B6B85; font-weight:400; }
+      select { appearance:none; background:rgba(14,21,36,.85); color:#E4EDF9; border:1px solid rgba(56,189,248,.18); border-radius:9px; padding:4px 9px; font-size:11px; cursor:pointer; max-width:122px; outline:none; }
+      select:hover { border-color:rgba(56,189,248,.45); }
+      .ico { background:none; border:1px solid rgba(56,189,248,.18); color:#8FA1BC; border-radius:9px; padding:4px 8px; font-size:11px; cursor:pointer; text-decoration:none; transition:border-color .15s,color .15s; }
+      .ico:hover { border-color:#67D0FF; color:#E4EDF9; }
+      .feed { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:12px; scrollbar-width:thin; scrollbar-color:#172136 transparent; }
+      .feed::-webkit-scrollbar { width:6px; } .feed::-webkit-scrollbar-thumb { background:#172136; border-radius:3px; }
+      .empty { margin:auto 0; text-align:center; color:#5B6B85; font-size:13px; line-height:1.65; }
+      .empty .big { font-size:15px; color:#8FA1BC; font-weight:600; }
+      .sugg { display:block; margin:7px auto 0; background:rgba(14,21,36,.9); border:1px solid rgba(56,189,248,.16); color:#8FA1BC; border-radius:999px; font-size:11.5px; padding:6px 14px; cursor:pointer; transition:border-color .15s,color .15s,transform .12s; }
+      .sugg:hover { border-color:#67D0FF; color:#E4EDF9; transform:translateY(-1px); }
+      .req { margin-left:auto; max-width:85%; background:rgba(56,189,248,.14); color:#E4EDF9; border-radius:16px 16px 5px 16px; padding:9px 12px; font-size:13px; cursor:pointer; text-align:left; border:1px solid rgba(56,189,248,.35); line-height:1.45; }
       .req .re { opacity:0; margin-left:6px; transition:opacity .15s; } .req:hover .re { opacity:.75; }
-      .res { max-width:94%; background:rgba(22,29,46,.85); border:1px solid rgba(124,108,255,.13); border-radius:16px 16px 16px 5px; padding:10px 12px; font-size:13px; line-height:1.5; }
-      .ans { white-space:pre-wrap; color:#eef1fa; word-break:break-word; }
-      .caret { display:inline-block; width:7px; height:14px; background:#8b7cff; border-radius:2px; vertical-align:-2px; animation:pblink .9s steps(1) infinite; }
+      .res { max-width:94%; background:rgba(14,21,36,.85); border:1px solid rgba(56,189,248,.13); border-radius:16px 16px 16px 5px; padding:10px 12px; font-size:13px; line-height:1.5; }
+      .ans { white-space:pre-wrap; color:#E4EDF9; word-break:break-word; }
+      .caret { display:inline-block; width:7px; height:14px; background:#38BDF8; border-radius:2px; vertical-align:-2px; animation:pblink .9s steps(1) infinite; }
       @keyframes pblink { 50% { opacity:0; } }
-      .step { display:flex; gap:8px; font-size:12px; color:#aab3cc; padding:1.5px 0; } .step .k { width:14px; text-align:center; } .step .k.ok { color:#34d399; } .step .k.run { color:#fbbf24; }
-      .think { display:flex; align-items:center; gap:8px; color:#aab3cc; font-size:12.5px; }
-      .think .orb { width:14px; height:14px; border-radius:50%; background:conic-gradient(from 0deg,#8b7cff,#4a3fd0,#8b7cff); animation:pspin 1.1s linear infinite; }
+      .step { display:flex; gap:8px; font-size:12px; color:#8FA1BC; padding:1.5px 0; } .step .k { width:14px; text-align:center; } .step .k.ok { color:#34D399; } .step .k.run { color:#FBBF24; }
+      .think { display:flex; align-items:center; gap:8px; color:#8FA1BC; font-size:12.5px; }
+      .think .orb { width:14px; height:14px; border-radius:50%; background:conic-gradient(from 0deg,#38BDF8,#1E7FC2,#38BDF8); animation:pspin 1.1s linear infinite; }
       @keyframes pspin { to { transform:rotate(360deg); } }
-      .meta { display:flex; align-items:center; gap:7px; margin-top:8px; font-size:11px; color:#6b7595; flex-wrap:wrap; }
-      .dot { width:7px; height:7px; border-radius:50%; } .d-completed{background:#34d399;} .d-failed{background:#f87171;} .d-awaiting_approval{background:#8b7cff;} .d-running,.d-pending,.d-streaming{background:#fbbf24;}
+      .meta { display:flex; align-items:center; gap:7px; margin-top:8px; font-size:11px; color:#5B6B85; flex-wrap:wrap; }
+      .dot { width:7px; height:7px; border-radius:50%; } .d-completed{background:#34D399;} .d-failed{background:#F87171;} .d-awaiting_approval,.d-needs_connect{background:#38BDF8;} .d-running,.d-pending,.d-streaming{background:#FBBF24;}
+      .cbtn { background:rgba(56,189,248,.14); border:1px solid rgba(56,189,248,.5); color:#38BDF8; border-radius:9px; padding:6px 13px; font-size:12px; font-weight:600; cursor:pointer; transition:background .15s; }
+      .cbtn:hover { background:rgba(56,189,248,.25); }
+      .apyes { background:#38BDF8; color:#04121F; border:none; border-radius:9px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; }
+      .apno { background:none; border:1px solid rgba(248,113,113,.45); color:#F87171; border-radius:9px; padding:6px 12px; font-size:12px; cursor:pointer; }
+      .apyes:disabled,.apno:disabled,.cbtn:disabled { opacity:.5; cursor:default; }
       .dot.pulse { animation:ppulse 1.2s ease-in-out infinite; } @keyframes ppulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
-      .res a { color:#a99bff; text-decoration:none; } .res a:hover { text-decoration:underline; }
-      .mact { background:none; border:1px solid rgba(124,108,255,.22); color:#aab3cc; border-radius:7px; font-size:10.5px; padding:2px 8px; cursor:pointer; transition:border-color .15s,color .15s; }
-      .mact:hover { border-color:#8b7cff; color:#f3f5fb; }
-      .err { margin-top:6px; font-size:11.5px; color:#f87171; white-space:pre-wrap; }
-      .ctx { border-top:1px solid rgba(124,108,255,.12); padding:8px 13px 0; flex-shrink:0; }
-      .ctxh { display:flex; align-items:center; gap:6px; font-size:11px; color:#aab3cc; cursor:pointer; user-select:none; }
+      .res a { color:#67D0FF; text-decoration:none; } .res a:hover { text-decoration:underline; }
+      .mact { background:none; border:1px solid rgba(56,189,248,.22); color:#8FA1BC; border-radius:7px; font-size:10.5px; padding:2px 8px; cursor:pointer; transition:border-color .15s,color .15s; }
+      .mact:hover { border-color:#67D0FF; color:#E4EDF9; }
+      .err { margin-top:6px; font-size:11.5px; color:#F87171; white-space:pre-wrap; }
+      .ctx { border-top:1px solid rgba(56,189,248,.12); padding:8px 13px 0; flex-shrink:0; }
+      .ctxh { display:flex; align-items:center; gap:6px; font-size:11px; color:#8FA1BC; cursor:pointer; user-select:none; }
       .ctxh .cv { transition:transform .15s; } .ctxh.open .cv { transform:rotate(90deg); }
       .ctxbody { display:none; } .ctxbody.open { display:block; }
-      .chip { display:inline-block; background:rgba(30,39,64,.8); border:1px solid rgba(124,108,255,.15); border-radius:999px; padding:2px 9px; font-size:11px; color:#aab3cc; margin:5px 4px 0 0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .tabs { max-height:120px; overflow-y:auto; border:1px solid rgba(124,108,255,.15); border-radius:10px; margin:6px 0; }
-      .trow { display:flex; align-items:center; gap:8px; padding:5px 9px; font-size:12px; border-bottom:1px solid rgba(124,108,255,.09); }
-      .trow:last-child { border-bottom:none; } .trow label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#aab3cc; cursor:pointer; }
-      .tact { display:flex; gap:10px; font-size:11px; padding:2px 0; } .tact button { background:none; border:none; color:#8b7cff; cursor:pointer; font-size:11px; padding:0; }
-      .note { font-size:11px; color:#6b7595; margin:5px 0; } .note a { color:#a99bff; }
-      .opts { display:flex; gap:14px; padding:4px 0 7px; font-size:11px; color:#aab3cc; }
+      .chip { display:inline-block; background:rgba(14,21,36,.85); border:1px solid rgba(56,189,248,.15); border-radius:999px; padding:2px 9px; font-size:11px; color:#8FA1BC; margin:5px 4px 0 0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .tabs { max-height:120px; overflow-y:auto; border:1px solid rgba(56,189,248,.15); border-radius:10px; margin:6px 0; }
+      .trow { display:flex; align-items:center; gap:8px; padding:5px 9px; font-size:12px; border-bottom:1px solid rgba(56,189,248,.09); }
+      .trow:last-child { border-bottom:none; } .trow label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#8FA1BC; cursor:pointer; }
+      .tact { display:flex; gap:10px; font-size:11px; padding:2px 0; } .tact button { background:none; border:none; color:#38BDF8; cursor:pointer; font-size:11px; padding:0; }
+      .note { font-size:11px; color:#5B6B85; margin:5px 0; } .note a { color:#67D0FF; }
+      .opts { display:flex; gap:14px; padding:4px 0 7px; font-size:11px; color:#8FA1BC; }
       .opts label { display:flex; align-items:center; gap:5px; cursor:pointer; }
-      .composer { border-top:1px solid rgba(124,108,255,.12); padding:10px 13px 14px; flex-shrink:0; }
-      .cbox { display:flex; align-items:flex-end; gap:8px; background:rgba(22,29,46,.9); border:1px solid rgba(124,108,255,.18); border-radius:15px; padding:8px; transition:border-color .15s, box-shadow .15s; }
-      .cbox:focus-within { border-color:#8b7cff; box-shadow:0 0 0 3px rgba(139,124,255,.12); }
-      textarea { flex:1; border:none; background:none; color:#f3f5fb; font-size:13px; resize:none; outline:none; max-height:110px; min-height:20px; line-height:1.45; }
-      textarea::placeholder { color:#5d6786; }
-      .snd { width:34px; height:34px; border-radius:11px; background:linear-gradient(135deg,#8b7cff,#5b4fe0); color:#fff; border:none; font-size:15px; cursor:pointer; flex-shrink:0; transition:transform .12s, opacity .15s; box-shadow:0 3px 10px rgba(91,79,224,.35); }
+      .composer { border-top:1px solid rgba(56,189,248,.12); padding:10px 13px 14px; flex-shrink:0; }
+      .cbox { display:flex; align-items:flex-end; gap:8px; background:rgba(14,21,36,.9); border:1px solid rgba(56,189,248,.18); border-radius:15px; padding:8px; transition:border-color .15s, box-shadow .15s; }
+      .cbox:focus-within { border-color:#38BDF8; box-shadow:0 0 0 3px rgba(56,189,248,.12); }
+      textarea { flex:1; border:none; background:none; color:#E4EDF9; font-size:13px; resize:none; outline:none; max-height:110px; min-height:20px; line-height:1.45; }
+      textarea::placeholder { color:#5B6B85; }
+      .snd { width:34px; height:34px; border-radius:11px; background:linear-gradient(135deg,#38BDF8,#1E7FC2); color:#fff; border:none; font-size:15px; cursor:pointer; flex-shrink:0; transition:transform .12s, opacity .15s; box-shadow:0 3px 10px rgba(56,189,248,.35); }
       .snd:hover:not(:disabled) { transform:scale(1.06); }
       .snd:disabled { opacity:.4; cursor:default; box-shadow:none; }
       .ptoast { position:fixed; top:18px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:9px;
-        background:rgba(13,17,28,.95); border:1px solid rgba(124,108,255,.4); color:#f3f5fb; font-size:12.5px;
+        background:rgba(10,15,27,.96); border:1px solid rgba(56,189,248,.4); color:#E4EDF9; font-size:12.5px;
         border-radius:999px; padding:8px 16px; box-shadow:0 8px 28px rgba(0,0,0,.55); max-width:70vw; pointer-events:none; }
       .ptoast span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .porb { width:12px; height:12px; border-radius:50%; flex-shrink:0; background:conic-gradient(from 0deg,#8b7cff,#4a3fd0,#8b7cff); animation:pspin 1.1s linear infinite; }
-      .pring { position:fixed; display:none; border:2px solid #8b7cff; border-radius:8px; box-shadow:0 0 0 4px rgba(139,124,255,.28); pointer-events:none; transition:all .25s ease; }
-      .pconfirm { position:fixed; top:64px; left:50%; transform:translateX(-50%); display:none; background:rgba(13,17,28,.97);
-        border:1px solid rgba(124,108,255,.45); border-radius:14px; padding:13px 15px; color:#f3f5fb; font-size:13px;
+      .porb { width:12px; height:12px; border-radius:50%; flex-shrink:0; background:conic-gradient(from 0deg,#38BDF8,#1E7FC2,#38BDF8); animation:pspin 1.1s linear infinite; }
+      .pring { position:fixed; display:none; border:2px solid #38BDF8; border-radius:8px; box-shadow:0 0 0 4px rgba(56,189,248,.35), 0 0 18px rgba(56,189,248,.4); pointer-events:none; transition:all .25s ease; }
+      .pconfirm { position:fixed; top:64px; left:50%; transform:translateX(-50%); display:none; background:rgba(10,15,27,.97);
+        border:1px solid rgba(56,189,248,.45); border-radius:14px; padding:13px 15px; color:#E4EDF9; font-size:13px;
         max-width:440px; box-shadow:0 16px 48px rgba(0,0,0,.65); line-height:1.5; pointer-events:auto; }
       .pcbtns { display:flex; gap:8px; margin-top:10px; justify-content:flex-end; }
       .pcbtns button { border:none; border-radius:9px; padding:6px 14px; font-size:12px; cursor:pointer; font-weight:600; }
-      .pcyes { background:linear-gradient(135deg,#8b7cff,#5b4fe0); color:#fff; }
-      .pcno { background:rgba(30,39,64,.9); color:#aab3cc; border:1px solid rgba(124,108,255,.2) !important; }
+      .pcyes { background:#38BDF8; color:#04121F; }
+      .pcno { background:rgba(14,21,36,.9); color:#8FA1BC; border:1px solid rgba(56,189,248,.25) !important; }
     </style>
     <div class="scrim" data-r="scrim"></div>
     <div class="panel" data-r="panel">
@@ -351,19 +362,48 @@
   }
 
   // ── Rendu ──────────────────────────────────────────────────────────────
-  function statusText(s) { return { completed: "terminé", failed: "échec", awaiting_approval: "à valider", running: "en cours", pending: "en file", streaming: "répond…" }[s] || s; }
+  function statusText(s) { return { completed: "terminé", failed: "échec", awaiting_approval: "à valider", running: "en cours", pending: "en file", streaming: "répond…", needs_connect: "connexion requise" }[s] || s; }
   function card(it, live) {
     const isMission = it.kind === "mission" || (it.planned?.length > 0) || (it.runId && !it.instant && it.kind !== "instant");
     const hasRun = it.runId && it.runId !== "…";
-    let body = "";
+    let body = it.notice ? `<div style="color:#34D399;font-size:12px;margin-bottom:6px">${esc(it.notice)}</div>` : "";
     if (it.answer) body += `<div class="ans">${esc(it.answer).slice(0, 12000)}${it.status === "streaming" ? '<span class="caret"></span>' : ""}</div>`;
     else if (it.status === "streaming") body += `<div class="think"><span class="orb"></span> Prompta réfléchit…</div>`;
     if (isMission && it.planned?.length) body += `<div style="margin-top:${it.answer ? "8px" : "0"}">${it.planned.map((l, i) => { const d = it.stepsCompleted ?? it.stepsDone ?? 0; const k = i < d ? "✓" : i === d && (it.status === "running" || it.status === "pending") ? "▶" : "·"; return `<div class="step"><span class="k ${i < d ? "ok" : i === d && (it.status === "running" || it.status === "pending") ? "run" : ""}">${k}</span><span>${esc(l)}</span></div>`; }).join("")}</div>`;
     else if (isMission && (it.status === "running" || it.status === "pending")) body += `<div class="think"><span class="orb"></span> Prompta conçoit l'agent…</div>`;
+    // Connexion manquante : carte avec un bouton OAuth par app + reprise auto.
+    if (it.status === "needs_connect" && live) {
+      const btns = (it.missing || []).map((s) => `<button class="cbtn" data-connect="${esc(s)}">🔌 Connecter ${esc(slugLabel(s))}</button>`).join("");
+      body += `<div style="margin-top:${body ? "8px" : "0"}">
+        <div style="font-weight:600;color:#E4EDF9;margin-bottom:3px">Connexion requise</div>
+        <div style="color:#8FA1BC;font-size:12px;line-height:1.5">${esc(it.error || "Cette mission a besoin d'apps pas encore connectées.")}</div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:9px">${btns}</div>
+        ${it.connectExpired
+          ? `<button class="mact" data-resume="1" style="margin-top:9px">↻ Reprendre la mission</button>`
+          : `<div style="margin-top:8px;font-size:11px;color:#5B6B85">⏳ Je surveille tes connexions — la mission repartira toute seule.</div>`}
+      </div>`;
+    }
+    // Validation humaine : carte in-feed (contenu éditable, décision sans dashboard).
+    if (it.status === "awaiting_approval" && live) {
+      if (it.approval) {
+        const p = it.approval.payload || {};
+        body += `<div style="margin-top:${body ? "8px" : "0"};border:1px solid rgba(56,189,248,.35);border-radius:12px;padding:10px;background:rgba(10,15,27,.6)">
+          <div style="font-weight:600;color:#E4EDF9;font-size:12.5px">✋ Validation requise${p.label ? ` — ${esc(p.label)}` : ""}</div>
+          <textarea data-aptext style="width:100%;margin-top:8px;min-height:90px;max-height:200px;background:rgba(14,21,36,.9);border:1px solid rgba(56,189,248,.2);border-radius:9px;color:#E4EDF9;font-size:12px;padding:8px;resize:vertical;outline:none;line-height:1.45">${esc(p.full || p.preview || "")}</textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end">
+            <button class="apno" data-apreject="1">Refuser</button>
+            <button class="apyes" data-approve="1">Valider</button>
+          </div>
+          ${it.approvalError ? `<div class="err">${esc(it.approvalError)}</div>` : ""}
+        </div>`;
+      } else {
+        body += `<div class="think" style="margin-top:${body ? "8px" : "0"}"><span class="orb"></span> Je récupère la demande de validation…</div>`;
+      }
+    }
     let link = "";
     if (it.status === "awaiting_approval") {
       const vUrl = it.approvalId ? `${baseUrl}/dashboard/validations?focus=${esc(it.approvalId)}` : `${baseUrl}/dashboard/validations`;
-      link = `<a href="${vUrl}" target="_blank" rel="noopener">⏸ valider</a>`;
+      link = `<a href="${vUrl}" target="_blank" rel="noopener">${live ? "ouvrir dans le dashboard ↗" : "⏸ valider"}</a>`;
     } else if (hasRun && (it.status === "completed" || it.status === "failed")) link = `<a href="${baseUrl}/dashboard/runs/${esc(it.runId)}" target="_blank" rel="noopener">dossier ↗</a>`;
     else if (live && hasRun && (it.status === "running" || it.status === "pending")) link = `<button class="mact" data-cancel="${esc(it.runId)}">■ stop</button>`;
     // « Réutiliser comme agent » : missions multi-étapes terminées.
@@ -385,13 +425,13 @@
     const live = current && !history.some((h) => current.runId && h.runId === current.runId) ? current : null;
     // Signature : on ne reconstruit le DOM que si quelque chose a VRAIMENT changé
     // (sinon un tick de poll identique effacerait la sélection de texte de l'user).
-    const sig = items.map((h) => (h.runId || h.goal) + h.status + (h.savedAgent || "")).join("|") + "#" + (live ? `${live.runId}:${live.status}:${live.stepsCompleted}:${(live.answer || "").length}:${(live.planned || []).length}` : "") + "?" + (clarifyQ ? clarifyQ.join("|") : "");
+    const sig = items.map((h) => (h.runId || h.goal) + h.status + (h.savedAgent || "")).join("|") + "#" + (live ? `${live.runId}:${live.status}:${live.stepsCompleted}:${(live.answer || "").length}:${(live.planned || []).length}:${live.approval ? live.approval.id : ""}:${live.approvalError || ""}:${live.connectExpired ? "x" : ""}:${(live.missing || []).join(",")}:${live.notice || ""}` : "") + "?" + (clarifyQ ? clarifyQ.join("|") : "");
     if (!force && sig === lastFeedSig) return;
     lastFeedSig = sig;
     // Ne pas ré-ancrer en bas si l'utilisateur a scrollé vers le haut pour lire.
     const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 90;
     const clarifyHtml = clarifyQ && clarifyQ.length
-      ? `<div class="res" style="border-color:#8b7cff66"><div style="color:#f3f5fb;font-weight:600;margin-bottom:4px">Quelques précisions pour bien faire :</div><ul style="margin:0;padding-left:18px;color:#aab3cc">${clarifyQ.map((q) => `<li>${esc(q)}</li>`).join("")}</ul><div style="color:#6b7595;font-size:11px;margin-top:6px">Réponds ci-dessous, je m'occupe du reste.</div></div>`
+      ? `<div class="res" style="border-color:#38BDF866"><div style="color:#E4EDF9;font-weight:600;margin-bottom:4px">Quelques précisions pour bien faire :</div><ul style="margin:0;padding-left:18px;color:#8FA1BC">${clarifyQ.map((q) => `<li>${esc(q)}</li>`).join("")}</ul><div style="color:#5B6B85;font-size:11px;margin-top:6px">Réponds ci-dessous, je m'occupe du reste.</div></div>`
       : "";
     const suggestions = ["Résume cette page en 5 points", "Compare mes onglets ouverts", "Rédige un email pro à partir de ma sélection"];
     const emptyHtml = `<div class="empty"><span class="big">Ton assistant, partout.</span><br>Réponse immédiate aux questions,<br>agent complet pour les missions sur tes apps.<br><br>${suggestions.map((s) => `<button class="sugg" data-reuse="${esc(s)}">${esc(s)}</button>`).join("")}</div>`;
@@ -407,6 +447,42 @@
         if (target) target.savedAgent = baseUrl + r.body.url;
         renderFeed(true);
       } else { b.disabled = false; b.textContent = "💾 garder comme agent"; }
+    }));
+    // Connexion manquante : ouvrir l'OAuth dans un nouvel onglet (la reprise
+    // est automatique : le poll des connexions relancera la mission).
+    feed.querySelectorAll("[data-connect]").forEach((b) => b.addEventListener("click", () => {
+      const slug = b.dataset.connect;
+      window.open(`${baseUrl}/api/connectors/${encodeURIComponent(slug)}/connect?returnUrl=${encodeURIComponent(`${baseUrl}/dashboard/connexions?connected=${slug}`)}`, "_blank");
+    }));
+    feed.querySelectorAll("[data-resume]").forEach((b) => b.addEventListener("click", () => {
+      if (!pendingConnect) return;
+      const g = pendingConnect.goal;
+      pendingConnect = null; stopConnectPoll();
+      launching = true; sendBtn.disabled = true;
+      launchMission(g);
+    }));
+    // Validation in-feed : contenu éditable + décision, puis reprise du suivi.
+    const apText = feed.querySelector("[data-aptext]");
+    if (apText) apText.addEventListener("keydown", (e) => e.stopPropagation());
+    feed.querySelectorAll("[data-approve],[data-apreject]").forEach((b) => b.addEventListener("click", async () => {
+      if (!current || !current.approval) return;
+      const decision = b.hasAttribute("data-approve") ? "approved" : "rejected";
+      feed.querySelectorAll("[data-approve],[data-apreject]").forEach((x) => { x.disabled = true; });
+      const r = await send("prompta:approve", {
+        runId: current.runId,
+        approvalId: current.approval.id,
+        decision,
+        modifiedContent: decision === "approved" && apText ? apText.value : undefined,
+      });
+      if (r?.ok) {
+        current.decidedApprovalId = current.approval.id;
+        current.approval = null; current.approvalError = null;
+        current.status = "running"; // optimiste — le poll (toujours actif) corrige
+        renderFeed(true);
+      } else {
+        current.approvalError = r?.body?.error || r?.body?.message || `Décision refusée (${r?.status || "réseau"}) — réessaie.`;
+        renderFeed(true);
+      }
     }));
     if (nearBottom) feed.scrollTop = feed.scrollHeight;
   }
@@ -451,17 +527,66 @@
       // redémarrage du worker ET un plan réparé qui introduit du pilotage.
       if (r.body.browser_task) send("prompta:pilot-watch", { runId: current.runId });
       renderFeed();
-      // Terminal OU en attente de validation : on cesse de poller (la validation
-      // se fait dans le dashboard ; loadHistory rafraîchira à la réouverture).
-      if (["completed", "failed", "cancelled", "awaiting_approval"].includes(r.body.status)) {
+      if (["completed", "failed", "cancelled"].includes(r.body.status)) {
         stopPoll(); launching = false; sendBtn.disabled = false; loadHistory();
+      } else if (r.body.status === "awaiting_approval") {
+        // La validation se fait ICI, dans le panneau : on récupère l'approval
+        // du run et on CONTINUE de poller jusqu'au terme (plus de rupture).
+        launching = false; sendBtn.disabled = false;
+        ensureApproval();
       }
     }, 2500);
   }
 
+  /** Charge la demande de validation du run courant (carte in-feed éditable). */
+  async function ensureApproval() {
+    const c = current;
+    if (!c || c.approval || c.approvalLoading) return;
+    if (c.approvalId && c.decidedApprovalId === c.approvalId) return; // décision déjà envoyée
+    c.approvalLoading = true;
+    try {
+      const r = await send("prompta:approvals");
+      if (!r?.ok || !Array.isArray(r.body?.items)) return;
+      const item = r.body.items.find((a) => (c.approvalId && a.id === c.approvalId) || a.runId === c.runId || a.run_id === c.runId);
+      if (item && current === c && item.id !== c.decidedApprovalId) {
+        c.approval = { id: item.id, payload: item.payload || {} };
+        renderFeed(true);
+      }
+    } finally { c.approvalLoading = false; }
+  }
+
+  // ── Connexion manquante : poll toutes les 5 s, reprise auto de la mission ──
+  const CONNECT_POLL_MS = 5000;
+  const CONNECT_MAX_MS = 10 * 60 * 1000;
+  function stopConnectPoll() { clearInterval(connectTimer); connectTimer = null; }
+  function startConnectPoll() {
+    stopConnectPoll();
+    const startedAt = Date.now();
+    connectTimer = setInterval(async () => {
+      if (!pendingConnect) { stopConnectPoll(); return; }
+      if (Date.now() - startedAt > CONNECT_MAX_MS) {
+        // Timeout : on garde la mission mémorisée, reprise MANUELLE via bouton.
+        stopConnectPoll();
+        pendingConnect.expired = true;
+        if (current && current.status === "needs_connect") { current.connectExpired = true; renderFeed(true); }
+        return;
+      }
+      const r = await send("prompta:connections");
+      if (!r?.ok || !Array.isArray(r.body?.connections)) return;
+      const usable = new Set(r.body.connections.filter((c) => c.usable).map((c) => connKey(c.connectorId)));
+      const still = pendingConnect.missing.filter((s) => !usable.has(connKey(s)));
+      if (still.length) return;
+      // Tout est connecté : reprise automatique de la mission mémorisée.
+      const { goal: g, missing } = pendingConnect;
+      pendingConnect = null; stopConnectPoll();
+      launching = true; sendBtn.disabled = true;
+      launchMission(g, `✓ ${missing.map(slugLabel).join(", ")} connecté — je reprends la mission`);
+    }, CONNECT_POLL_MS);
+  }
+
   /** Bascule mission : capture des onglets cochés (session incluse) puis pipeline agent. */
-  async function launchMission(goal) {
-    current = { kind: "mission", runId: "…", goal, model: modelEl.value || null, status: "pending", planned: [], stepsCompleted: 0 };
+  async function launchMission(goal, notice) {
+    current = { kind: "mission", runId: "…", goal, model: modelEl.value || null, status: "pending", planned: [], stepsCompleted: 0, notice: notice || null };
     renderFeed();
     const page = capturePage(exploreEl.checked);
     const targeted = openTabs.filter((t) => t.checked).map((t) => ({ title: t.title, url: t.url }));
@@ -475,16 +600,21 @@
     // L'agent demande des précisions : on affiche les questions, pas de run.
     if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
       launching = false; sendBtn.disabled = false;
-      pendingClarify = { goal }; clarifyQ = r.body.clarify; current = null;
+      pendingClarify = { goal, questions: r.body.clarify }; clarifyQ = r.body.clarify; current = null;
       renderFeed(); goalEl.focus(); return;
     }
     if (!r?.ok) {
       launching = false; sendBtn.disabled = false;
-      current.status = "failed";
       if (r?.status === 409 && r.body?.missingConnectors?.length) {
-        current.error = `À connecter : ${r.body.missingConnectors.join(", ")}`;
-        current.needsConnect = true;
+        // Mission MÉMORISÉE : carte « Connexion requise » + reprise automatique
+        // dès que toutes les apps manquantes sont connectées (poll 5 s).
+        current.status = "needs_connect";
+        current.missing = r.body.missingConnectors;
+        current.error = r.body.message || `Cette mission a besoin de : ${r.body.missingConnectors.join(", ")}.`;
+        pendingConnect = { goal, missing: [...r.body.missingConnectors], expired: false };
+        startConnectPoll();
       } else {
+        current.status = "failed";
         current.error = r?.body?.message || (r?.status === 401 ? "Connecte-toi à Prompta." : `Erreur ${r?.status || "réseau"}`);
       }
       renderFeed(); return;
@@ -509,8 +639,19 @@
     }
     const port = chrome.runtime.connect({ name: "prompta:instant" });
     let closed = false;
+    // Watchdog : aucun événement SSE pendant 90 s → coupure propre (fini le
+    // « streaming » infini quand le serveur s'est tu sans fermer le flux).
+    let watchdogT = null;
+    const armWatchdog = () => {
+      clearTimeout(watchdogT);
+      watchdogT = setTimeout(() => {
+        try { port.postMessage({ type: "abort" }); } catch { /* port fermé */ }
+        finish(true, "La réponse a expiré — réessaie.");
+      }, 90_000);
+    };
     const finish = (fail, msg) => {
       if (closed) return; closed = true;
+      clearTimeout(watchdogT);
       try { port.disconnect(); } catch { /* déjà fermé */ }
       launching = false; sendBtn.disabled = false;
       if (fail) { current.status = "failed"; current.error = msg || "Réponse interrompue."; }
@@ -519,13 +660,15 @@
       renderFeed(true);
     };
     port.onMessage.addListener((m) => {
+      armWatchdog();
       if (m?.delta) { current.answer += m.delta; renderFeed(true); }
-      else if (m?.mission) { closed = true; try { port.disconnect(); } catch { /* */ } launchMission(goal); }
+      else if (m?.mission) { closed = true; clearTimeout(watchdogT); try { port.disconnect(); } catch { /* */ } launchMission(goal); }
       else if (m?.done) finish(false);
       else if (m?.error) finish(true, m.error + (m.status === 401 ? " — connecte-toi à Prompta." : ""));
       else if (m?.closed && !closed) finish(current.answer ? false : true, "Connexion interrompue.");
     });
     port.onDisconnect.addListener(() => { if (!closed) finish(current?.answer ? false : true, "Connexion interrompue."); });
+    armWatchdog();
     port.postMessage({ type: "start", payload: { goal, page, modelId: modelEl.value || undefined, history: hist.slice(-6) } });
   }
 
@@ -535,10 +678,13 @@
     if (goal.length < 2) return;
     launching = true; sendBtn.disabled = true;
     goalEl.value = ""; goalEl.style.height = "auto";
-    // Réponse à une demande de précisions : on recolle l'ordre initial et on
-    // repart DIRECTEMENT en mission (c'est une mission qui a demandé ça).
+    // Nouvelle demande explicite : la mission en attente de connexion est
+    // abandonnée (sinon sa reprise auto écraserait le suivi de celle-ci).
+    if (pendingConnect) { pendingConnect = null; stopConnectPoll(); }
+    // Réponse à une demande de précisions : on recolle l'ordre initial, les
+    // questions ET les réponses, puis on repart DIRECTEMENT en mission.
     if (pendingClarify) {
-      goal = `${pendingClarify.goal}\n\nPrécisions de l'utilisateur : ${goal}`;
+      goal = `${pendingClarify.goal}\n\nQuestions posées : ${(pendingClarify.questions || []).join(" | ")}\nRéponses de l'utilisateur : ${goal}`;
       pendingClarify = null; clarifyQ = null;
       launchMission(goal); return;
     }
@@ -556,7 +702,7 @@
       renderCtx();
       goalEl.focus();
       // Reprend le suivi si un run est encore en vol (poll arrêté à la fermeture).
-      if (current && ["running", "pending"].includes(current.status) && !pollTimer) poll();
+      if (current && ["running", "pending", "awaiting_approval"].includes(current.status) && !pollTimer) poll();
     }
   }
   $("close").addEventListener("click", () => toggle(false));

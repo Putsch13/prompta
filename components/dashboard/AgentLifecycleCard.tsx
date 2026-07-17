@@ -120,8 +120,8 @@ export function AgentLifecycleCard({
           disabled={deleting}
           className={`shrink-0 rounded-lg p-1.5 text-xs ${
             confirmDelete
-              ? "bg-red-600 px-2 font-medium text-white"
-              : "text-ink-faint hover:bg-red-50 hover:text-red-600"
+              ? "bg-destructive/90 px-2 font-semibold text-[#1a0505]"
+              : "text-ink-faint hover:bg-destructive/10 hover:text-destructive"
           }`}
           aria-label="Supprimer"
         >
@@ -163,21 +163,13 @@ export function AgentLifecycleCard({
       {launchError && (
         <div className="mt-2 space-y-1.5">
           <p className="text-xs text-destructive">{launchError}</p>
-          {needsMask && (
-            <Link
-              href={`/listing/${agent.slug}?run=1`}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
-            >
-              Compléter les infos et lancer <ArrowRight className="h-3 w-3" />
-            </Link>
-          )}
         </div>
       )}
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-line-soft pt-3">
         <Link
-          href={`/dashboard/listing/${agent.id}/edit`}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent-hover"
+          href={`/dashboard/runs`}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink hover:bg-accent-hover"
         >
           <Pencil className="h-3.5 w-3.5" /> Modifier
         </Link>

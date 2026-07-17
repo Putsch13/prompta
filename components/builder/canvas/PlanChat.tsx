@@ -152,7 +152,7 @@ export function PlanChat({
           type="button"
           disabled={disabled || input.trim().length < 3}
           onClick={() => sendInstruction(input)}
-          className="flex h-9 items-center gap-1 rounded-lg bg-accent px-3 text-sm text-white disabled:opacity-50"
+          className="flex h-9 items-center gap-1 rounded-lg bg-accent px-3 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>

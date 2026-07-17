@@ -196,7 +196,7 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
             <button
               onClick={() => setStep(2)}
               disabled={selected.length === 0}
-              className="mt-6 w-full rounded-lg bg-accent py-2.5 text-sm font-medium text-white disabled:opacity-50"
+              className="mt-6 w-full rounded-lg bg-accent py-2.5 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover disabled:opacity-50"
             >
               Continuer
             </button>
@@ -238,12 +238,12 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
                       <p className="mt-1 text-xs text-ink-soft">Enregistrement…</p>
                     )}
                     {state === "saved" && (
-                      <p className="mt-1 flex items-center gap-1 text-xs text-green-600">
+                      <p className="mt-1 flex items-center gap-1 text-xs text-success">
                         <Check className="h-3 w-3" /> Enregistrée et validée
                       </p>
                     )}
                     {state === "invalid" && (
-                      <p className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                      <p className="mt-1 flex items-center gap-1 text-xs text-warning">
                         <AlertTriangle className="h-3 w-3" /> {keyErrors[id]}
                       </p>
                     )}
@@ -263,7 +263,7 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
               <button
                 onClick={saveAllKeys}
                 disabled={testing}
-                className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover disabled:opacity-50"
               >
                 {testing ? "Enregistrement…" : "Valider et continuer"}
               </button>
@@ -281,7 +281,7 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
                 Clés enregistrées
               </h2>
               {invalidProviders.length > 0 && (
-                <p className="mt-2 text-sm text-amber-600">
+                <p className="mt-2 text-sm text-warning">
                   {invalidProviders.length} clé(s) enregistrée(s) mais non validée(s) par le
                   fournisseur — vous pourrez les re-tester depuis Connexions.
                 </p>
@@ -289,7 +289,7 @@ export function UserSetupWizard({ onClose, initialProvider, mode = "setup" }: Pr
             </div>
             <button
               onClick={onClose}
-              className="mt-6 w-full rounded-lg bg-accent py-2.5 text-sm font-medium text-white"
+              className="mt-6 w-full rounded-lg bg-accent py-2.5 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover"
             >
               Terminer
             </button>

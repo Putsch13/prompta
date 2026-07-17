@@ -421,13 +421,13 @@ export function NodeInspector({
                       if (!resolverInfo) return null;
                       switch (resolverInfo.source) {
                         case "pinned":
-                          return { label: "Épinglé (vous)", className: "bg-amber-100 text-amber-800" };
+                          return { label: "Épinglé (vous)", className: "bg-warning/15 text-warning" };
                         case "shared":
-                          return { label: "Env partagée", className: "bg-violet-100 text-violet-800" };
+                          return { label: "Env partagée", className: "bg-violet-400/15 text-violet-300" };
                         case "subscriber":
-                          return { label: "Demandé à l'abonné", className: "bg-sky-100 text-sky-800" };
+                          return { label: "Demandé à l'abonné", className: "bg-accent/15 text-accent" };
                         case "step":
-                          return { label: "Sortie d'étape", className: "bg-emerald-100 text-emerald-800" };
+                          return { label: "Sortie d'étape", className: "bg-success/15 text-success" };
                         default:
                           return null;
                       }
@@ -518,7 +518,7 @@ export function NodeInspector({
                             }
                           />
                           {input.dependsOn && !parentPinned && (
-                            <p className="mt-1 text-[10px] text-amber-700">
+                            <p className="mt-1 text-[10px] text-warning">
                               Renseignez d&apos;abord {input.dependsOn}.
                             </p>
                           )}
@@ -754,7 +754,7 @@ export function NodeInspector({
                     patch({ sharedEnv: false, paramMeta });
                   }}
                   className={`rounded px-2 py-1 text-[10px] ${
-                    !currentNode.sharedEnv ? "bg-accent text-white" : "bg-card2 text-ink-soft"
+                    !currentNode.sharedEnv ? "bg-accent text-accent-ink" : "bg-card2 text-ink-soft"
                   }`}
                 >
                   👤 Env client
@@ -773,14 +773,14 @@ export function NodeInspector({
                     patch({ sharedEnv: true, paramMeta });
                   }}
                   className={`rounded px-2 py-1 text-[10px] ${
-                    currentNode.sharedEnv ? "bg-violet-600 text-white" : "bg-card2 text-ink-soft"
+                    currentNode.sharedEnv ? "bg-violet-500 text-white" : "bg-card2 text-ink-soft"
                   }`}
                 >
                   🌐 Env partagée
                 </button>
               </div>
               {currentNode.sharedEnv && (
-                <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-900">
+                <p className="rounded border border-warning/30 bg-warning/10 px-2 py-1 text-[10px] text-warning">
                   Vos accès seront utilisés par <strong>tous</strong> les abonnés (usage et coût
                   à votre charge).
                 </p>
@@ -915,7 +915,7 @@ export function NodeInspector({
               type="button"
               onClick={() => setAddKind(k.id)}
               className={`rounded px-2 py-0.5 text-[10px] ${
-                addKind === k.id ? "bg-accent text-white" : "bg-card2 text-ink-soft"
+                addKind === k.id ? "bg-accent text-accent-ink" : "bg-card2 text-ink-soft"
               }`}
             >
               {k.label}

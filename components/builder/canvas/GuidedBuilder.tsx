@@ -306,7 +306,7 @@ export function GuidedBuilder({
             <Bot className="h-4 w-4 text-accent" />
             Accompagnement — {completedIds.length}/{total} étapes finalisées
           </span>
-          {done && <span className="text-xs text-emerald-700">Toutes les étapes sont prêtes</span>}
+          {done && <span className="text-xs text-success">Toutes les étapes sont prêtes</span>}
         </div>
         <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-card2">
           <div
@@ -324,7 +324,7 @@ export function GuidedBuilder({
         <button
           type="button"
           onClick={onGoToTest}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-semibold text-success transition-colors hover:bg-success/20"
         >
           <Play className="h-4 w-4" /> Lancer le test
         </button>
@@ -337,7 +337,7 @@ export function GuidedBuilder({
             type="button"
             onClick={() => setMode("guided")}
             className={`flex items-center gap-1 px-3 py-1.5 text-xs ${
-              mode === "guided" ? "bg-accent text-white" : "bg-card text-ink-soft"
+              mode === "guided" ? "bg-accent text-accent-ink" : "bg-card text-ink-soft"
             }`}
           >
             <Bot className="h-3.5 w-3.5" /> Guidé par l&apos;IA
@@ -346,7 +346,7 @@ export function GuidedBuilder({
             type="button"
             onClick={() => setMode("manual")}
             className={`flex items-center gap-1 px-3 py-1.5 text-xs ${
-              mode === "manual" ? "bg-accent text-white" : "bg-card text-ink-soft"
+              mode === "manual" ? "bg-accent text-accent-ink" : "bg-card text-ink-soft"
             }`}
           >
             <PenLine className="h-3.5 w-3.5" /> Mode manuel
@@ -361,7 +361,7 @@ export function GuidedBuilder({
             }}
             title="Édite le JSON des étapes directement — pour les profils techniques"
             className={`flex items-center gap-1 px-3 py-1.5 text-xs ${
-              mode === "code" ? "bg-accent text-white" : "bg-card text-ink-soft"
+              mode === "code" ? "bg-accent text-accent-ink" : "bg-card text-ink-soft"
             }`}
           >
             <Code2 className="h-3.5 w-3.5" /> Code
@@ -379,7 +379,7 @@ export function GuidedBuilder({
           <button
             type="button"
             onClick={() => onGraphChange(layoutGraph(normalizeGraph(graph)))}
-            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800"
+            className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning"
           >
             Reconnecter automatiquement
           </button>
@@ -420,12 +420,12 @@ export function GuidedBuilder({
               className="w-full resize-y rounded-lg border border-line bg-[#0f1419] p-3 font-mono text-[12px] leading-relaxed text-emerald-100 outline-none focus:border-accent"
             />
             {codeError && (
-              <p className="mt-2 whitespace-pre-wrap rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <p className="mt-2 whitespace-pre-wrap rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                 {codeError}
               </p>
             )}
             {codeApplied && !codeError && (
-              <p className="mt-2 flex items-center gap-1 text-xs text-emerald-700">
+              <p className="mt-2 flex items-center gap-1 text-xs text-success">
                 <Check className="h-3.5 w-3.5" /> Appliqué — l&apos;arborescence est à jour.
               </p>
             )}
@@ -460,7 +460,7 @@ export function GuidedBuilder({
                     setCodeError(`JSON invalide : ${e instanceof Error ? e.message : e}`);
                   }
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
               >
                 <Check className="h-4 w-4" /> Appliquer à l&apos;arborescence
               </button>
@@ -521,14 +521,14 @@ export function GuidedBuilder({
               </div>
             )}
             {error && (
-              <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+              <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
                 <p className="flex-1 text-xs text-destructive">
                   {error} — ton message est conservé, rien à retaper.
                 </p>
                 <button
                   type="button"
                   onClick={() => void runCopilot(lastHistoryRef.current)}
-                  className="shrink-0 rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent/90"
+                  className="shrink-0 rounded-lg bg-accent px-3 py-1 text-xs font-semibold text-accent-ink hover:bg-accent-hover"
                 >
                   Renvoyer
                 </button>
@@ -547,7 +547,7 @@ export function GuidedBuilder({
           )}
 
           {done ? (
-            <div className="flex items-center gap-2 border-t border-line px-3 py-2 text-xs text-emerald-700">
+            <div className="flex items-center gap-2 border-t border-line px-3 py-2 text-xs text-success">
               <Check className="h-4 w-4" /> L&apos;agent est finalisé — vous pouvez lancer le test.
             </div>
           ) : (
@@ -571,7 +571,7 @@ export function GuidedBuilder({
                 type="button"
                 disabled={loading || input.trim().length < 1}
                 onClick={() => send(input)}
-                className="flex h-9 items-center gap-1 rounded-lg bg-accent px-3 text-xs text-white disabled:opacity-50"
+                className="flex h-9 items-center gap-1 rounded-lg bg-accent px-3 text-xs font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>

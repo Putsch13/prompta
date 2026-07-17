@@ -178,7 +178,7 @@ export function ConnectionsMasque({
                 <p className="text-xs text-ink-faint">Clé API — pour les appels LLM</p>
               </div>
               {ok ? (
-                <span className="flex items-center gap-1 text-xs text-green-600">
+                <span className="flex items-center gap-1 font-mono text-xs text-success">
                   <Check className="h-3 w-3" /> …{key.last4}
                 </span>
               ) : (
@@ -229,7 +229,7 @@ export function ConnectionsMasque({
                       )}
                       Tester l&apos;accès
                     </button>
-                    <span className="flex items-center gap-1 text-xs text-green-600">
+                    <span className="flex items-center gap-1 text-xs text-success">
                       <Check className="h-3 w-3" /> Connecté
                     </span>
                   </div>
@@ -247,7 +247,9 @@ export function ConnectionsMasque({
               {diag && !diag.loading && diag.message && (
                 <div
                   className={`mt-2 flex items-start gap-1.5 rounded-md px-2 py-1.5 text-xs ${
-                    diag.ok ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"
+                    diag.ok
+                      ? "border border-success/30 bg-success/10 text-success"
+                      : "border border-warning/30 bg-warning/10 text-warning"
                   }`}
                 >
                   {diag.ok ? (
@@ -274,7 +276,7 @@ export function ConnectionsMasque({
       </div>
 
       {!ready && (
-        <p className="mt-3 flex items-center gap-1 text-xs text-amber-700">
+        <p className="mt-3 flex items-center gap-1 text-xs text-warning">
           <AlertTriangle className="h-3 w-3" />
           {missingConnectors.length > 0
             ? `Il reste à connecter : ${missingConnectors.map((id) => connectorLabel(id, composioLabels)).join(", ")}`

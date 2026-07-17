@@ -164,7 +164,7 @@ export function CatalogMultiSelect({
                           onClick={() => toggle(item.id)}
                           className={`rounded-lg px-2 py-1.5 text-left text-sm ${
                             isSelected
-                              ? "bg-accent text-white"
+                              ? "bg-accent text-accent-ink"
                               : "text-ink hover:bg-accent-light"
                           }`}
                         >
@@ -185,7 +185,7 @@ export function CatalogMultiSelect({
                       type="button"
                       onClick={() => toggle(item.id)}
                       className={`rounded-lg px-2 py-1.5 text-left text-sm ${
-                        isSelected ? "bg-accent text-white" : "text-ink hover:bg-accent-light"
+                        isSelected ? "bg-accent text-accent-ink" : "text-ink hover:bg-accent-light"
                       }`}
                     >
                       {item.label}

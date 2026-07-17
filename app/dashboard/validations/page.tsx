@@ -136,7 +136,7 @@ function ValidationsContent() {
               <div
                 key={item.id}
                 ref={isFocus ? focusRef : undefined}
-                className={`rounded-xl border bg-card p-4 ${isFocus ? "border-amber-400 ring-2 ring-amber-400/30" : "border-line"}`}
+                className={`rounded-xl border bg-card p-4 ${isFocus ? "border-warning/60 ring-2 ring-warning/30" : "border-line"}`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -183,7 +183,7 @@ function ValidationsContent() {
                     type="button"
                     disabled={acting === item.id}
                     onClick={() => decide(item, "approved")}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-success px-3 py-2 text-sm font-semibold text-accent-ink hover:bg-success/90 disabled:opacity-50"
                   >
                     {acting === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                     Valider et continuer
@@ -192,7 +192,7 @@ function ValidationsContent() {
                     type="button"
                     disabled={acting === item.id}
                     onClick={() => decide(item, "rejected")}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
                   >
                     <X className="h-4 w-4" /> Refuser
                   </button>

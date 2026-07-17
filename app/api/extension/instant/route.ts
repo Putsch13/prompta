@@ -5,6 +5,9 @@ import { getBuilderApiKey } from "@/lib/builder/api-key";
 import { builderRateLimit } from "@/lib/builder/rate-limit";
 import { streamModelDeltas, type ChatMessage } from "@/lib/llm/gateway";
 import { buildPageContextBlock, type PageContext } from "@/lib/extension/instant-agent";
+import { getAvailableBalance, debitPlatformUsage, CREDIT_VALUE_CENTS } from "@/lib/credits";
+import { getCreditCircuitStatus } from "@/lib/billing/circuit-breaker";
+import { getModelPricing } from "@/lib/llm/pricing";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -51,6 +54,34 @@ function sse(payload: Record<string, unknown>): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
+/**
+ * Détection tolérante de la sentinelle : ignore espaces/markdown/guillemets de
+ * tête et la casse (« **Mission** », « MISSION : je vais… » → mission).
+ */
+function stripLead(s: string): string {
+  return s.replace(/^[\s*_#>`"'«\-–—]+/, "");
+}
+function isSentinelLead(s: string): boolean {
+  const lead = stripLead(s);
+  if (lead.slice(0, SENTINEL.length).toUpperCase() !== SENTINEL) return false;
+  const next = lead[SENTINEL.length];
+  // Frontière de mot : « MISSION », « Mission : … » oui ; « Missionnaire » non.
+  return next === undefined || !/[a-zA-ZÀ-ÿ]/.test(next);
+}
+/** Encore ambigu ? (préfixe de la sentinelle, frontière de mot pas encore vue) */
+function couldBecomeSentinel(s: string): boolean {
+  const lead = stripLead(s).toUpperCase();
+  return lead.length <= SENTINEL.length && SENTINEL.startsWith(lead);
+}
+
+/** Estimation de coût (cents) d'un appel streamé — ~4 caractères / token. */
+function estimateStreamCostCents(apiModel: string, inputChars: number, outputChars: number): number {
+  const pricing = getModelPricing(apiModel);
+  const inTok = Math.ceil(inputChars / 4);
+  const outTok = Math.ceil(outputChars / 4);
+  return (inTok * pricing.inputPer1M + outTok * pricing.outputPer1M) / 1_000_000;
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const {
@@ -81,6 +112,31 @@ export async function POST(request: NextRequest) {
       status: 503,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // ── Garde-fous crédits (clé plateforme uniquement — BYOK reste gratuit) ──
+  const onPlatformKey = keyResult.source === "platform";
+  if (onPlatformKey) {
+    const circuit = await getCreditCircuitStatus().catch(() => null);
+    if (circuit && !circuit.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: "credits_paused",
+          message: "Les runs en crédits sont en pause (protection plateforme). Utilise ta propre clé API (BYOK) ou réessaie plus tard.",
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    const available = await getAvailableBalance(user.id);
+    if (available < CREDIT_VALUE_CENTS) {
+      return new Response(
+        JSON.stringify({
+          error: "no_credits",
+          message: "Crédits IA épuisés — recharge dans Dashboard → Crédits, ou ajoute ta propre clé API (BYOK, illimité).",
+        }),
+        { status: 402, headers: { "Content-Type": "application/json" } },
+      );
+    }
   }
 
   const page = body?.page ?? { url: "" };
@@ -119,9 +175,10 @@ export async function POST(request: NextRequest) {
           if (isMission) break;
           if (!headFlushed) {
             head += delta;
-            const lead = head.trimStart();
-            if (lead.length >= SENTINEL.length + 2 || (lead.length > 0 && !SENTINEL.startsWith(lead.slice(0, SENTINEL.length)))) {
-              if (lead.startsWith(SENTINEL)) {
+            // On tranche dès que la tête ne peut plus être un préfixe de la
+            // sentinelle (détection tolérante : markdown/casse/espaces).
+            if (!couldBecomeSentinel(head)) {
+              if (isSentinelLead(head)) {
                 isMission = true;
                 controller.enqueue(sse({ mission: true }));
                 break;
@@ -138,8 +195,7 @@ export async function POST(request: NextRequest) {
         // Flux terminé alors que la tête était encore en tampon (réponse très
         // courte) : trancher maintenant.
         if (!headFlushed && !isMission) {
-          const lead = head.trimStart();
-          if (lead.startsWith(SENTINEL) && lead.slice(SENTINEL.length).trim().length === 0) {
+          if (isSentinelLead(head)) {
             isMission = true;
             controller.enqueue(sse({ mission: true }));
           } else if (head) {
@@ -149,31 +205,49 @@ export async function POST(request: NextRequest) {
         }
         if (!isMission) {
           controller.enqueue(sse({ done: true }));
-          // Historique unifié : la réponse instantanée rejoint le fil de
-          // conversation (même table que les missions) — best-effort, hors flux.
-          if (full.trim()) {
-            const admin = createAdminClient();
-            void admin
-              .from("listing_agent_runs")
-              .insert({
-                user_id: user.id,
-                listing_id: null,
-                status: "completed",
-                dry_run: false,
-                steps_completed: 1,
-                output: { reponse: full.slice(0, 12_000) },
-                inputs: {
-                  __source: "extension",
-                  __instant: "1",
-                  __goal: goal.slice(0, 500),
-                  __model: catalogId,
-                  __title: goal.slice(0, 120),
-                },
-              })
-              .then(({ error }) => {
-                if (error) console.warn("[extension/instant] history insert failed:", error.message);
-              });
-          }
+        }
+
+        // Historique unifié : la réponse instantanée rejoint le fil de
+        // conversation (même table que les missions) — best-effort, hors flux.
+        let historyRunId: string | null = null;
+        if (!isMission && full.trim()) {
+          const admin = createAdminClient();
+          const { data: inserted, error } = await admin
+            .from("listing_agent_runs")
+            .insert({
+              user_id: user.id,
+              listing_id: null,
+              status: "completed",
+              dry_run: false,
+              steps_completed: 1,
+              output: { reponse: full.slice(0, 12_000) },
+              inputs: {
+                __source: "extension",
+                __instant: "1",
+                __goal: goal.slice(0, 500),
+                __model: catalogId,
+                __title: goal.slice(0, 120),
+              },
+            })
+            .select("id")
+            .single();
+          if (error) console.warn("[extension/instant] history insert failed:", error.message);
+          historyRunId = inserted?.id ?? null;
+        }
+
+        // ── Débit crédits (clé plateforme) : coût réel estimé × MARKUP ──
+        // Le tac au tac n'est jamais gratuit sur la clé plateforme, y compris
+        // le tour de classification qui aboutit à une bascule mission.
+        if (onPlatformKey) {
+          const inputChars = messages.reduce((n, m) => n + m.content.length, 0);
+          const outputChars = (full || head).length;
+          const costCents = estimateStreamCostCents(apiModel, inputChars, outputChars);
+          await debitPlatformUsage(
+            user.id,
+            costCents,
+            isMission ? "Tac au tac — classification mission" : "Tac au tac (réponse instantanée)",
+            historyRunId,
+          );
         }
       } catch (err) {
         controller.enqueue(

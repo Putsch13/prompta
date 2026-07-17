@@ -18,12 +18,12 @@ import {
   FREE_RUN_MAX_TOKENS,
 } from "@/lib/billing/credits";
 import { consumeFreeRunQuota } from "@/lib/billing/free-quota";
+import { checkMonthlySpendCap } from "@/lib/billing/spending-limits";
 import { getCreditCircuitStatus } from "@/lib/billing/circuit-breaker";
 import { getCachedRun, runCacheKey, setCachedRun } from "@/lib/billing/run-cache";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import { isUnrestrictedUser } from "@/lib/auth/privileges";
 import { hasPlatformPro } from "@/lib/platform-access";
-import { trackProRun } from "@/lib/revshare";
 
 export const dynamic = "force-dynamic";
 
@@ -160,6 +160,14 @@ export async function POST(request: NextRequest) {
             { status: 503, headers: { "Content-Type": "application/json" } }
           );
         }
+        // Plafond mensuel de dépenses crédits — même règle que les runs d'agent.
+        const cap = await checkMonthlySpendCap(user.id, estimatedMax);
+        if (!cap.allowed) {
+          return new Response(
+            JSON.stringify({ error: "monthly_cap", message: cap.message }),
+            { status: 429, headers: { "Content-Type": "application/json" } }
+          );
+        }
         usedCredits = true;
       } else if (isFree && !hasEntitlement) {
         const allowed = await consumeFreeRunQuota(user.id);
@@ -293,10 +301,6 @@ export async function POST(request: NextRequest) {
             cost_estimate: cost,
           })
           .eq("id", run?.id ?? "");
-
-        if (isPro && !isOwner && listing.creator_id) {
-          await trackProRun(listingId, listing.creator_id).catch(() => undefined);
-        }
 
         const chunks = result.content.match(/.{1,30}/g) ?? [result.content];
         for (const chunk of chunks) {

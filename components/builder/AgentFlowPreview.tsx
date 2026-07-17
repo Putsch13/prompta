@@ -129,8 +129,8 @@ export function AgentFlowPreview({
             onClick={onConfirm}
             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               confirmed
-                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                : "bg-accent text-white hover:bg-accent/90"
+                ? "bg-success/10 text-success ring-1 ring-success/30"
+                : "bg-accent text-accent-ink hover:bg-accent-hover"
             }`}
           >
             {confirmed ? (
@@ -159,7 +159,7 @@ export function AgentFlowPreview({
               <div
                 className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
                   step.type === "approval"
-                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    ? "border-warning/30 bg-warning/10 text-warning"
                     : "border-accent/30 bg-accent/5 text-accent"
                 }`}
               >
@@ -172,7 +172,7 @@ export function AgentFlowPreview({
                     {stepBadge(step)}
                   </span>
                   {step.type === "approval" && (
-                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                    <span className="rounded bg-warning/20 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
                       Humain requis
                     </span>
                   )}

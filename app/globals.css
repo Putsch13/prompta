@@ -2,22 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── DA « AI Core » — tokens racine (synchronisés avec tailwind.config.ts) ── */
 :root {
-  --background: #FAFAFA;
-  --foreground: #191919;
-  --accent: #4F46E5;
-  --accent-hover: #4338CA;
-  --accent-light: #EEF2FF;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0F0F0F;
-    --foreground: #EDEDED;
-    --accent: #70B5F9;
-    --accent-hover: #9CCBFC;
-    --accent-light: #1B2838;
-  }
+  --background: #05070d;
+  --foreground: #e4edf9;
+  --accent: #38bdf8;
+  --accent-hover: #67d0ff;
+  --accent-light: #0b2036;
+  color-scheme: dark;
 }
 
 body {
@@ -28,6 +20,110 @@ body {
 @layer base {
   * {
     border-color: theme("colors.border");
+  }
+
+  ::selection {
+    background: rgba(56, 189, 248, 0.28);
+    color: #eaf6ff;
+  }
+
+  /* Scrollbar sombre fine, cohérente avec les lignes du HUD. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #1e2c47 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #1e2c47;
+    border-radius: 8px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #2a3d61;
+  }
+}
+
+@layer components {
+  /* Fond quadrillé fin (sections hero / dashboards). */
+  .bg-hud-grid {
+    background-image:
+      linear-gradient(to right, rgba(56, 189, 248, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(56, 189, 248, 0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  /* Halo radial bleu en tête de section. */
+  .bg-hud-halo {
+    background: radial-gradient(
+      60% 60% at 50% 0%,
+      rgba(56, 189, 248, 0.12),
+      transparent 70%
+    );
+  }
+
+  /* Étiquette technique : mono, majuscules, espacée — signature de la DA. */
+  .hud-label {
+    font-family: theme("fontFamily.mono");
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: theme("colors.accent.DEFAULT");
+  }
+
+  /* Carte HUD : surface sombre, ligne fine, liseré lumineux au survol. */
+  .hud-card {
+    border: 1px solid theme("colors.line");
+    background: linear-gradient(180deg, rgba(228, 237, 249, 0.03), transparent 32%),
+      theme("colors.card");
+    border-radius: theme("borderRadius.lg");
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+  }
+  .hud-card:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+    box-shadow: theme("boxShadow.glow-sm");
+  }
+
+  /* Coins « viseur » (brackets) autour d'un bloc. */
+  .hud-corners {
+    position: relative;
+  }
+  .hud-corners::before,
+  .hud-corners::after {
+    content: "";
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 1px solid rgba(56, 189, 248, 0.55);
+    pointer-events: none;
+  }
+  .hud-corners::before {
+    top: -1px;
+    left: -1px;
+    border-right: none;
+    border-bottom: none;
+  }
+  .hud-corners::after {
+    bottom: -1px;
+    right: -1px;
+    border-left: none;
+    border-top: none;
+  }
+
+  /* Ligne de balayage verticale (hero, panneaux « live »). */
+  .hud-scanline {
+    position: absolute;
+    inset-inline: 0;
+    height: 120px;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(56, 189, 248, 0.07),
+      transparent
+    );
+    pointer-events: none;
   }
 }
 
@@ -48,4 +144,11 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .animate-marquee { animation: none; flex-wrap: wrap; justify-content: center; }
+  .animate-ring-spin,
+  .animate-ring-spin-slow,
+  .animate-ring-spin-rev,
+  .animate-scan,
+  .animate-glow-pulse {
+    animation: none !important;
+  }
 }

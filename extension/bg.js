@@ -84,6 +84,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(await api("/api/extension/save-agent", { method: "POST", body: JSON.stringify({ runId: msg.runId }) }));
       } else if (msg?.type === "prompta:connections") {
         sendResponse(await api("/api/extension/connections"));
+      } else if (msg?.type === "prompta:approvals") {
+        sendResponse(await api("/api/approvals"));
+      } else if (msg?.type === "prompta:approve") {
+        sendResponse(await api(`/api/run/agent/${encodeURIComponent(msg.runId)}/approve`, {
+          method: "POST",
+          body: JSON.stringify({
+            approvalId: msg.approvalId,
+            decision: msg.decision,
+            modifiedContent: msg.modifiedContent || undefined,
+          }),
+        }));
       } else if (msg?.type === "prompta:models") {
         sendResponse(await api("/api/extension/models"));
       } else if (msg?.type === "prompta:history") {
@@ -120,11 +131,30 @@ const pilotSessions = new Map(); // runId → { tabId, timer, busy, seen:Set }
 const PILOT_POLL_MS = 1500;
 const PILOT_MAX_MS = 15 * 60 * 1000;
 
+// Le service worker MV3 est recyclé par Chrome sans préavis : la Map en
+// mémoire meurt avec lui. On persiste donc les runs pilotés dans
+// chrome.storage.session ({ runId → tabId }) pour ré-armer au réveil.
+function persistPilotIds() {
+  const ids = {};
+  for (const [runId, s] of pilotSessions) ids[runId] = s.tabId;
+  try { chrome.storage.session.set({ pilot_watch_ids: ids }).catch(() => { /* */ }); } catch { /* storage indispo */ }
+}
+
+async function restorePilotSessions() {
+  try {
+    const { pilot_watch_ids } = await chrome.storage.session.get("pilot_watch_ids");
+    for (const [runId, tabId] of Object.entries(pilot_watch_ids || {})) {
+      if (runId && typeof tabId === "number" && !pilotSessions.has(runId)) watchPilotRun(runId, tabId);
+    }
+  } catch { /* storage.session indispo */ }
+}
+
 function watchPilotRun(runId, tabId) {
   const existing = pilotSessions.get(runId);
-  if (existing) { existing.tabId = tabId; return; }
+  if (existing) { existing.tabId = tabId; persistPilotIds(); return; }
   const s = { tabId, busy: false, seen: new Set(), timer: null, startedAt: Date.now() };
   pilotSessions.set(runId, s);
+  persistPilotIds();
   s.timer = setInterval(() => {
     if (Date.now() - s.startedAt > PILOT_MAX_MS) { stopPilot(runId); return; }
     pilotTick(runId).catch(() => { /* tick suivant */ });
@@ -136,8 +166,25 @@ function stopPilot(runId) {
   if (!s) return;
   clearInterval(s.timer);
   pilotSessions.delete(runId);
+  persistPilotIds();
   chrome.tabs.sendMessage(s.tabId, { type: "prompta:pilot-end" }).catch(() => { /* onglet fermé */ });
 }
+
+// Ré-armement au démarrage du worker (top-level : s'exécute à CHAQUE réveil).
+restorePilotSessions();
+
+// Alarme périodique : garde le worker vivant tant qu'un pilotage est actif et
+// re-tick les sessions (les setInterval ne survivent pas au recyclage).
+chrome.alarms.create("pilot-keepalive", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "pilot-keepalive") return;
+  (async () => {
+    await restorePilotSessions();
+    for (const runId of pilotSessions.keys()) {
+      pilotTick(runId).catch(() => { /* tick suivant */ });
+    }
+  })();
+});
 
 async function pilotTick(runId) {
   const s = pilotSessions.get(runId);

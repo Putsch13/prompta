@@ -95,19 +95,28 @@ export default function PricingPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <section className="mx-auto max-w-page px-4 pb-8 pt-20 text-center sm:px-6 lg:px-8">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-accent">Tarifs</p>
-        <h1 className="mx-auto mt-3 max-w-3xl font-display text-4xl font-bold tracking-tight text-ink sm:text-5xl">
-          Prompta partout, <span className="text-accent">gratuit pour démarrer</span>
-        </h1>
-        <p className="mx-auto mt-5 max-w-2xl text-lg text-ink-soft">
-          {(WELCOME_CREDIT_CENTS / 100).toLocaleString("fr-FR")} € de crédits IA offerts à
-          l&apos;inscription — sans carte. Passe à un plan payant quand tes missions
-          tournent vraiment pour toi.
-        </p>
+      <section className="relative overflow-hidden border-b border-line bg-hud-grid">
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-hud-halo" />
+        <div className="relative mx-auto max-w-page px-4 pb-14 pt-20 text-center sm:px-6 lg:px-8">
+          <p className="hud-label animate-fade-up">[ Tarifs ]</p>
+          <h1
+            className="mx-auto mt-4 max-w-3xl animate-fade-up font-display text-4xl font-bold tracking-tight text-ink sm:text-5xl"
+            style={{ animationDelay: "80ms" }}
+          >
+            Prompta partout, <span className="text-accent">gratuit pour démarrer</span>
+          </h1>
+          <p
+            className="mx-auto mt-5 max-w-2xl animate-fade-up text-lg text-ink-soft"
+            style={{ animationDelay: "160ms" }}
+          >
+            {(WELCOME_CREDIT_CENTS / 100).toLocaleString("fr-FR")} € de crédits IA offerts à
+            l&apos;inscription — sans carte. Passe à un plan payant quand tes missions
+            tournent vraiment pour toi.
+          </p>
+        </div>
       </section>
 
-      <section className="mx-auto max-w-page px-4 py-10 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-page px-4 py-12 sm:px-6 lg:px-8">
         <PlanGrid plans={plans} />
         <div className="mx-auto mt-10 grid max-w-4xl gap-4 text-sm text-ink-soft sm:grid-cols-3">
           <p className="flex items-start gap-2">
@@ -136,14 +145,15 @@ export default function PricingPage() {
 
       <section className="border-t border-line bg-card2/50">
         <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
-          <h2 className="text-center font-display text-2xl font-bold text-ink">
+          <p className="hud-label text-center">[ FAQ ]</p>
+          <h2 className="mt-3 text-center font-display text-2xl font-bold text-ink">
             Questions fréquentes
           </h2>
           <div className="mt-8 space-y-3">
             {FAQ.map((f) => (
               <details
                 key={f.q}
-                className="group rounded-xl border border-line bg-card p-4 open:shadow-sm"
+                className="hud-card group p-4 open:border-accent/40 open:shadow-glow-sm"
               >
                 <summary className="cursor-pointer list-none font-medium text-ink marker:hidden">
                   {f.q}
@@ -155,7 +165,7 @@ export default function PricingPage() {
           <p className="mt-10 text-center">
             <Link
               href="/prompta-partout"
-              className="inline-flex h-12 items-center rounded-xl bg-accent px-8 text-base font-semibold text-white hover:bg-accent/90"
+              className="inline-flex h-12 items-center rounded-lg bg-accent px-8 text-base font-semibold text-accent-ink shadow-glow-sm transition-all hover:bg-accent-hover hover:shadow-glow"
             >
               Installer Prompta partout →
             </Link>

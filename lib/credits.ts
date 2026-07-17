@@ -303,3 +303,49 @@ export async function debitCreditsForRun(
 
   return true;
 }
+
+/**
+ * Débit direct d'un usage plateforme « léger » (tac au tac, planification de
+ * mission) : applique le MARKUP, borne à zéro (jamais de dette), trace la
+ * transaction. runId optionnel (certains usages n'ont pas de run associé).
+ * Best-effort : ne lève jamais (la réponse a déjà été servie).
+ */
+export async function debitPlatformUsage(
+  userId: string,
+  actualCostCents: number,
+  description: string,
+  runId?: string | null
+): Promise<void> {
+  try {
+    if (actualCostCents <= 0) return;
+    const creditsNeeded = costToCredits(actualCostCents) * CREDIT_VALUE_CENTS;
+
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("user_credits")
+      .select("balance_cents")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const balance = data?.balance_cents ?? 0;
+    const debited = Math.min(creditsNeeded, Math.max(0, balance));
+
+    await admin.from("user_credits").upsert({
+      user_id: userId,
+      balance_cents: Math.max(0, balance - creditsNeeded),
+      updated_at: new Date().toISOString(),
+    });
+
+    if (debited > 0) {
+      await admin.from("credit_transactions").insert({
+        user_id: userId,
+        amount_cents: -debited,
+        kind: "run_debit",
+        description,
+        run_id: runId ?? null,
+      });
+    }
+  } catch (e) {
+    console.warn("[credits] debitPlatformUsage failed:", e);
+  }
+}

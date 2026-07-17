@@ -66,21 +66,21 @@ function ResourceAccessCheck({
   }
   if (status === "ok") {
     return (
-      <p className="flex items-center gap-1 text-[10px] text-emerald-700">
+      <p className="flex items-center gap-1 text-[10px] text-success">
         <Check className="h-3 w-3" /> Accès confirmé{label ? ` — ${label}` : ""}
       </p>
     );
   }
   if (status === "not_found") {
     return (
-      <p className="flex items-center gap-1 text-[10px] text-amber-700">
+      <p className="flex items-center gap-1 text-[10px] text-warning">
         <AlertTriangle className="h-3 w-3" /> Introuvable — vérifiez l&apos;ID ou partagez la ressource avec le compte connecté.
       </p>
     );
   }
   if (status === "forbidden") {
     return (
-      <p className="flex items-center gap-1 text-[10px] text-amber-700">
+      <p className="flex items-center gap-1 text-[10px] text-warning">
         <X className="h-3 w-3" /> Accès refusé — la ressource n&apos;est pas partagée avec le compte connecté.
       </p>
     );

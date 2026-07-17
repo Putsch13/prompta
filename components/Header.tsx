@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, Zap } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AuthNav } from "@/components/AuthNav";
+import { Logo } from "@/components/Logo";
 import { WalletBalanceBadge } from "@/components/wallet/WalletBalanceBadge";
 
 const NAV = [
@@ -55,11 +56,11 @@ export function Header() {
   );
 
   return (
-    <header className="sticky top-0 z-50 border-b border-line bg-card/95 backdrop-blur-md">
+    <header className="sticky top-0 z-50 border-b border-line bg-bg/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-page items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2">
-          <Zap className="h-7 w-7 text-accent" strokeWidth={2.5} />
-          <span className="font-display text-xl font-bold tracking-tight text-ink">
+        <Link href="/" className="group flex items-center gap-2.5">
+          <Logo size={30} />
+          <span className="font-display text-xl font-bold tracking-tight text-ink transition-colors group-hover:text-accent">
             Prompta
           </span>
         </Link>

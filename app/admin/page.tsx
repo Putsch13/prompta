@@ -27,12 +27,13 @@ function KpiCard({
   label: string;
   value: string | number;
   sub?: string;
+  /** Classe de couleur Tailwind (ex. "text-success") pour la valeur. */
   accent?: string;
 }) {
   return (
     <div className="rounded-xl border border-line bg-card p-5">
       <div className="text-xs font-medium text-ink-faint">{label}</div>
-      <div className="mt-1.5 text-3xl font-bold leading-none" style={{ color: accent ?? "var(--ink, #1B1B18)" }}>
+      <div className={`mt-1.5 text-3xl font-bold leading-none ${accent ?? "text-ink"}`}>
         {value}
       </div>
       {sub && <div className="mt-1 text-xs text-ink-faint">{sub}</div>}
@@ -141,36 +142,36 @@ export default async function AdminKpiPage() {
 
       {/* ── Croissance ── */}
       <section>
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-faint">Croissance</h2>
+        <h2 className="hud-label mb-3">Croissance</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <KpiCard label="Utilisateurs" value={totalUsers ?? 0} sub={`+${newUsers7d ?? 0} sur 7 jours`} />
           <KpiCard label="Agents créés" value={totalAgents ?? 0} sub={`+${newAgents7d ?? 0} sur 7 jours`} />
-          <KpiCard label="Agents en production" value={publishedAgents ?? 0} accent="#4F46E5" />
+          <KpiCard label="Agents en production" value={publishedAgents ?? 0} accent="text-accent" />
           <KpiCard
             label="Validations en attente"
             value={pendingApprovals ?? 0}
             sub="approbations humaines"
-            accent={(pendingApprovals ?? 0) > 0 ? "#D97706" : undefined}
+            accent={(pendingApprovals ?? 0) > 0 ? "text-warning" : undefined}
           />
         </div>
       </section>
 
       {/* ── Usage ── */}
       <section>
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-faint">Usage — 7 jours</h2>
+        <h2 className="hud-label mb-3">Usage — 7 jours</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <KpiCard label="Runs" value={runsTotal} sub={`${runs24h} sur 24 h`} />
           <KpiCard
             label="Taux de succès"
             value={`${successRate} %`}
             sub={`${runsCompleted} ok · ${runsFailed} échecs`}
-            accent={successRate >= 85 ? "#16A34A" : successRate >= 60 ? "#D97706" : "#DC2626"}
+            accent={successRate >= 85 ? "text-success" : successRate >= 60 ? "text-warning" : "text-destructive"}
           />
           <KpiCard
             label="File worker"
             value={pendingRuns ?? 0}
             sub={pendingAgeMin > 0 ? `plus ancien : ${pendingAgeMin} min` : "à jour"}
-            accent={(pendingRuns ?? 0) > 3 ? "#D97706" : undefined}
+            accent={(pendingRuns ?? 0) > 3 ? "text-warning" : undefined}
           />
           <KpiCard label="Apps connectées" value={byApp.size} sub={`${connList.length} connexions`} />
         </div>
@@ -189,9 +190,9 @@ export default async function AdminKpiPage() {
 
       {/* ── Monétisation ── */}
       <section>
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-ink-faint">Monétisation</h2>
+        <h2 className="hud-label mb-3">Monétisation</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <KpiCard label="MRR" value={eur(mrrCents)} sub="abonnements actifs" accent="#16A34A" />
+          <KpiCard label="MRR" value={eur(mrrCents)} sub="abonnements actifs" accent="text-success" />
           <KpiCard label="Abonnés payants" value={(subs ?? []).length} sub="plans starter/pro/scale" />
           <KpiCard label="Crédits consommés 30 j" value={eur(creditsConsumed30d)} sub="coût IA refacturé" />
           <KpiCard
@@ -210,7 +211,7 @@ export default async function AdminKpiPage() {
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-bold text-ink">Budget IA plateforme</h2>
             {budget?.is_paused && (
-              <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+              <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-0.5 text-xs font-semibold text-destructive">
                 ⏸ Coupe-circuit actif
               </span>
             )}
@@ -228,11 +229,10 @@ export default async function AdminKpiPage() {
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-card2">
                 <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${Math.min(100, b.pct)}%`,
-                    background: b.pct > 80 ? "#DC2626" : b.pct > 50 ? "#D97706" : "#16A34A",
-                  }}
+                  className={`h-full rounded-full ${
+                    b.pct > 80 ? "bg-destructive" : b.pct > 50 ? "bg-warning" : "bg-success"
+                  }`}
+                  style={{ width: `${Math.min(100, b.pct)}%` }}
                 />
               </div>
             </div>
@@ -265,7 +265,7 @@ export default async function AdminKpiPage() {
                     Ouvrir →
                   </a>
                 </div>
-                <p className="mt-0.5 line-clamp-2 text-xs text-red-700">{r.error_message ?? "—"}</p>
+                <p className="mt-0.5 line-clamp-2 text-xs text-destructive">{r.error_message ?? "—"}</p>
               </div>
             ))}
           </div>

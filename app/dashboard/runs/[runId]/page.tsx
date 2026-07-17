@@ -137,7 +137,7 @@ export default function RunDetailPage() {
           <button
             type="button"
             onClick={() => setImmersive(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink hover:bg-accent-hover"
           >
             <Maximize2 className="h-3.5 w-3.5" /> Vue live &amp; apps
           </button>
@@ -146,7 +146,7 @@ export default function RunDetailPage() {
             onClick={copyReport}
             className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium hover:bg-card2"
           >
-            {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
+            {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
             {copied ? "Copié" : "Copier le rapport"}
           </button>
           <Link
@@ -163,7 +163,7 @@ export default function RunDetailPage() {
         <p className="mt-1 text-sm text-ink-soft">
           {new Date(run.created_at).toLocaleString("fr-FR")}
           {failedSteps.length > 0 && (
-            <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">
+            <span className="ml-2 rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
               {failedSteps.length} étape(s) en échec
             </span>
           )}
@@ -171,19 +171,19 @@ export default function RunDetailPage() {
       </div>
 
       {run.status === "awaiting_approval" && (
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-warning/30 bg-warning/10 p-4">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-amber-900">
+            <p className="text-sm font-semibold text-warning">
               ⏸ Cet agent attend votre validation
               {run.approval?.label ? ` — ${run.approval.label}` : ""}
             </p>
-            <p className="mt-0.5 text-xs text-amber-800">
+            <p className="mt-0.5 text-xs text-warning/80">
               Il reste en pause tant que vous n&apos;avez pas validé ou refusé (24 h max).
             </p>
           </div>
           <Link
             href={run.approval_id ? `/dashboard/validations?focus=${run.approval_id}` : "/dashboard/validations"}
-            className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-400"
+            className="shrink-0 rounded-lg bg-warning px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-warning/90"
           >
             Relire et valider →
           </Link>
@@ -219,7 +219,7 @@ export default function RunDetailPage() {
               }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs font-medium hover:bg-card2"
             >
-              {resultCopied ? <Check className="h-3 w-3 text-green-600" /> : <ClipboardCopy className="h-3 w-3" />}
+              {resultCopied ? <Check className="h-3 w-3 text-success" /> : <ClipboardCopy className="h-3 w-3" />}
               {resultCopied ? "Copié" : "Copier"}
             </button>
           </div>
@@ -264,31 +264,31 @@ export default function RunDetailPage() {
         <div className="mt-6 space-y-3">
           <h2 className="text-sm font-semibold text-ink">Détails techniques des erreurs</h2>
           {failedSteps.map((s) => (
-            <div key={s.id} className="rounded-xl border border-red-200 bg-red-50 p-4">
+            <div key={s.id} className="rounded-xl border border-destructive/30 bg-destructive/10 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold text-ink">
                   {s.stepIndex + 1}. {s.label ?? s.stepType}
                 </span>
                 {s.errorCode && (
-                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-700">
+                  <span className="rounded bg-destructive/20 px-1.5 py-0.5 text-[10px] font-bold uppercase text-destructive">
                     {s.errorCode}
                   </span>
                 )}
                 {s.actionSlug && (
-                  <span className="rounded bg-white px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                  <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
                     {s.actionSlug}
                   </span>
                 )}
               </div>
               {s.errorMessage && (
-                <p className="mt-1.5 text-xs text-red-800">{s.errorMessage}</p>
+                <p className="mt-1.5 text-xs text-destructive/80">{s.errorMessage}</p>
               )}
               {s.errorDetail != null && (
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-[11px] font-medium text-red-700">
+                  <summary className="cursor-pointer text-[11px] font-medium text-destructive">
                     Détails techniques (sans secret)
                   </summary>
-                  <pre className="mt-1 max-h-48 overflow-auto rounded bg-white p-2 text-[10px] whitespace-pre-wrap">
+                  <pre className="mt-1 max-h-48 overflow-auto rounded bg-card2 p-2 text-[10px] text-ink-soft whitespace-pre-wrap">
                     {JSON.stringify(s.errorDetail, null, 2)}
                   </pre>
                 </details>

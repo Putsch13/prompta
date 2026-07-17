@@ -1,90 +1,69 @@
-# Prompta — Design System
+# Design system Prompta — DA « AI Core »
 
-> Système de design unifié pour le parcours **Construire → Connecter → Lancer → Débugger**.
-> Promesse produit : « comme Render, mais pour les agents IA ».
+*Mis à jour le 16 juillet 2026 — refonte dark HUD. Source de vérité des tokens :
+`tailwind.config.ts` (+ utilitaires dans `app/globals.css`).*
 
-Ce document fige les tokens, primitives et conventions. Toute nouvelle UI doit
-réutiliser ces tokens/primitives plutôt que des classes ad hoc.
+## Intention
 
-## 1. Tokens de couleur (`tailwind.config.ts`)
+Interface sombre façon HUD sci-fi : fond quasi-noir bleuté, cyan électrique
+lumineux, lignes fines, typographie technique (mono pour les labels/data),
+animations discrètes (glow, scan, anneaux rotatifs). L'extension, la web app et
+l'admin partagent la même palette.
 
-| Token | Hex | Usage |
-|-------|-----|-------|
-| `bg` | `#F8F8F6` | Fond global de page |
-| `card` | `#FFFFFF` | Surfaces (cartes, panneaux) |
-| `card2` | `#F3F3F1` | Surfaces secondaires / hover |
-| `line` | `#E5E5E3` | Bordures, séparateurs |
-| `line-soft` | `#EDEDEB` | Séparateurs discrets |
-| `ink` | `#1A1A1A` | Texte principal |
-| `ink-soft` | `#6B6B6B` | Texte secondaire |
-| `ink-faint` | `#A3A3A3` | Texte tertiaire / métadonnées |
-| `accent` | `#0A66C2` | Action primaire, liens, états actifs |
-| `accent.hover` | `#004182` | Survol de l'accent |
-| `accent.light` | `#E8F4FF` | Fonds accentués légers |
-| `success` | `#059669` | Succès |
-| `warning` | `#D97706` | Avertissement / validation requise |
-| `destructive` | `#DC2626` | Erreur / action destructive |
+## Tokens (Tailwind)
 
-**Règle :** n'utilisez jamais une couleur en dur (`#...`) dans un composant ;
-référez-vous au token. Les statuts colorés passent par `StatusPill` (cf. §3).
+| Token | Valeur | Usage |
+|---|---|---|
+| `bg` | `#05070D` | Fond de page |
+| `card` | `#0A0F1B` | Surfaces (cartes, header) |
+| `card2` | `#0E1524` | Inserts, inputs, hover |
+| `line` | `#172136` | Bordures 1px |
+| `line-soft` | `#111A2B` | Bordures discrètes |
+| `ink` | `#E4EDF9` | Texte principal |
+| `ink-soft` | `#8FA1BC` | Texte secondaire |
+| `ink-faint` | `#5B6B85` | Texte tertiaire, placeholders |
+| `accent` | `#38BDF8` | Cyan électrique (liens, actifs, glow) |
+| `accent-hover` | `#67D0FF` | Hover |
+| `accent-light` | `#0B2036` | Fond teinté accent (sombre) |
+| `accent-dim` | `#1E7FC2` | Extrémité sombre des gradients |
+| `accent-ink` | `#04121F` | **Texte posé SUR un fond accent** |
+| `success` / `warning` / `destructive` | `#34D399` / `#FBBF24` / `#F87171` | Statuts |
 
-## 2. Typographie, rayon, espacement
+Fonts : Geist Sans (`font-display`/`font-body`), Geist Mono (`font-mono` —
+labels techniques, timestamps, kickers).
 
-- Police : `font-display` / `font-sans` (Geist Sans), `font-mono` (Geist Mono) pour logs/code.
-- Rayons : `rounded-sm` (4px), `rounded-md` (8px), `rounded-lg` (12px), `rounded-xl`/`rounded-2xl` pour les cartes premium.
-- Largeur de page : `max-w-page` (1180px).
+## Conventions
 
-## 3. Primitives (`components/ui.tsx`)
+- **Bouton primaire** : `bg-accent text-accent-ink font-semibold shadow-glow-sm hover:bg-accent-hover hover:shadow-glow` (jamais `text-white` sur accent).
+- **Pastilles de statut** : `border border-<token>/30 bg-<token>/10 text-<token>` — voir `StatusPill` dans `components/ui.tsx`.
+- **Kicker de section** : classe `.hud-label` (mono, uppercase, letterspacing 0.18em, cyan).
+- **Inputs** : `border-line bg-card2 text-ink placeholder:text-ink-faint focus:border-accent/60 focus:ring-1 focus:ring-accent/40`.
 
-Réutilisez ces composants partout ; ne dupliquez pas leurs classes.
+## Utilitaires d'ambiance (`app/globals.css`)
 
-- `Button` — bouton primitif (`primary` / `secondary` / `ghost` / `danger`, tailles `sm`/`md`).
-- `Card` — surface carte standard (`rounded-xl border border-line bg-card`).
-- `TypeBadge` — badge type de contenu (prompt / agent / workflow).
-- `PriceTag` — affichage prix / « Gratuit ».
-- `Avatar` — avatar avec initiales fallback.
-- `BadgePill` — pastille générique (primary/secondary).
-- `StatusPill` + `statusTone(status)` — **pastille de statut unifiée** des runs.
-  Tonalités : `running`, `success`, `failed`, `pending`, `warning`, `cancelled`, `neutral`.
-  ```tsx
-  <StatusPill tone={statusTone(run.status)}>{label}</StatusPill>
-  ```
-- `EmptyState` — état vide cohérent (icône + titre + description + action).
-- `Kicker`, `Stars`, `fmt` — accessoires divers.
+- `.hud-label` — étiquette technique mono/uppercase.
+- `.hud-card` — carte sombre, liseré lumineux au hover.
+- `.hud-corners` — brackets de viseur aux coins.
+- `.bg-hud-grid` — quadrillage fin 44px.
+- `.bg-hud-halo` — halo radial cyan en tête de section.
+- `.hud-scanline` — bande de balayage (à combiner avec `animate-scan`).
 
-## 4. Parcours & masques
+## Animations (tailwind.config.ts)
 
-- **Console de run** : `components/run/AgentRunConsole.tsx` (timeline live, bouton
-  « Arrêter », « Copier le rapport »). Statuts colorés, durées, erreurs actionnables.
-- **Timeline détaillée** : `components/run/RunStepTimeline.tsx` + page détail
-  `app/dashboard/runs/[runId]/page.tsx` (code+message d'erreur par étape, diagnostic
-  sans secret).
-- **Connexions** : `components/run/ConnectionsMasque.tsx` avec bouton « Tester l'accès »
-  (diagnostic réel via `/api/connectors/[id]/diagnose`).
-- **Builder guidé** : `components/builder/canvas/GuidedBuilder.tsx` (canvas + copilote,
-  base de connaissances RAG, indicateurs de complétude par nœud).
+`animate-glow-pulse` (pulsation du glow), `animate-fade-up` (entrée, à décaler
+avec `style={{animationDelay}}`), `animate-ring-spin` / `-slow` / `-rev`
+(anneaux rotatifs du hero/logo), `animate-scan` (scanline), `animate-blink`
+(dot de statut live). Ombres : `shadow-glow`, `shadow-glow-sm`, `shadow-glow-lg`.
+`prefers-reduced-motion` coupe marquee/scan/rings/glow.
 
-## 5. Sécurité d'affichage
+## Logo
 
-- Aucun secret ne doit apparaître dans `input_preview` / `output_preview` / messages
-  d'erreur. La redaction est centralisée dans `lib/agent/step-logger.ts`
-  (`redactSecrets`) et appliquée avant insertion en base.
+`components/Logo.tsx` — « P » dans un anneau-viseur avec arc rotatif
+(`<Logo size={28} animate={false} />` pour les contextes denses) ;
+`LogoWordmark` pour header/footer.
 
-## 6. État des lots P2
+## Extension
 
-Livré :
-- Tokens couleur/typo/rayon documentés (§1–2).
-- Primitives `Button`, `Card`, `StatusPill`/`statusTone`, `EmptyState` (§3),
-  adoptées dans `runs/page` et `LibraryTabs`.
-- Landing `app/(marketing)/page.tsx` — section **parcours en 4 temps**
-  (Construire / Connecter / Lancer / Débugger).
-- Shell dashboard `components/DashboardNav.tsx` — nav latérale desktop +
-  **barre horizontale scrollable sur mobile** (viewport ~380px).
-- Connexions `app/dashboard/connexions/page.tsx` — catalogue marketplace
-  (`ComposioCatalog`) avec recherche, connexion et test d'accès (P0-4).
-
-Améliorations continues possibles (non bloquantes) :
-- Généraliser `Button`/`Card` aux écrans restants au fil des évolutions.
-- Toast/Drawer/Tabs primitifs si un besoin transverse émerge.
-
-> Avant chaque merge UI : `npx tsc --noEmit && npm run lint && npm run test:unit && npm run build`.
+`extension/popup.html` (vars CSS) et `extension/content.js` (styles inline,
+Shadow DOM) reprennent la même palette — synchronisation manuelle : toute
+évolution des tokens doit être reportée dans ces deux fichiers.

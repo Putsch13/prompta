@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { PLANS } from "@/lib/billing/plans";
+import { Logo } from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,34 @@ const DEMO_STEPS = [
   { label: "Récap envoyé par email", state: "pending" },
 ];
 
+/** Anneaux concentriques animés du hero — signature visuelle « AI Core ». */
+function AiCoreRings() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
+      <div className="relative h-[540px] w-[540px] max-w-[92vw]">
+        {/* Halo central */}
+        <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.10),transparent_62%)]" />
+        {/* Anneau 1 — plein, fin */}
+        <div className="absolute inset-[8%] rounded-full border border-accent/15" />
+        {/* Anneau 2 — pointillé, rotation lente */}
+        <div className="absolute inset-[16%] animate-ring-spin-slow rounded-full border border-dashed border-accent/25" />
+        {/* Anneau 3 — arc lumineux, rotation inverse */}
+        <div
+          className="absolute inset-[26%] animate-ring-spin-rev rounded-full"
+          style={{
+            background:
+              "conic-gradient(from 0deg, rgba(56,189,248,0.5), transparent 70deg, transparent 300deg, rgba(56,189,248,0.5))",
+            WebkitMask: "radial-gradient(circle, transparent 66%, black 67%, black 69%, transparent 70%)",
+            mask: "radial-gradient(circle, transparent 66%, black 67%, black 69%, transparent 70%)",
+          }}
+        />
+        {/* Anneau 4 — graduations */}
+        <div className="absolute inset-[36%] animate-ring-spin rounded-full border border-accent/20 [border-style:dotted]" />
+      </div>
+    </div>
+  );
+}
+
 export default async function HomePage() {
   // Logos officiels des apps phares (catalogue Composio, cache serveur 15 min).
   let appLogos: Array<{ label: string; logo?: string }> = [];
@@ -73,89 +102,98 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen bg-bg">
       {/* ── HERO ────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-40 h-[480px] bg-[radial-gradient(60%_60%_at_50%_0%,rgba(79,70,229,0.14),transparent_70%)]"
-        />
-        <div className="mx-auto max-w-page px-4 pb-16 pt-20 sm:px-6 sm:pt-28 lg:px-8">
+      <section className="bg-hud-grid relative overflow-hidden">
+        <div aria-hidden className="bg-hud-halo pointer-events-none absolute inset-x-0 -top-10 h-[520px]" />
+        <AiCoreRings />
+        <div aria-hidden className="hud-scanline animate-scan top-0" />
+        <div className="relative mx-auto max-w-page px-4 pb-16 pt-20 sm:px-6 sm:pt-28 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
-            <p className="mx-auto inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent-light px-4 py-1.5 text-sm font-medium text-accent">
-              <Globe className="h-4 w-4" />
+            <p className="hud-label animate-fade-up mx-auto inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent-light/60 px-4 py-1.5 backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 animate-blink rounded-full bg-accent" />
               Prompta partout — l&apos;assistant dans ton navigateur
             </p>
-            <h1 className="mt-6 font-display text-4xl font-bold tracking-tight text-ink sm:text-6xl">
-              <span className="block text-ink">Prompta.</span>
-              L&apos;IA qui voit ton écran
-              <br />
-              <span className="bg-gradient-to-r from-accent to-violet-500 bg-clip-text text-transparent">
+            <h1
+              className="animate-fade-up mt-6 font-display text-4xl font-bold tracking-tight text-ink sm:text-6xl"
+              style={{ animationDelay: "0.08s" }}
+            >
+              <span className="block">L&apos;IA qui voit ton écran</span>
+              <span className="bg-gradient-to-r from-accent via-[#7DD3FC] to-accent bg-clip-text text-transparent [filter:drop-shadow(0_0_18px_rgba(56,189,248,0.35))]">
                 et fait le travail.
               </span>
             </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-ink-soft">
+            <p
+              className="animate-fade-up mx-auto mt-6 max-w-2xl text-lg leading-8 text-ink-soft"
+              style={{ animationDelay: "0.16s" }}
+            >
               Pose une question, elle répond au tac au tac sur n&apos;importe quelle page.
               Donne un ordre, elle lit tes onglets, agit sur tes apps — Gmail, Sheets,
               Canva, Notion… — et pilote même ton navigateur sous tes yeux.
               Chaque action sensible attend ton feu vert.
             </p>
 
-            <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link
-                href="/quick"
-                className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-7 text-base font-semibold text-white shadow-lg shadow-accent/25 transition-all hover:bg-accent-hover hover:shadow-accent/35"
-              >
-                <Zap className="h-5 w-5" />
-                Essayer l&apos;assistant
-              </Link>
+            <div
+              className="animate-fade-up mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
+              style={{ animationDelay: "0.24s" }}
+            >
               <Link
                 href="/prompta-partout"
-                className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-7 text-base font-medium text-ink transition-colors hover:border-accent"
+                className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-7 text-base font-semibold text-accent-ink shadow-glow transition-all hover:bg-accent-hover hover:shadow-glow-lg"
               >
                 <Globe className="h-5 w-5" />
                 Installer Prompta partout
               </Link>
+              <Link
+                href="/quick"
+                className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card/70 px-7 text-base font-medium text-ink backdrop-blur-sm transition-all hover:border-accent/50 hover:shadow-glow-sm"
+              >
+                <Zap className="h-5 w-5 text-accent" />
+                Essayer sans extension
+              </Link>
             </div>
-            <p className="mt-4 text-sm text-ink-faint">
+            <p className="mt-4 font-mono text-xs tracking-wide text-ink-faint">
               Gratuit pour démarrer · 2 € de crédits IA offerts · sans carte bancaire
             </p>
           </div>
 
           {/* ── Panneau extension (mock produit) ── */}
-          <div className="mx-auto mt-14 max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#101019] shadow-2xl shadow-accent/10">
-            <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-[#8b7cff] to-[#5b4fe0] text-xs font-extrabold text-white">
-                P
+          <div
+            className="hud-corners animate-fade-up mx-auto mt-16 max-w-2xl overflow-hidden rounded-2xl border border-accent/20 bg-card/90 shadow-glow-lg backdrop-blur-md"
+            style={{ animationDelay: "0.32s" }}
+          >
+            <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
+              <Logo size={22} animate={false} />
+              <span className="font-mono text-[11px] tracking-wide text-ink-soft">
+                PROMPTA PARTOUT — SUR TA PAGE, DANS TES ONGLETS
               </span>
-              <span className="text-xs font-medium text-white/60">
-                Prompta partout — sur ta page, dans tes onglets
-              </span>
-              <span className="ml-auto flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> LIVE
+              <span className="ml-auto flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 font-mono text-[10px] font-bold text-success">
+                <span className="h-1.5 w-1.5 animate-blink rounded-full bg-success" /> LIVE
               </span>
             </div>
             <div className="p-4">
-              <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-[#8b7cff] to-[#5b4fe0] px-4 py-2 text-sm text-white">
+              <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md border border-accent/30 bg-accent-light px-4 py-2 text-sm text-ink">
                 Compare les 3 devis ouverts dans mes onglets et remplis le formulaire
                 fournisseur avec le meilleur
               </p>
               <ul className="mt-4 space-y-1">
                 {DEMO_STEPS.map((s, i) => (
                   <li key={s.label} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
-                    <span className="w-4 text-xs text-white/30">{i + 1}</span>
-                    {s.state === "done" && <Check className="h-4 w-4 shrink-0 text-emerald-400" />}
+                    <span className="w-4 font-mono text-[10px] text-ink-faint">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    {s.state === "done" && <Check className="h-4 w-4 shrink-0 text-success" />}
                     {s.state === "waiting" && (
-                      <ShieldCheck className="h-4 w-4 shrink-0 animate-pulse text-amber-300" />
+                      <ShieldCheck className="h-4 w-4 shrink-0 animate-pulse text-warning" />
                     )}
                     {s.state === "pending" && (
-                      <Loader2 className="h-4 w-4 shrink-0 text-white/25" />
+                      <Loader2 className="h-4 w-4 shrink-0 text-ink-faint" />
                     )}
                     <span
                       className={
                         s.state === "done"
-                          ? "text-white/80"
+                          ? "text-ink-soft"
                           : s.state === "waiting"
-                            ? "font-medium text-amber-200"
-                            : "text-white/35"
+                            ? "font-medium text-warning"
+                            : "text-ink-faint"
                       }
                     >
                       {s.label}
@@ -169,19 +207,17 @@ export default async function HomePage() {
       </section>
 
       {/* ── DEUX RÉGIMES ────────────────────────────────────────────────── */}
-      <section className="border-t border-line bg-card2/50">
+      <section className="border-t border-line bg-card/40">
         <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-2xl text-center">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-accent">
-              Un cerveau, deux vitesses
-            </p>
-            <h2 className="mt-2 font-display text-2xl font-bold text-ink sm:text-3xl">
+            <p className="hud-label">Un cerveau, deux vitesses</p>
+            <h2 className="mt-3 font-display text-2xl font-bold text-ink sm:text-3xl">
               Du tac au tac à la mission complète
             </h2>
           </div>
           <div className="mx-auto mt-12 grid max-w-4xl gap-6 sm:grid-cols-2">
-            <div className="rounded-2xl border border-line bg-card p-7">
-              <MessageSquare className="h-9 w-9 text-accent" />
+            <div className="hud-card p-7">
+              <MessageSquare className="h-9 w-9 text-accent [filter:drop-shadow(0_0_8px_rgba(56,189,248,0.5))]" />
               <h3 className="mt-4 font-display text-lg font-semibold text-ink">
                 Réponse instantanée
               </h3>
@@ -191,8 +227,8 @@ export default async function HomePage() {
                 ta page. L&apos;assistant voit ce que tu vois.
               </p>
             </div>
-            <div className="rounded-2xl border border-line bg-card p-7">
-              <Rocket className="h-9 w-9 text-accent" />
+            <div className="hud-card p-7">
+              <Rocket className="h-9 w-9 text-accent [filter:drop-shadow(0_0_8px_rgba(56,189,248,0.5))]" />
               <h3 className="mt-4 font-display text-lg font-semibold text-ink">
                 Mission d&apos;agent
               </h3>
@@ -210,10 +246,8 @@ export default async function HomePage() {
       <section className="border-t border-line">
         <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-2xl text-center">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-accent">
-              Ce qu&apos;aucun chatbot ne fait
-            </p>
-            <h2 className="mt-2 font-display text-2xl font-bold text-ink sm:text-3xl">
+            <p className="hud-label">Ce qu&apos;aucun chatbot ne fait</p>
+            <h2 className="mt-3 font-display text-2xl font-bold text-ink sm:text-3xl">
               Il travaille là où tu travailles
             </h2>
           </div>
@@ -235,11 +269,8 @@ export default async function HomePage() {
                 desc: "Formulaires, clics, navigation : l'agent agit dans ton onglet en copilote visible. Chaque action est annoncée, l'élément visé est surligné, et rien de risqué ne part sans ta confirmation dans la page.",
               },
             ].map((f) => (
-              <div
-                key={f.title}
-                className="group rounded-2xl border border-line bg-card p-7 transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-lg hover:shadow-accent/5"
-              >
-                <f.icon className="h-9 w-9 text-accent" />
+              <div key={f.title} className="hud-card group p-7 hover:-translate-y-0.5">
+                <f.icon className="h-9 w-9 text-accent [filter:drop-shadow(0_0_8px_rgba(56,189,248,0.5))]" />
                 <h3 className="mt-4 font-display text-lg font-semibold text-ink">{f.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-ink-soft">{f.desc}</p>
               </div>
@@ -249,12 +280,12 @@ export default async function HomePage() {
       </section>
 
       {/* ── APPS ────────────────────────────────────────────────────────── */}
-      <section className="border-t border-line bg-card">
+      <section className="border-t border-line bg-card/40">
         <div className="mx-auto max-w-page px-4 py-12 sm:px-6 lg:px-8">
           <p className="text-center text-sm font-semibold text-ink">
             Plus de 1 000 applications connectables
           </p>
-          <p className="mt-1 text-center text-xs font-bold uppercase tracking-wider text-ink-faint">
+          <p className="hud-label mt-2 text-center !text-ink-faint">
             Connecté à tes outils du quotidien
           </p>
           {/* Carrousel infini : deux copies de la rangée, translation -50 %. */}
@@ -265,7 +296,7 @@ export default async function HomePage() {
                   {appLogos.map((app) => (
                     <span
                       key={`${copy}-${app.label}`}
-                      className="flex shrink-0 items-center gap-2.5 rounded-full border border-line bg-bg px-4 py-2 text-sm font-medium text-ink-soft"
+                      className="flex shrink-0 items-center gap-2.5 rounded-full border border-line bg-card px-4 py-2 text-sm font-medium text-ink-soft"
                     >
                       {app.logo ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -292,10 +323,8 @@ export default async function HomePage() {
         <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
           <div className="grid items-center gap-10 lg:grid-cols-2">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-accent">
-                Contrôle total
-              </p>
-              <h2 className="mt-2 font-display text-2xl font-bold text-ink sm:text-3xl">
+              <p className="hud-label">Contrôle total</p>
+              <h2 className="mt-3 font-display text-2xl font-bold text-ink sm:text-3xl">
                 Rien ne part sans ton feu vert
               </h2>
               <ul className="mt-6 space-y-4">
@@ -312,22 +341,20 @@ export default async function HomePage() {
                 ))}
               </ul>
             </div>
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
-              <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
-                Confirmation requise
-              </p>
-              <p className="mt-2 font-medium text-amber-950">
+            <div className="hud-corners rounded-2xl border border-warning/30 bg-warning/5 p-6">
+              <p className="hud-label !text-warning">Confirmation requise</p>
+              <p className="mt-2 font-medium text-ink">
                 Prompta veut : envoyer le formulaire fournisseur
               </p>
-              <div className="mt-3 rounded-xl border border-amber-200 bg-white p-4 text-sm text-ink-soft">
+              <div className="mt-3 rounded-xl border border-line bg-card p-4 text-sm text-ink-soft">
                 Devis retenu : Alpha SARL (2 340 € — le mieux-disant sur les 3 onglets
                 comparés). Le formulaire est rempli, prêt à partir.
               </div>
               <div className="mt-4 flex gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-success px-4 py-2 text-sm font-semibold text-accent-ink">
                   <Check className="h-4 w-4" /> Autoriser
                 </span>
-                <span className="inline-flex items-center rounded-lg border border-line bg-white px-4 py-2 text-sm text-ink-soft">
+                <span className="inline-flex items-center rounded-lg border border-line bg-card px-4 py-2 text-sm text-ink-soft">
                   Refuser
                 </span>
               </div>
@@ -337,8 +364,9 @@ export default async function HomePage() {
       </section>
 
       {/* ── CTA FINAL ───────────────────────────────────────────────────── */}
-      <section className="border-t border-line bg-card2/50">
-        <div className="mx-auto max-w-page px-4 py-20 text-center sm:px-6 lg:px-8">
+      <section className="bg-hud-grid relative border-t border-line">
+        <div aria-hidden className="bg-hud-halo pointer-events-none absolute inset-x-0 top-0 h-full" />
+        <div className="relative mx-auto max-w-page px-4 py-20 text-center sm:px-6 lg:px-8">
           <h2 className="font-display text-3xl font-bold text-ink">
             Ton assistant, sur toutes tes pages, dans 2 minutes
           </h2>
@@ -349,18 +377,18 @@ export default async function HomePage() {
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/prompta-partout"
-              className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-8 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover"
+              className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-8 text-base font-semibold text-accent-ink shadow-glow transition-all hover:bg-accent-hover hover:shadow-glow-lg"
             >
               <Globe className="h-5 w-5" /> Installer Prompta partout
             </Link>
             <Link
               href="/quick"
-              className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-8 text-base font-medium text-ink hover:border-accent"
+              className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card/70 px-8 text-base font-medium text-ink transition-all hover:border-accent/50 hover:shadow-glow-sm"
             >
               Essayer sans extension <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
-          <p className="mt-6 text-sm text-ink-faint">
+          <p className="mt-6 font-mono text-xs tracking-wide text-ink-faint">
             Plans dès {PLANS.free.priceCents === 0 ? "0 €" : `${PLANS.free.priceCents / 100} €`}
             {" · "}BYOK = exécutions illimitées
           </p>

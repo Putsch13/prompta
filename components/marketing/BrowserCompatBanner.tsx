@@ -30,18 +30,18 @@ export function BrowserCompatBanner() {
   return (
     <div
       role="alert"
-      className="mb-8 flex gap-3 rounded-2xl border border-amber-300/80 bg-amber-50 px-4 py-3.5 text-sm text-amber-950 sm:px-5"
+      className="mb-8 flex gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3.5 text-sm text-ink sm:px-5"
     >
-      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
       <div>
-        <p className="font-semibold">
+        <p className="font-semibold text-warning">
           Tu es sur {name} — l&apos;extension ne s&apos;installe pas ici.
         </p>
-        <p className="mt-1 leading-relaxed text-amber-900/85">
-          Prompta partout tourne sur <strong>Chrome, Edge, Brave, Arc ou Opera</strong>.
+        <p className="mt-1 leading-relaxed text-ink-soft">
+          Prompta partout tourne sur <strong className="text-ink">Chrome, Edge, Brave, Arc ou Opera</strong>.
           Ouvre ce guide dans l&apos;un de ces navigateurs pour installer le panneau
           latéral. En attendant, tu peux{" "}
-          <a href="/quick" className="font-semibold underline underline-offset-2">
+          <a href="/quick" className="font-semibold text-accent underline underline-offset-2 hover:text-accent-hover">
             essayer /quick
           </a>{" "}
           (même cerveau, sans panneau sur les autres sites).

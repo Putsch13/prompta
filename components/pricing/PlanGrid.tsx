@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Sparkles } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 
 export interface PlanCardData {
   id: string;
@@ -45,19 +45,20 @@ export function PlanGrid({ plans }: { plans: PlanCardData[] }) {
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-      {plans.map((plan) => (
+    <div className="grid items-stretch gap-6 md:grid-cols-2 xl:grid-cols-4">
+      {plans.map((plan, i) => (
         <div
           key={plan.id}
-          className={`relative flex flex-col rounded-2xl border bg-card p-6 ${
+          style={{ animationDelay: `${i * 90}ms` }}
+          className={`hud-card relative flex animate-fade-up flex-col p-6 ${
             plan.highlight
-              ? "border-accent shadow-lg shadow-accent/10 ring-1 ring-accent/30"
-              : "border-line"
+              ? "hud-corners border-accent/60 shadow-glow xl:scale-[1.03]"
+              : ""
           }`}
         >
           {plan.highlight && (
-            <span className="absolute -top-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-accent px-3 py-1 text-[11px] font-bold text-white">
-              <Sparkles className="h-3 w-3" /> Le plus choisi
+            <span className="hud-label absolute -top-[9px] left-1/2 -translate-x-1/2 whitespace-nowrap border border-accent/40 bg-bg px-3 py-0.5">
+              Le plus choisi
             </span>
           )}
           <h3 className="font-display text-lg font-bold text-ink">{plan.label}</h3>
@@ -66,9 +67,17 @@ export function PlanGrid({ plans }: { plans: PlanCardData[] }) {
             <span className="font-display text-4xl font-bold text-ink">
               {plan.priceCents === 0 ? "0 €" : `${(plan.priceCents / 100).toLocaleString("fr-FR")} €`}
             </span>
-            <span className="text-sm text-ink-faint"> / mois</span>
+            <span className="text-sm text-ink-faint"> /mois</span>
           </p>
-          <ul className="mt-6 flex-1 space-y-2.5">
+          <div
+            aria-hidden
+            className={`mt-5 h-px w-full ${
+              plan.highlight
+                ? "bg-gradient-to-r from-transparent via-accent/50 to-transparent"
+                : "bg-line"
+            }`}
+          />
+          <ul className="mt-5 flex-1 space-y-2.5">
             {plan.features.map((f) => (
               <li key={f} className="flex items-start gap-2 text-sm text-ink-soft">
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
@@ -80,10 +89,10 @@ export function PlanGrid({ plans }: { plans: PlanCardData[] }) {
             type="button"
             onClick={() => void subscribe(plan.id)}
             disabled={loading !== null}
-            className={`mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 ${
+            className={`mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-60 ${
               plan.highlight || plan.id === "free"
-                ? "bg-accent text-white hover:bg-accent/90"
-                : "border border-line bg-card text-ink hover:border-accent"
+                ? "bg-accent text-accent-ink shadow-glow-sm hover:bg-accent-hover hover:shadow-glow"
+                : "border border-line bg-card2 text-ink hover:border-accent/50 hover:shadow-glow-sm"
             }`}
           >
             {loading === plan.id && <Loader2 className="h-4 w-4 animate-spin" />}

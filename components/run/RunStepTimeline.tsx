@@ -32,11 +32,11 @@ interface Props {
 function statusIcon(status: RunStepLog["status"]) {
   switch (status) {
     case "success":
-      return <Check className="h-3.5 w-3.5 text-green-600" />;
+      return <Check className="h-3.5 w-3.5 text-success" />;
     case "failed":
-      return <X className="h-3.5 w-3.5 text-red-600" />;
+      return <X className="h-3.5 w-3.5 text-destructive" />;
     case "running":
-      return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />;
+      return <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />;
     case "skipped":
       return <SkipForward className="h-3.5 w-3.5 text-ink-faint" />;
     default:
@@ -48,11 +48,11 @@ function statusIcon(status: RunStepLog["status"]) {
 function statusDotClass(status: RunStepLog["status"]): string {
   switch (status) {
     case "success":
-      return "border-green-500 bg-green-50";
+      return "border-success/60 bg-success/10";
     case "failed":
-      return "border-red-500 bg-red-50";
+      return "border-destructive/60 bg-destructive/10";
     case "running":
-      return "border-blue-500 bg-blue-50";
+      return "border-accent/60 bg-accent/10 shadow-glow-sm";
     case "skipped":
       return "border-line bg-card2";
     default:
@@ -120,7 +120,7 @@ export function RunStepTimeline({ runId, pollWhileRunning = false, isRunning = f
     <div className="mt-3 border-t border-line pt-3">
       <div className="mb-3 flex items-center justify-between">
         <p className="text-xs font-semibold text-ink-soft">Logs d&apos;exécution</p>
-        <span className="text-[10px] text-ink-faint">
+        <span className="font-mono text-[10px] text-ink-faint">
           {doneCount}/{steps.length} étape(s) terminée(s)
         </span>
       </div>
@@ -144,7 +144,7 @@ export function RunStepTimeline({ runId, pollWhileRunning = false, isRunning = f
               </span>
               <div
                 className={`min-w-0 flex-1 rounded-xl border bg-card p-2.5 transition-colors ${
-                  step.status === "failed" ? "border-red-200" : "border-line"
+                  step.status === "failed" ? "border-destructive/40" : "border-line"
                 }`}
               >
                 <button
@@ -157,29 +157,29 @@ export function RunStepTimeline({ runId, pollWhileRunning = false, isRunning = f
                       <span className="text-xs font-semibold text-ink">
                         {step.label ?? `Étape ${step.stepIndex + 1}`}
                       </span>
-                      <span className="rounded bg-line/80 px-1.5 py-0.5 text-[10px] font-medium text-ink-faint">
+                      <span className="rounded bg-line/80 px-1.5 py-0.5 font-mono text-[10px] font-medium text-ink-faint">
                         {step.stepType}
                       </span>
                       {step.model && (
-                        <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                        <span className="rounded bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-accent">
                           {step.model}
                         </span>
                       )}
                       {step.actionSlug && (
-                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
+                        <span className="rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-accent">
                           {step.actionSlug}
                         </span>
                       )}
                       {step.durationMs != null && (
-                        <span className="ml-auto text-[10px] text-ink-faint">
+                        <span className="ml-auto font-mono text-[10px] text-ink-faint">
                           {formatDuration(step.durationMs)}
                         </span>
                       )}
                     </div>
                     {step.errorMessage && (
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2 py-1">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-2 py-1">
                         {step.errorCode && (
-                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-700">
+                          <span className="rounded bg-destructive/20 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-destructive">
                             {step.errorCode}
                           </span>
                         )}

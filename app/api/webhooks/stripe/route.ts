@@ -1,8 +1,7 @@
-import { getStripe, computeFees } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { ORG_PLANS, type OrgPlanKey } from "@/lib/stripe-plans";
 
 export const dynamic = "force-dynamic";
 
@@ -68,139 +67,6 @@ export async function POST(request: Request) {
         break;
       }
 
-      if (sessionType === "org_subscription") {
-        const orgId = session.metadata?.org_id;
-        const plan = session.metadata?.plan;
-        const subId = session.subscription as string | null;
-        if (orgId && subId) {
-          const planConfig = plan ? ORG_PLANS[plan as OrgPlanKey] : null;
-          await admin
-            .from("organizations")
-            .update({
-              stripe_subscription_id: subId,
-              subscription_status: "active",
-              plan: plan ?? "starter",
-              seat_limit: planConfig?.seats ?? 10,
-            })
-            .eq("id", orgId);
-        }
-        break;
-      }
-
-      const listingId = session.metadata?.listing_id;
-      const buyerId = session.metadata?.buyer_id;
-
-      if (!listingId || !buyerId) break;
-
-      const { data: listing } = await admin
-        .from("listings")
-        .select("price_cents, current_version_id, title, slug, type")
-        .eq("id", listingId)
-        .single();
-
-      if (!listing) break;
-
-      // Idempotence : Stripe rejoue les webhooks — une session déjà traitée ne
-      // doit pas recréer achat/download ni renvoyer les emails.
-      const { data: existingPurchase } = await admin
-        .from("purchases")
-        .select("id")
-        .eq("stripe_checkout_session", session.id)
-        .maybeSingle();
-      if (existingPurchase) break;
-
-      const priceCents = listing.price_cents ?? 0;
-      const { platformFeeCents } = computeFees(priceCents);
-
-      const taxCents = session.total_details?.amount_tax ?? 0;
-
-      const { data: purchase } = await admin
-        .from("purchases")
-        .insert({
-          buyer_id: buyerId,
-          listing_id: listingId,
-          version_id: listing.current_version_id,
-          amount_cents: priceCents,
-          platform_fee_cents: platformFeeCents,
-          tax_cents: taxCents,
-          stripe_payment_intent: session.payment_intent as string,
-          stripe_checkout_session: session.id,
-          status: "completed",
-        })
-        .select("id")
-        .single();
-
-      if (listing.type === "prompt") {
-        await admin.from("downloads").insert({
-          user_id: buyerId,
-          listing_id: listingId,
-          version_id: listing.current_version_id,
-        });
-      }
-
-      const { data: userData } = await admin.auth.admin.getUserById(buyerId);
-      const buyerEmail = userData?.user?.email;
-      const buyerName = userData?.user?.user_metadata?.display_name || buyerEmail?.split("@")[0] || "Un utilisateur";
-
-      if (buyerEmail && purchase) {
-        const { sendPurchaseReceipt, sendSaleNotification } = await import("@/lib/email");
-        await sendPurchaseReceipt({
-          to: buyerEmail,
-          listingTitle: listing.title,
-          listingSlug: listing.slug,
-          listingType: listing.type,
-          amountCents: priceCents,
-          taxCents,
-          purchaseId: purchase.id,
-          versionId: listing.current_version_id || "",
-        });
-
-        const { data: listingFull } = await admin
-          .from("listings")
-          .select("creator_id")
-          .eq("id", listingId)
-          .single();
-
-        if (listingFull?.creator_id) {
-          const { data: creatorData } = await admin.auth.admin.getUserById(listingFull.creator_id);
-          const creatorEmail = creatorData?.user?.email;
-
-          if (creatorEmail) {
-            await sendSaleNotification({
-              to: creatorEmail,
-              listingTitle: listing.title,
-              amountCents: priceCents,
-              platformFeeCents,
-              buyerName,
-            });
-          }
-        }
-      }
-
-      break;
-    }
-
-    case "account.updated": {
-      const account = event.data.object;
-      await admin
-        .from("stripe_accounts")
-        .update({
-          charges_enabled: account.charges_enabled ?? false,
-          payouts_enabled: account.payouts_enabled ?? false,
-        })
-        .eq("stripe_account_id", account.id);
-      break;
-    }
-
-    case "charge.refunded": {
-      const charge = event.data.object;
-      const pi = charge.payment_intent as string;
-      if (pi) {
-        await admin
-          .from("purchases")
-          .update({ status: "refunded" })
-          .eq("stripe_payment_intent", pi);
-      }
       break;
     }
 
@@ -247,44 +113,6 @@ export async function POST(request: Request) {
         break;
       }
 
-      if (subscription.metadata?.type === "org_subscription") {
-        const orgId = subscription.metadata.org_id;
-        if (orgId) {
-          await admin
-            .from("organizations")
-            .update({
-              subscription_status: subscription.status === "active" ? "active" : subscription.status,
-              stripe_subscription_id: subscription.id,
-            })
-            .eq("id", orgId);
-        }
-        break;
-      }
-
-      const listingId = subscription.metadata?.listing_id;
-      const buyerId = subscription.metadata?.buyer_id;
-
-      if (listingId && buyerId) {
-        const { data: listing } = await admin
-          .from("listings")
-          .select("current_version_id")
-          .eq("id", listingId)
-          .maybeSingle();
-
-        await admin.from("subscriptions").upsert(
-          {
-            user_id: buyerId,
-            listing_id: listingId,
-            stripe_subscription_id: subscription.id,
-            stripe_customer_id: subscription.customer,
-            status: localStatus,
-            cancel_at_period_end: cancelAtPeriodEnd,
-            pinned_version_id: listing?.current_version_id ?? null,
-            current_period_end: periodEnd,
-          },
-          { onConflict: "user_id,listing_id" }
-        );
-      }
       break;
     }
 

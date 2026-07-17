@@ -37,7 +37,7 @@ export function AuthNav() {
   }, []);
 
   if (loading) {
-    return <div className="h-9 w-20 animate-pulse rounded-lg bg-border" />;
+    return <div className="h-9 w-20 animate-pulse rounded-lg bg-card2" />;
   }
 
   if (!user) {
@@ -53,7 +53,7 @@ export function AuthNav() {
         <Link
           href="/signup"
           prefetch
-          className="hidden rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors sm:inline-flex"
+          className="hidden rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover transition-colors sm:inline-flex"
         >
           S&apos;inscrire
         </Link>
@@ -66,7 +66,7 @@ export function AuthNav() {
       <Link
         href="/dashboard"
         prefetch
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-light text-accent hover:bg-accent hover:text-white transition-colors"
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-light text-accent hover:bg-accent hover:text-accent-ink transition-colors"
       >
         <User className="h-4 w-4" />
       </Link>
@@ -80,7 +80,7 @@ export function AuthNav() {
         className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-accent-light transition-colors"
         title="Déconnexion"
       >
-        <LogOut className="h-4 w-4 text-muted" />
+        <LogOut className="h-4 w-4 text-ink-soft" />
       </button>
     </div>
   );

@@ -163,27 +163,27 @@ function NodeCard({
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">
         {disconnected && (
-          <span className="rounded bg-amber-50 px-1 py-0.5 text-[9px] font-medium text-amber-700">
+          <span className="rounded bg-warning/10 px-1 py-0.5 text-[9px] font-medium text-warning">
             ⚠️ non connecté
           </span>
         )}
         {node.sharedEnv && (
-          <span className="rounded bg-violet-50 px-1 py-0.5 text-[9px] font-medium text-violet-700">
+          <span className="rounded bg-violet-400/10 px-1 py-0.5 text-[9px] font-medium text-violet-300">
             🌐 partagé
           </span>
         )}
         {node.kind === "action" && !node.sharedEnv && node.connectorId && (
-          <span className="rounded bg-blue-50 px-1 py-0.5 text-[9px] font-medium text-blue-700">
+          <span className="rounded bg-accent/10 px-1 py-0.5 text-[9px] font-medium text-accent">
             👤 client
           </span>
         )}
         {node.requiresApproval && (
-          <span className="rounded bg-amber-50 px-1 py-0.5 text-[9px] font-medium text-amber-700">
+          <span className="rounded bg-warning/10 px-1 py-0.5 text-[9px] font-medium text-warning">
             approbation
           </span>
         )}
         {node.riskLevel === "high" && (
-          <span className="rounded bg-red-50 px-1 py-0.5 text-[9px] font-medium text-red-600">
+          <span className="rounded bg-destructive/10 px-1 py-0.5 text-[9px] font-medium text-destructive">
             risque élevé
           </span>
         )}

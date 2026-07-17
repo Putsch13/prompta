@@ -111,7 +111,7 @@ export function ResourcePicker({
               }
             }}
             className={`rounded px-2 py-0.5 text-[10px] ${
-              scope === opt.id ? "bg-accent text-white" : "bg-card text-ink-soft"
+              scope === opt.id ? "bg-accent text-accent-ink" : "bg-card text-ink-soft"
             }`}
           >
             {opt.label}
@@ -125,7 +125,7 @@ export function ResourcePicker({
           {needsConnection || needsReconnect ? (
             <div className="space-y-1">
               {reconnectMessage && (
-                <p className="text-xs text-amber-800">{reconnectMessage}</p>
+                <p className="text-xs text-warning">{reconnectMessage}</p>
               )}
               <a
                 href={`/api/connectors/${connectorId}/connect?force=true&returnUrl=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname + window.location.search : "/dashboard/new")}`}

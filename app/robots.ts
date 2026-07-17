@@ -9,7 +9,7 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: "/",
         // Surfaces coupées ou privées : pas d'indexation.
-        disallow: ["/dashboard/", "/api/", "/auth/", "/listing/", "/u/", "/c/", "/org/", "/cas-usage/", "/quick", "/wallet"],
+        disallow: ["/dashboard/", "/api/", "/auth/", "/u/", "/c/", "/org/", "/quick"],
       },
     ],
     sitemap: `${baseUrl}/sitemap.xml`,

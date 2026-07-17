@@ -155,14 +155,14 @@ export function AgentSchedulePanel({
             type="button"
             onClick={() => void save()}
             disabled={saving}
-            className="ml-auto inline-flex h-8 items-center gap-1 rounded-lg bg-accent px-3 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            className="ml-auto inline-flex h-8 items-center gap-1 rounded-lg bg-accent px-3 text-xs font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50"
           >
             {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
             Enregistrer
           </button>
         </div>
         {schedule?.nextRunAt && kind !== "off" && (
-          <p className="mt-1.5 text-[11px] text-emerald-700">
+          <p className="mt-1.5 text-[11px] text-success">
             ⏰ {schedule.label} — prochain lancement :{" "}
             {new Date(schedule.nextRunAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}
           </p>
@@ -195,7 +195,7 @@ export function AgentSchedulePanel({
               className="shrink-0 rounded-lg border border-line p-1.5 text-ink-soft hover:bg-card"
               title="Copier l'URL"
             >
-              {copied === "url" ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied === "url" ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
             </button>
           </div>
           {webhook.secret && (
@@ -209,7 +209,7 @@ export function AgentSchedulePanel({
                 className="shrink-0 rounded-lg border border-line p-1.5 text-ink-soft hover:bg-card"
                 title="Copier le secret"
               >
-                {copied === "secret" ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied === "secret" ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
               </button>
             </div>
           )}

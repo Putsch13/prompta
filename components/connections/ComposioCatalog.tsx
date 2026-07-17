@@ -169,12 +169,12 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
               setVisibleCount(120);
             }}
             className={`rounded-full px-3 py-1 text-xs ${
-              category === chip.label ? "bg-accent text-white" : "border border-line text-ink-soft hover:bg-card2"
+              category === chip.label ? "bg-accent text-accent-ink" : "border border-line text-ink-soft hover:bg-card2"
             }`}
           >
             {chip.label}
             {chip.count !== undefined && (
-              <span className={`ml-1 ${category === chip.label ? "text-white/70" : "text-ink-faint"}`}>
+              <span className={`ml-1 ${category === chip.label ? "text-accent-ink/70" : "text-ink-faint"}`}>
                 {chip.count}
               </span>
             )}
@@ -200,7 +200,7 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
                   </div>
                 </div>
                 {connected ? (
-                  <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] text-green-700">
+                  <span className="flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] text-success">
                     <Check className="h-3 w-3" /> OK
                   </span>
                 ) : (
@@ -238,7 +238,7 @@ export function ComposioCatalog({ toolkits, connections, onRefresh }: Props) {
                 ) : (
                   <a
                     href={`/api/connectors/${tk.id}/connect`}
-                    className="flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white"
+                    className="flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink hover:bg-accent-hover"
                   >
                     Connecter <ExternalLink className="h-3 w-3" />
                   </a>

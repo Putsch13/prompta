@@ -240,7 +240,7 @@ export function RunDebugAssistant({ runId, status }: Props) {
                     type="button"
                     onClick={() => void runAutoFix()}
                     disabled={autoFixing}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover disabled:opacity-50"
                   >
                     {autoFixing ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -258,25 +258,25 @@ export function RunDebugAssistant({ runId, status }: Props) {
                         <button
                           type="button"
                           onClick={() => router.push(`/dashboard/runs/${newRunId}`)}
-                          className="flex w-full items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-left hover:bg-emerald-100"
+                          className="flex w-full items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-3 py-2.5 text-left hover:bg-success/20"
                         >
                           <span className="relative flex h-2.5 w-2.5 shrink-0">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
-                            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+                            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-success" />
                           </span>
-                          <span className="text-xs font-semibold text-emerald-800">
+                          <span className="text-xs font-semibold text-success">
                             Plan corrigé — un nouveau run est en cours. Suivre en direct →
                           </span>
                         </button>
                       )}
 
                       {autoFix.applied && (
-                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2">
-                          <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-800">
+                        <div className="rounded-lg border border-success/30 bg-success/10 p-2">
+                          <p className="flex items-center gap-1.5 text-xs font-medium text-success">
                             <Check className="h-3.5 w-3.5" /> Plan corrigé et enregistré.
                           </p>
                           {autoFix.changes.length > 0 && (
-                            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-emerald-900">
+                            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-success">
                               {autoFix.changes.map((c, i) => (
                                 <li key={i}>{c}</li>
                               ))}
@@ -286,15 +286,15 @@ export function RunDebugAssistant({ runId, status }: Props) {
                       )}
 
                       {!autoFix.applied && autoFix.blockedReason && (
-                        <p className="text-xs text-amber-700">{autoFix.blockedReason}</p>
+                        <p className="text-xs text-warning">{autoFix.blockedReason}</p>
                       )}
 
                       {autoFix.requiresUser.length > 0 && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2">
-                          <p className="text-xs font-medium text-amber-800">
+                        <div className="rounded-lg border border-warning/30 bg-warning/10 p-2">
+                          <p className="text-xs font-medium text-warning">
                             À faire de votre côté (l&apos;IA ne peut pas le faire seule) :
                           </p>
-                          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-amber-900">
+                          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-warning">
                             {autoFix.requiresUser.map((r, i) => (
                               <li key={i}>
                                 {r.connector ? `${r.connector} — ` : ""}
@@ -306,14 +306,14 @@ export function RunDebugAssistant({ runId, status }: Props) {
                       )}
 
                       {(autoFix.questions?.length ?? 0) > 0 && !newRunId && (
-                        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
-                          <p className="text-xs font-semibold text-sky-900">
+                        <div className="rounded-lg border border-accent/30 bg-accent/10 p-3">
+                          <p className="text-xs font-semibold text-accent">
                             L&apos;IA a besoin de précisions pour terminer la réparation :
                           </p>
                           <div className="mt-2 space-y-2">
                             {autoFix.questions!.map((q) => (
                               <label key={q.key} className="block">
-                                <span className="mb-1 block text-xs text-sky-900">{q.question}</span>
+                                <span className="mb-1 block text-xs text-ink-soft">{q.question}</span>
                                 <input
                                   type="text"
                                   value={answers[q.key] ?? ""}
@@ -321,7 +321,7 @@ export function RunDebugAssistant({ runId, status }: Props) {
                                   onChange={(e) =>
                                     setAnswers((prev) => ({ ...prev, [q.key]: e.target.value }))
                                   }
-                                  className="w-full rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-400"
+                                  className="w-full rounded-lg border border-line bg-card2 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-accent"
                                 />
                               </label>
                             ))}
@@ -330,7 +330,7 @@ export function RunDebugAssistant({ runId, status }: Props) {
                             type="button"
                             onClick={() => void runAutoFix(answers)}
                             disabled={autoFixing || autoFix.questions!.every((q) => !(answers[q.key] ?? "").trim())}
-                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover disabled:opacity-50"
                           >
                             {autoFixing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                             Envoyer les réponses & réparer
@@ -348,15 +348,15 @@ export function RunDebugAssistant({ runId, status }: Props) {
                 key={fix.id}
                 className={`rounded-xl border p-3 ${
                   fix.severity === "blocker"
-                    ? "border-red-200 bg-red-50"
-                    : "border-amber-200 bg-amber-50"
+                    ? "border-destructive/30 bg-destructive/10"
+                    : "border-warning/30 bg-warning/10"
                 }`}
               >
                 <div className="flex items-start gap-2">
                   {fix.severity === "blocker" ? (
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                   ) : (
-                    <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-ink">
@@ -369,7 +369,7 @@ export function RunDebugAssistant({ runId, status }: Props) {
                         {fix.connectUrl && (
                           <a
                             href={fix.connectUrl}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover"
                           >
                             <Plug className="h-3.5 w-3.5" />
                             {fix.kind === "reconnect" ? "Reconnecter" : "Se connecter"} — {fix.connector}
@@ -390,7 +390,7 @@ export function RunDebugAssistant({ runId, status }: Props) {
                         {diag[fix.connector] && diag[fix.connector].status !== "checking" && (
                           <span
                             className={`inline-flex items-center gap-1 text-xs ${
-                              diag[fix.connector].status === "ok" ? "text-emerald-700" : "text-red-700"
+                              diag[fix.connector].status === "ok" ? "text-success" : "text-destructive"
                             }`}
                           >
                             {diag[fix.connector].status === "ok" ? (
@@ -410,7 +410,7 @@ export function RunDebugAssistant({ runId, status }: Props) {
                       fix.kind === "limit") &&
                       data.relaunch.listingId && (
                         <a
-                          href={`/dashboard/listing/${data.relaunch.listingId}/edit`}
+                          href={`/dashboard/runs`}
                           className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-line bg-card px-3 py-1.5 text-xs font-medium hover:bg-card2"
                         >
                           <ExternalLink className="h-3.5 w-3.5" /> Corriger dans l&apos;éditeur
@@ -480,7 +480,7 @@ export function RunDebugAssistant({ runId, status }: Props) {
                   type="button"
                   onClick={() => relaunch("agent")}
                   disabled={relaunching !== null}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover disabled:opacity-50"
                 >
                   {relaunching === "agent" ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

@@ -98,7 +98,7 @@ export function CatalogSingleSelect({
                       setSearch("");
                     }}
                     className={`block w-full rounded-lg px-2 py-1.5 text-left text-sm ${
-                      item.id === value ? "bg-accent text-white" : "hover:bg-accent-light"
+                      item.id === value ? "bg-accent text-accent-ink" : "hover:bg-accent-light"
                     }`}
                   >
                     {item.label}

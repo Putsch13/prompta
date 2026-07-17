@@ -79,35 +79,35 @@ export function ApprovalNotifier() {
 
   return (
     <div className="fixed bottom-4 right-4 z-[120] w-[min(92vw,360px)] space-y-2">
-      <div className="overflow-hidden rounded-2xl border border-amber-400/50 bg-slate-900 shadow-2xl">
-        <div className="flex items-center gap-2 border-b border-white/10 bg-amber-500/10 px-4 py-2.5">
-          <ShieldAlert className="h-4 w-4 text-amber-300" />
-          <p className="flex-1 text-sm font-semibold text-white">
+      <div className="overflow-hidden rounded-2xl border border-warning/30 bg-card shadow-2xl">
+        <div className="flex items-center gap-2 border-b border-line bg-warning/10 px-4 py-2.5">
+          <ShieldAlert className="h-4 w-4 text-warning" />
+          <p className="flex-1 text-sm font-semibold text-ink">
             {visible.length} validation{visible.length > 1 ? "s" : ""} en attente
           </p>
-          <Bell className="h-3.5 w-3.5 text-amber-300/70" />
+          <Bell className="h-3.5 w-3.5 text-warning/70" />
         </div>
-        <ul className="max-h-56 divide-y divide-white/5 overflow-auto">
+        <ul className="max-h-56 divide-y divide-line-soft overflow-auto">
           {visible.slice(0, 4).map((i) => (
             <li key={i.id} className="flex items-center gap-2 px-4 py-2.5">
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-white/85">{i.agentTitle}</span>
+                <span className="block truncate text-sm text-ink">{i.agentTitle}</span>
                 {(i.stepLabel || i.preview) && (
-                  <span className="block truncate text-[11px] text-white/50">
+                  <span className="block truncate text-[11px] text-ink-faint">
                     {i.stepLabel ?? i.preview?.slice(0, 80)}
                   </span>
                 )}
               </span>
               <Link
                 href={`/dashboard/validations?focus=${i.id}`}
-                className="shrink-0 rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-medium text-amber-950 hover:bg-amber-400"
+                className="shrink-0 rounded-lg bg-warning px-2.5 py-1 text-xs font-semibold text-accent-ink hover:bg-warning/90"
               >
                 Ouvrir
               </Link>
               <button
                 type="button"
                 onClick={() => setDismissed((d) => new Set(d).add(i.id))}
-                className="shrink-0 rounded p-1 text-white/40 hover:bg-white/10 hover:text-white"
+                className="shrink-0 rounded p-1 text-ink-faint hover:bg-card2 hover:text-ink"
                 aria-label="Masquer"
               >
                 <X className="h-3.5 w-3.5" />
@@ -115,10 +115,10 @@ export function ApprovalNotifier() {
             </li>
           ))}
         </ul>
-        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-4 py-2">
+        <div className="flex items-center justify-between gap-2 border-t border-line px-4 py-2">
           <Link
             href="/dashboard/validations"
-            className="text-xs font-medium text-amber-300 hover:underline"
+            className="text-xs font-medium text-warning hover:underline"
           >
             Voir toutes les validations →
           </Link>
@@ -128,7 +128,7 @@ export function ApprovalNotifier() {
               <button
                 type="button"
                 onClick={() => Notification.requestPermission().catch(() => undefined)}
-                className="shrink-0 text-[11px] text-white/50 hover:text-white hover:underline"
+                className="shrink-0 text-[11px] text-ink-faint hover:text-ink hover:underline"
               >
                 Activer les notifs navigateur
               </button>

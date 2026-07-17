@@ -112,7 +112,7 @@ export function KnowledgeBase() {
                     className="flex shrink-0 items-center gap-1 text-[11px] text-accent hover:underline"
                   >
                     {copiedId === d.id ? (
-                      <Check className="h-3 w-3 text-green-600" />
+                      <Check className="h-3 w-3 text-success" />
                     ) : (
                       <ClipboardCopy className="h-3 w-3" />
                     )}

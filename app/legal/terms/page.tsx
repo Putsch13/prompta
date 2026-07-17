@@ -124,8 +124,8 @@ export default function TermsPage() {
           </a>
         </p>
 
-        <div className="mt-12 rounded-xl border border-amber-200 bg-amber-50 p-6">
-          <p className="text-sm text-amber-800">
+        <div className="mt-12 rounded-xl border border-warning/30 bg-warning/10 p-6">
+          <p className="text-sm text-warning">
             <strong>Note importante :</strong> Ce document est un gabarit et doit être
             validé par un professionnel du droit avant mise en production. Il ne
             constitue pas un avis juridique.

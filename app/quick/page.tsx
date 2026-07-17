@@ -62,15 +62,32 @@ interface Live {
   approvalId?: string | null;
   /** Tac au tac streamé (pas de run agent). */
   instant?: boolean;
+  /** Petit message vert en tête de carte (ex : « ✓ Gmail connecté — je reprends »). */
+  notice?: string | null;
 }
 
+/** Mission mémorisée en attente d'une connexion d'app (reprise automatique). */
+interface PendingConnect {
+  goal: string;
+  page: PageCtx;
+  missing: string[];
+  startedAt: number;
+  expired: boolean;
+}
+
+const CONNECT_POLL_MS = 5000;
+const CONNECT_MAX_MS = 10 * 60 * 1000;
+const SSE_WATCHDOG_MS = 90_000;
+const connKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+const slugLabel = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 const STATUS_DOT: Record<string, string> = {
-  completed: "bg-emerald-500",
-  failed: "bg-rose-400",
-  awaiting_approval: "bg-[#7c6cff]",
-  running: "bg-amber-400",
-  pending: "bg-amber-400",
-  streaming: "bg-amber-400",
+  completed: "bg-success",
+  failed: "bg-destructive",
+  awaiting_approval: "bg-accent",
+  running: "bg-warning",
+  pending: "bg-warning",
+  streaming: "bg-warning",
 };
 
 export default function QuickPage() {
@@ -88,11 +105,17 @@ export default function QuickPage() {
   const [error, setError] = useState<{ message: string; missing?: string[] } | null>(null);
   const [clarify, setClarify] = useState<{ goal: string; questions: string[] } | null>(null);
   const [showContext, setShowContext] = useState(false);
+  const [pendingConnect, setPendingConnect] = useState<PendingConnect | null>(null);
+  const [approval, setApproval] = useState<{ id: string; label?: string } | null>(null);
+  const [approvalText, setApprovalText] = useState("");
+  const [approvalErr, setApprovalErr] = useState<string | null>(null);
+  const [deciding, setDeciding] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const busyRef = useRef(false);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const approvalSeenRef = useRef<string | null>(null); // approval déjà chargé ou décidé
 
   // Contexte compact via hash (survit au blocage de popup).
   useEffect(() => {
@@ -151,9 +174,28 @@ export default function QuickPage() {
 
   const usableCount = conns.filter((c) => c.usable).length;
 
+  /** Charge la demande de validation du run (carte in-feed éditable). */
+  const fetchApproval = useCallback(async (runId: string, approvalId: string | null) => {
+    const key = approvalId ?? runId;
+    if (approvalSeenRef.current === key) return;
+    approvalSeenRef.current = key;
+    try {
+      const d = await fetch("/api/approvals").then((x) => (x.ok ? x.json() : null));
+      const item = (d?.items ?? []).find(
+        (a: { id: string; runId: string }) => (approvalId ? a.id === approvalId : a.runId === runId),
+      );
+      if (!item) { approvalSeenRef.current = null; return; }
+      const p = (item.payload ?? {}) as { label?: string; preview?: string; full?: string };
+      setApproval({ id: item.id, label: p.label });
+      setApprovalText(p.full || p.preview || "");
+      setApprovalErr(null);
+    } catch { approvalSeenRef.current = null; }
+  }, []);
+
   /** Pipeline MISSION : plan agent → run live → validations humaines. */
-  const launchMission = useCallback(async (g: string, page: PageCtx) => {
-    setLive({ runId: "…", goal: g, model, title: g, planned: [], stepsDone: 0, status: "pending" });
+  const launchMission = useCallback(async (g: string, page: PageCtx, notice?: string) => {
+    setApproval(null); setApprovalErr(null); approvalSeenRef.current = null;
+    setLive({ runId: "…", goal: g, model, title: g, planned: [], stepsDone: 0, status: "pending", notice: notice ?? null });
 
     let res: Response;
     try {
@@ -179,7 +221,11 @@ export default function QuickPage() {
     }
     if (!res.ok) {
       busyRef.current = false; setBusy(false); setLive(null);
-      if (res.status === 409 && body.missingConnectors?.length) setError({ message: `À connecter d'abord : ${body.missingConnectors.join(", ")}.`, missing: body.missingConnectors });
+      if (res.status === 409 && body.missingConnectors?.length) {
+        // Mission MÉMORISÉE : carte « Connexion requise » avec un bouton OAuth
+        // par app + reprise AUTOMATIQUE dès que tout est connecté (poll 5 s).
+        setPendingConnect({ goal: g, page, missing: body.missingConnectors as string[], startedAt: Date.now(), expired: false });
+      }
       else if (res.status === 401) setError({ message: "Connecte-toi à Prompta, puis réessaie." });
       else setError({ message: body.message ?? `Erreur (${res.status}).` });
       return;
@@ -192,20 +238,67 @@ export default function QuickPage() {
       const r = await fetch(`/api/run/agent/${runId}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
       if (!r) return;
       setLive((l) => l && { ...l, planned: r.planned_steps ?? [], stepsDone: r.steps_completed ?? 0, status: r.status, error: r.error_message, answer: extractAnswer(r.output), approvalId: r.approval_id ?? null });
-      // awaiting_approval : on débloque le composer (la validation se fait dans
-      // le dashboard) mais on CONTINUE de suivre le run — quand l'utilisateur
-      // valide, la reprise s'affiche ici sans recharger la page.
-      if (r.status === "awaiting_approval" && busyRef.current) {
-        busyRef.current = false; setBusy(false);
+      // awaiting_approval : on débloque le composer et on affiche la carte de
+      // validation ICI (contenu éditable) — le poll CONTINUE jusqu'au terme.
+      if (r.status === "awaiting_approval") {
+        if (busyRef.current) { busyRef.current = false; setBusy(false); }
+        fetchApproval(runId, r.approval_id ?? null);
       }
       if (["completed", "failed", "cancelled"].includes(r.status) && pollRef.current) {
         clearInterval(pollRef.current); pollRef.current = null;
         busyRef.current = false; setBusy(false);
+        setApproval(null); setApprovalErr(null); approvalSeenRef.current = null;
         loadHistory();
         setTimeout(() => setLive(null), 400); // le run rejoint l'historique
       }
     }, 2500);
-  }, [explore, model, loadHistory]);
+  }, [explore, model, loadHistory, fetchApproval]);
+
+  /** Décision de validation envoyée depuis la carte in-feed. */
+  const decideApproval = useCallback(async (decision: "approved" | "rejected") => {
+    if (!approval || !live || live.runId === "…" || live.runId === "instant") return;
+    setDeciding(true); setApprovalErr(null);
+    try {
+      const res = await fetch(`/api/run/agent/${live.runId}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approvalId: approval.id, decision, modifiedContent: decision === "approved" ? approvalText : undefined }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setApprovalErr(body.error ?? `Erreur (${res.status}).`); return; }
+      setApproval(null);
+      setLive((l) => l && { ...l, status: "running" }); // optimiste — le poll (toujours actif) corrige
+    } catch {
+      setApprovalErr("Réseau indisponible — réessaie.");
+    } finally { setDeciding(false); }
+  }, [approval, approvalText, live]);
+
+  // Poll des connexions (5 s) tant qu'une mission attend une app : dès que tous
+  // les connecteurs manquants sont utilisables, la mission repart TOUTE SEULE.
+  useEffect(() => {
+    if (!pendingConnect || pendingConnect.expired) return;
+    const t = setInterval(async () => {
+      if (Date.now() - pendingConnect.startedAt > CONNECT_MAX_MS) {
+        // Timeout : on garde la mission, reprise MANUELLE via « Reprendre ».
+        setPendingConnect((p) => p && { ...p, expired: true });
+        return;
+      }
+      try {
+        const d = await fetch("/api/extension/connections").then((x) => (x.ok ? x.json() : null));
+        if (!d) return;
+        const usable = new Set<string>(
+          ((d.connections ?? []) as Conn[]).filter((c) => c.usable).map((c) => connKey(c.connectorId)),
+        );
+        const still = pendingConnect.missing.filter((s) => !usable.has(connKey(s)));
+        if (still.length) return;
+        const { goal: g, page, missing } = pendingConnect;
+        setPendingConnect(null);
+        busyRef.current = true; setBusy(true);
+        launchMission(g, page, `✓ ${missing.map(slugLabel).join(", ")} connecté — je reprends la mission`);
+      } catch { /* réseau — tick suivant */ }
+    }, CONNECT_POLL_MS);
+    return () => clearInterval(t);
+  }, [pendingConnect, launchMission]);
 
   const launch = useCallback(async () => {
     if (busyRef.current) return;
@@ -215,12 +308,16 @@ export default function QuickPage() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setGoal("");
     if (inputRef.current) inputRef.current.style.height = "auto";
+    // Nouvelle demande explicite : la mission en attente de connexion et la
+    // validation en cours sont abandonnées (le fil suit UNE chose à la fois).
+    setPendingConnect(null);
+    setApproval(null); setApprovalErr(null); approvalSeenRef.current = null;
 
     const page: PageCtx = ctx ?? (manualUrl.trim() ? { url: manualUrl.trim() } : { url: "" });
 
     // Réponse à une demande de précisions : c'est une mission — direct au pipeline.
     if (clarify) {
-      g = `${clarify.goal}\n\nPrécisions de l'utilisateur : ${g}`;
+      g = `${clarify.goal}\n\nQuestions posées : ${clarify.questions.join(" | ")}\nRéponses de l'utilisateur : ${g}`;
       setClarify(null);
       await launchMission(g, page);
       return;
@@ -228,10 +325,21 @@ export default function QuickPage() {
 
     // TAC AU TAC streamé d'abord ; le modèle bascule lui-même en mission.
     setLive({ runId: "instant", goal: g, model, title: g, planned: [], stepsDone: 0, status: "streaming", answer: "", instant: true });
+    // Watchdog : aucun événement reçu pendant 90 s → coupure propre (fini le
+    // « streaming » infini quand le serveur s'est tu sans fermer le flux).
+    const aborter = new AbortController();
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
+    let expired = false;
+    const armWatchdog = () => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => { expired = true; aborter.abort(); }, SSE_WATCHDOG_MS);
+    };
     try {
+      armWatchdog();
       const res = await fetch("/api/extension/instant", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: aborter.signal,
         body: JSON.stringify({
           goal: g,
           page: { url: page.url, title: page.title, selection: page.selection, content: page.content, isPdf: page.isPdf },
@@ -242,6 +350,7 @@ export default function QuickPage() {
         }),
       });
       if (!res.ok || !res.body) {
+        if (watchdog) clearTimeout(watchdog);
         const body = await res.json().catch(() => ({}));
         busyRef.current = false; setBusy(false); setLive(null);
         setError({ message: body.message ?? (res.status === 401 ? "Connecte-toi à Prompta, puis réessaie." : `Erreur (${res.status}).`) });
@@ -254,6 +363,7 @@ export default function QuickPage() {
       let failed: string | null = null;
       for (;;) {
         const { done, value } = await reader.read();
+        armWatchdog();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -269,14 +379,16 @@ export default function QuickPage() {
         }
         if (mission || failed) break;
       }
+      if (watchdog) clearTimeout(watchdog);
       if (mission) { await launchMission(g, page); return; }
       busyRef.current = false; setBusy(false);
       if (failed) { setLive(null); setError({ message: failed }); return; }
       setLive((l) => l && { ...l, status: "completed" });
       loadHistory(); // la réponse instantanée est persistée côté serveur
     } catch {
+      if (watchdog) clearTimeout(watchdog);
       busyRef.current = false; setBusy(false); setLive(null);
-      setError({ message: "Réseau indisponible." });
+      setError({ message: expired ? "La réponse a expiré — réessaie." : "Réseau indisponible." });
     }
   }, [goal, ctx, manualUrl, model, clarify, history, launchMission, loadHistory]);
 
@@ -306,17 +418,17 @@ export default function QuickPage() {
       : null;
 
   return (
-    <div className="flex h-screen flex-col bg-[#0f1420] text-[#f3f5fb]">
+    <div className="flex h-screen flex-col bg-bg text-ink">
       {/* Header */}
-      <header className="flex items-center gap-2 border-b border-[#2a3350] px-4 py-3">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#7c6cff] text-sm font-bold text-white">P</span>
-        <span className="flex-1 font-display text-sm font-bold">Prompta <span className="font-normal text-[#6b7595]">· assistant</span></span>
+      <header className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-sm font-bold text-accent-ink shadow-glow-sm">P</span>
+        <span className="flex-1 font-display text-sm font-bold">Prompta <span className="font-normal text-ink-faint">· assistant</span></span>
         {models.length > 0 && (
           <select
             value={model}
             onChange={(e) => { setModel(e.target.value); try { localStorage.setItem("prompta_model", e.target.value); } catch { /* quota */ } }}
             title="Modèle qui répond"
-            className="max-w-[120px] rounded-lg border border-[#2a3350] bg-[#161d2e] px-2 py-1 text-xs"
+            className="max-w-[120px] rounded-lg border border-line bg-card2 px-2 py-1 text-xs"
           >
             {!models.some((m) => m.usable) && <option value="">Modèle par défaut</option>}
             {models.map((m) => <option key={m.id} value={m.id} disabled={!m.usable}>{m.label}{m.usable ? "" : " (clé requise)"}</option>)}
@@ -324,7 +436,7 @@ export default function QuickPage() {
         )}
         {authed && (
           <a href="/dashboard/connexions" target="_blank" rel="noopener" title="Apps connectées"
-             className="rounded-lg border border-[#2a3350] px-2 py-1 text-xs text-[#aab3cc] hover:border-[#7c6cff]">
+             className="rounded-lg border border-line px-2 py-1 text-xs text-ink-soft hover:border-accent">
             🔌 {usableCount}
           </a>
         )}
@@ -334,19 +446,19 @@ export default function QuickPage() {
       <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
           {authed === false && (
-            <div className="rounded-xl border border-[#3a3320] bg-[#1c180a] p-4 text-sm text-[#fbbf24]">
+            <div className="rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
               Connecte-toi à Prompta d&apos;abord. <a href="/login" className="font-semibold underline">Se connecter</a>
             </div>
           )}
 
           {thread.length === 0 && !liveShown && authed !== false && (
-            <div className="mt-10 text-center text-[#6b7595]">
-              <p className="text-lg font-medium text-[#aab3cc]">Ton assistant du quotidien</p>
+            <div className="mt-10 text-center text-ink-faint">
+              <p className="text-lg font-medium text-ink-soft">Ton assistant du quotidien</p>
               <p className="mt-1 text-sm">Pose une question simple, ou confie-lui une vraie mission sur tes apps.</p>
               <div className="mt-4 flex flex-col items-center gap-2">
                 {["Résume cette page en 5 points", "Rédige un email pro à partir de ce texte", "Crée un Sheet à partir de ces données"].map((s) => (
                   <button key={s} onClick={() => reuse(s)}
-                          className="rounded-full border border-[#2a3350] bg-[#161d2e] px-3.5 py-1.5 text-xs text-[#aab3cc] transition-colors hover:border-[#7c6cff] hover:text-[#f3f5fb]">
+                          className="rounded-full border border-line bg-card2 px-3.5 py-1.5 text-xs text-ink-soft transition-colors hover:border-accent hover:text-ink">
                     {s}
                   </button>
                 ))}
@@ -362,22 +474,70 @@ export default function QuickPage() {
           {liveShown && (
             <Message goal={liveShown.goal} model={liveShown.model} status={liveShown.status} answer={liveShown.answer ?? null}
                      runId={liveShown.runId} planned={liveShown.planned} stepsDone={liveShown.stepsDone} error={liveShown.error}
-                     approvalId={liveShown.approvalId} onCancel={() => cancelLive()}
+                     approvalId={liveShown.approvalId} notice={liveShown.notice} onCancel={() => cancelLive()}
                      onReuse={() => reuse(liveShown.goal)} live />
           )}
 
+          {/* Validation DANS le fil : contenu proposé éditable + décision ici même. */}
+          {liveShown && liveShown.status === "awaiting_approval" && approval && (
+            <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-accent/50 bg-card2 px-3.5 py-3 text-sm">
+              <p className="font-semibold text-ink">✋ Validation requise{approval.label ? ` — ${approval.label}` : ""}</p>
+              <textarea
+                value={approvalText}
+                onChange={(e) => setApprovalText(e.target.value)}
+                className="mt-2 min-h-[90px] w-full resize-y rounded-lg border border-line bg-bg p-2 text-xs leading-relaxed text-ink outline-none focus:border-accent"
+              />
+              <div className="mt-2 flex justify-end gap-2">
+                <button onClick={() => decideApproval("rejected")} disabled={deciding}
+                        className="rounded-lg border border-destructive/50 px-3 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50">
+                  Refuser
+                </button>
+                <button onClick={() => decideApproval("approved")} disabled={deciding}
+                        className="rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-ink shadow-glow-sm transition-colors hover:bg-accent-hover disabled:opacity-50">
+                  Valider
+                </button>
+              </div>
+              {approvalErr && <p className="mt-1.5 text-xs text-destructive">{approvalErr}</p>}
+            </div>
+          )}
+
+          {/* Connexion manquante : mission mémorisée, OAuth en un clic, reprise auto. */}
+          {pendingConnect && (
+            <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-accent/40 bg-card2 px-3.5 py-3 text-sm">
+              <p className="font-semibold text-ink">Connexion requise</p>
+              <p className="mt-1 text-xs text-ink-soft">Cette mission a besoin de : {pendingConnect.missing.join(", ")}.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {pendingConnect.missing.map((slug) => (
+                  <button key={slug}
+                          onClick={() => window.open(`/api/connectors/${encodeURIComponent(slug)}/connect?returnUrl=${encodeURIComponent(`${window.location.origin}/dashboard/connexions?connected=${slug}`)}`, "_blank")}
+                          className="rounded-lg border border-accent px-3 py-1.5 text-xs font-semibold text-accent-hover transition-colors hover:bg-accent/10">
+                    🔌 Connecter {slugLabel(slug)}
+                  </button>
+                ))}
+              </div>
+              {pendingConnect.expired ? (
+                <button onClick={() => { const { goal: g, page } = pendingConnect; setPendingConnect(null); busyRef.current = true; setBusy(true); launchMission(g, page); }}
+                        className="mt-2 rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft transition-colors hover:border-accent hover:text-ink">
+                  ↻ Reprendre la mission
+                </button>
+              ) : (
+                <p className="mt-2 text-xs text-ink-faint">⏳ Je surveille tes connexions — la mission repartira toute seule.</p>
+              )}
+            </div>
+          )}
+
           {clarify && (
-            <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-[#7c6cff]/40 bg-[#161d2e] px-3.5 py-2.5 text-sm">
-              <p className="mb-1.5 font-medium text-[#f3f5fb]">Quelques précisions pour bien faire :</p>
-              <ul className="list-disc space-y-1 pl-4 text-[#aab3cc]">
+            <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-accent/40 bg-card2 px-3.5 py-2.5 text-sm">
+              <p className="mb-1.5 font-medium text-ink">Quelques précisions pour bien faire :</p>
+              <ul className="list-disc space-y-1 pl-4 text-ink-soft">
                 {clarify.questions.map((q, i) => <li key={i}>{q}</li>)}
               </ul>
-              <p className="mt-2 text-xs text-[#6b7595]">Réponds ci-dessous, je m&apos;occupe du reste.</p>
+              <p className="mt-2 text-xs text-ink-faint">Réponds ci-dessous, je m&apos;occupe du reste.</p>
             </div>
           )}
 
           {error && (
-            <div className="rounded-xl border border-[#3a2226] bg-[#1c1012] p-3 text-sm text-[#f87171]">
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {error.message}
               {error.missing && <> — <a href="/dashboard/connexions" target="_blank" rel="noopener" className="underline">ouvrir Connexions</a></>}
             </div>
@@ -386,29 +546,29 @@ export default function QuickPage() {
       </div>
 
       {/* Composer */}
-      <div className="border-t border-[#2a3350] bg-[#131a29] px-4 py-3">
+      <div className="border-t border-line bg-card px-4 py-3">
         <div className="mx-auto max-w-2xl">
           {/* Ce que je vois */}
-          <button onClick={() => setShowContext((s) => !s)} className="mb-2 flex items-center gap-1.5 text-xs text-[#aab3cc]">
+          <button onClick={() => setShowContext((s) => !s)} className="mb-2 flex items-center gap-1.5 text-xs text-ink-soft">
             <span className={`transition-transform ${showContext ? "rotate-90" : ""}`}>▸</span>
             👁 Ce que je vois
-            {ctx && <span className="rounded-full border border-[#2a3350] px-2 py-0.5 text-[#6b7595]">📄 {(ctx.title || ctx.url || "cette page").slice(0, 32)}</span>}
+            {ctx && <span className="rounded-full border border-line px-2 py-0.5 text-ink-faint">📄 {(ctx.title || ctx.url || "cette page").slice(0, 32)}</span>}
           </button>
           {showContext && (
-            <div className="mb-2 space-y-2 rounded-xl border border-[#2a3350] bg-[#161d2e] p-3 text-xs text-[#aab3cc]">
+            <div className="mb-2 space-y-2 rounded-xl border border-line bg-card2 p-3 text-xs text-ink-soft">
               {ctx ? (
                 <div className="flex flex-wrap gap-1.5">
-                  <span className="rounded-full border border-[#2a3350] px-2 py-0.5">📄 {(ctx.title || ctx.url || "cette page").slice(0, 48)}</span>
-                  {ctx.isPdf && <span className="rounded-full border border-[#2a3350] px-2 py-0.5">PDF</span>}
-                  {ctx.selection && <span className="rounded-full border border-[#2a3350] px-2 py-0.5">✂️ sélection</span>}
+                  <span className="rounded-full border border-line px-2 py-0.5">📄 {(ctx.title || ctx.url || "cette page").slice(0, 48)}</span>
+                  {ctx.isPdf && <span className="rounded-full border border-line px-2 py-0.5">PDF</span>}
+                  {ctx.selection && <span className="rounded-full border border-line px-2 py-0.5">✂️ sélection</span>}
                 </div>
               ) : (
                 <input value={manualUrl} onChange={(e) => setManualUrl(e.target.value)} placeholder="Coller une URL à analyser (optionnel)"
-                       className="h-9 w-full rounded-lg border border-[#2a3350] bg-[#0f1420] px-3 text-[#f3f5fb]" />
+                       className="h-9 w-full rounded-lg border border-line bg-bg px-3 text-ink" />
               )}
-              <p className="text-[#6b7595]">
+              <p className="text-ink-faint">
                 Depuis une page web je ne vois que cette page. Pour que je voie <strong>tous tes onglets ouverts</strong>,{" "}
-                <a href="/dashboard/ia-quotidien" target="_blank" rel="noopener" className="text-[#a99bff] underline">installe l&apos;extension</a>.
+                <a href="/prompta-partout" target="_blank" rel="noopener" className="text-accent-hover underline">installe l&apos;extension</a>.
                 Les logiciels/PDF ouverts hors navigateur ne sont pas accessibles.
               </p>
               <label className="flex items-center gap-2">
@@ -418,7 +578,7 @@ export default function QuickPage() {
             </div>
           )}
 
-          <div className="flex items-end gap-2 rounded-2xl border border-[#2a3350] bg-[#161d2e] p-2 focus-within:border-[#7c6cff]">
+          <div className="flex items-end gap-2 rounded-2xl border border-line bg-card2 p-2 focus-within:border-accent">
             <textarea
               ref={inputRef}
               value={goal}
@@ -426,12 +586,12 @@ export default function QuickPage() {
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); launch(); } }}
               rows={1}
               placeholder={clarify ? "Ta réponse aux précisions…  (Entrée)" : "Demande simple ou grosse mission…  (Entrée pour envoyer)"}
-              className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-[#f3f5fb] outline-none"
+              className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-ink outline-none"
             />
             <button
               onClick={launch}
               disabled={busy || goal.trim().length < 2}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#7c6cff] text-white disabled:opacity-40"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-ink shadow-glow-sm transition-all hover:bg-accent-hover disabled:opacity-40 disabled:shadow-none"
               title="Envoyer"
             >
               {busy ? "…" : "↑"}
@@ -454,36 +614,38 @@ function Message(props: {
   stepsDone: number;
   error?: string | null;
   approvalId?: string | null;
+  notice?: string | null;
   live?: boolean;
   onReuse: () => void;
   onCancel?: () => void;
 }) {
-  const { goal, model, status, answer, runId, planned, stepsDone, error, approvalId, live, onReuse, onCancel } = props;
+  const { goal, model, status, answer, runId, planned, stepsDone, error, approvalId, notice, live, onReuse, onCancel } = props;
   const isAgent = status !== "streaming" && (planned.length > 0 || (!answer && status !== "completed"));
   return (
     <div className="flex flex-col gap-2">
       {/* Demande (cliquable pour réutiliser) */}
       <button onClick={onReuse} title="Réutiliser cette demande"
-              className="group ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[#7c6cff] px-3.5 py-2 text-left text-sm text-white">
+              className="group ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-left text-sm text-accent-ink">
         {goal}
         <span className="ml-2 opacity-0 transition-opacity group-hover:opacity-70">↺</span>
       </button>
 
       {/* Réponse / mission */}
-      <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-[#2a3350] bg-[#161d2e] px-3.5 py-2.5 text-sm">
+      <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-line bg-card2 px-3.5 py-2.5 text-sm">
+        {notice && <div className="mb-1.5 text-xs text-success">{notice}</div>}
         {answer && (
-          <div className="whitespace-pre-wrap text-[#f3f5fb]">
+          <div className="whitespace-pre-wrap text-ink">
             {answer.slice(0, 12000)}
-            {status === "streaming" && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-[#7c6cff] align-middle" />}
+            {status === "streaming" && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-accent align-middle" />}
           </div>
         )}
-        {status === "streaming" && !answer && <div className="animate-pulse text-[#aab3cc]">Prompta réfléchit…</div>}
+        {status === "streaming" && !answer && <div className="animate-pulse text-ink-soft">Prompta réfléchit…</div>}
 
         {isAgent && (planned.length > 0) && (
           <div className="mt-1 space-y-0.5">
             {planned.map((label, i) => (
-              <div key={i} className="flex items-baseline gap-2 text-[#aab3cc]">
-                <span className={i < stepsDone ? "text-emerald-600" : "text-[#6b7595]"}>
+              <div key={i} className="flex items-baseline gap-2 text-ink-soft">
+                <span className={i < stepsDone ? "text-success" : "text-ink-faint"}>
                   {i < stepsDone ? "✓" : i === stepsDone && (status === "running" || status === "pending") ? "▶" : "·"}
                 </span>
                 <span>{label}</span>
@@ -493,29 +655,29 @@ function Message(props: {
         )}
 
         {isAgent && planned.length === 0 && (status === "running" || status === "pending") && (
-          <div className="text-[#aab3cc]">🧠 Prompta conçoit l&apos;agent…</div>
+          <div className="text-ink-soft">🧠 Prompta conçoit l&apos;agent…</div>
         )}
 
         <div className="mt-2 flex items-center gap-2 text-xs">
           <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status] ?? "bg-ink-faint"} ${live && !["completed", "failed"].includes(status) ? "animate-pulse" : ""}`} />
-          <span className="text-[#6b7595]">
+          <span className="text-ink-faint">
             {status === "completed" ? "terminé" : status === "failed" ? "échec" : status === "awaiting_approval" ? "à valider" : status === "running" ? "en cours" : status === "streaming" ? "répond…" : "en file"}
           </span>
-          {model && <span className="text-[#6b7595]">· {model}</span>}
+          {model && <span className="text-ink-faint">· {model}</span>}
           {status === "awaiting_approval" && (
             <a href={approvalId ? `/dashboard/validations?focus=${approvalId}` : "/dashboard/validations"}
-               target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">valider</a>
+               target="_blank" rel="noopener" className="ml-auto text-accent-hover underline">{live ? "ouvrir dans le dashboard ↗" : "valider"}</a>
           )}
-          {status === "completed" && runId !== "…" && runId !== "instant" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
-          {status === "failed" && runId !== "…" && runId !== "instant" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-[#a99bff] underline">dossier ↗</a>}
+          {status === "completed" && runId !== "…" && runId !== "instant" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-accent-hover underline">dossier ↗</a>}
+          {status === "failed" && runId !== "…" && runId !== "instant" && <a href={`/dashboard/runs/${runId}`} target="_blank" rel="noopener" className="ml-auto text-accent-hover underline">dossier ↗</a>}
           {live && onCancel && runId !== "…" && (status === "running" || status === "pending") && (
             <button onClick={onCancel} title="Arrêter la mission"
-                    className="ml-auto rounded-md border border-[#2a3350] px-2 py-0.5 text-[10px] text-[#aab3cc] hover:border-[#f87171] hover:text-[#f87171]">
+                    className="ml-auto rounded-md border border-line px-2 py-0.5 text-[10px] text-ink-soft hover:border-destructive hover:text-destructive">
               ■ stop
             </button>
           )}
         </div>
-        {status === "failed" && error && <div className="mt-1 text-xs text-rose-600">{error.slice(0, 140)}</div>}
+        {status === "failed" && error && <div className="mt-1 text-xs text-destructive">{error.slice(0, 140)}</div>}
       </div>
     </div>
   );

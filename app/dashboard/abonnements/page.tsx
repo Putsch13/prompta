@@ -40,16 +40,16 @@ function subscriptionStatusLabel(sub: {
     const end = formatDate(sub.current_period_end);
     return {
       text: end ? `Annulation prévue le ${end}` : "Annulation programmée",
-      className: "text-amber-600",
+      className: "text-warning",
     };
   }
   if (sub.status === "active" || sub.status === "trialing") {
-    return { text: "Actif", className: "text-green-600" };
+    return { text: "Actif", className: "text-success" };
   }
   if (sub.status === "canceled") {
     return { text: "Annulé", className: "text-ink-faint" };
   }
-  return { text: sub.status, className: "text-amber-600" };
+  return { text: sub.status, className: "text-warning" };
 }
 
 export default function AbonnementsPage() {
@@ -181,7 +181,7 @@ export default function AbonnementsPage() {
           <div className="flex items-center gap-2">
             <Link
               href="/pricing"
-              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent/90"
+              className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-ink shadow-glow-sm hover:bg-accent-hover"
             >
               {planInfo && planInfo.priceCents > 0 ? "Changer de plan" : "Voir les plans"}
             </Link>
@@ -189,7 +189,7 @@ export default function AbonnementsPage() {
               <button
                 onClick={cancelPro}
                 disabled={cancellingPro}
-                className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg border border-destructive/30 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
               >
                 {cancellingPro ? <Loader2 className="h-4 w-4 animate-spin" /> : "Se désabonner"}
               </button>

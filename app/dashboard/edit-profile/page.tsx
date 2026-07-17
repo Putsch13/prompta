@@ -259,7 +259,7 @@ export default function EditProfilePage() {
         <button
           type="submit"
           disabled={saving}
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-accent-ink shadow-glow-sm transition-colors hover:bg-accent-hover disabled:opacity-50"
         >
           {saving ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -314,14 +314,14 @@ export default function EditProfilePage() {
             className="h-10 w-full rounded-lg border border-line px-3 text-sm"
           />
           {passwordMsg && (
-            <p className={`text-sm ${passwordMsg.includes("mis à jour") ? "text-green-700" : "text-destructive"}`}>
+            <p className={`text-sm ${passwordMsg.includes("mis à jour") ? "text-success" : "text-destructive"}`}>
               {passwordMsg}
             </p>
           )}
           <button
             type="submit"
             disabled={passwordSaving}
-            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-medium text-white disabled:opacity-50"
+            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-ink px-4 text-sm font-medium text-bg disabled:opacity-50"
           >
             {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Mettre à jour le mot de passe"}
           </button>
@@ -360,7 +360,7 @@ export default function EditProfilePage() {
           <button
             type="submit"
             disabled={deleting || deleteConfirm !== "SUPPRIMER"}
-            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-destructive px-4 text-sm font-medium text-white disabled:opacity-50"
+            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-destructive/90 px-4 text-sm font-semibold text-[#1a0505] hover:bg-destructive disabled:opacity-50"
           >
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Supprimer définitivement"}
           </button>

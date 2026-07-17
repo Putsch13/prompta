@@ -24,6 +24,12 @@ export const metadata: Metadata = {
   alternates: { canonical: "/prompta-partout" },
 };
 
+/**
+ * URL du listing Chrome Web Store — dès qu'elle est renseignée (env Render),
+ * la page bascule en « Ajouter à Chrome » et relègue le ZIP en méthode avancée.
+ */
+const STORE_URL = process.env.NEXT_PUBLIC_CHROME_STORE_URL;
+
 const BROWSERS_OK = [
   {
     name: "Chrome",
@@ -117,16 +123,13 @@ const USE_WAYS = [
 export default function PromptaPartoutPage() {
   return (
     <div className="min-h-screen bg-bg">
-      <section className="relative overflow-hidden border-b border-line">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-40 h-[420px] bg-[radial-gradient(60%_60%_at_50%_0%,rgba(79,70,229,0.12),transparent_70%)]"
-        />
-        <div className="mx-auto max-w-page px-4 pb-16 pt-16 sm:px-6 sm:pt-20 lg:px-8">
+      <section className="relative overflow-hidden border-b border-line bg-hud-grid">
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-hud-halo" />
+        <div className="relative mx-auto max-w-page px-4 pb-16 pt-16 sm:px-6 sm:pt-20 lg:px-8">
           <BrowserCompatBanner />
-          <p className="inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent-light px-3 py-1 text-sm font-medium text-accent">
+          <p className="hud-label inline-flex items-center gap-1.5">
             <Zap className="h-3.5 w-3.5" />
-            Guide d&apos;installation
+            [ Guide d&apos;installation ]
           </p>
           <h1 className="mt-5 max-w-3xl font-display text-4xl font-bold tracking-tight text-ink sm:text-5xl">
             Prompta partout
@@ -139,29 +142,43 @@ export default function PromptaPartoutPage() {
             (comme un petit programme qui s&apos;ajoute à Chrome) : tu cliques le P
             en haut → un panneau glisse à droite sur n&apos;importe quelle page.
           </p>
-          <div className="mt-6 max-w-2xl rounded-2xl border border-line bg-card px-5 py-4 text-sm leading-relaxed text-ink-soft">
-            <p className="font-semibold text-ink">Pourquoi un fichier ZIP ?</p>
-            <p className="mt-1.5">
-              Prompta n&apos;est <strong className="font-medium text-ink">pas encore</strong> sur
-              le Chrome Web Store (le « magasin » d&apos;extensions). Du coup on te
-              donne l&apos;extension en fichier compressé : tu le dézippes, tu le
-              charges une fois dans Chrome, et le P apparaît en haut. C&apos;est
-              temporaire — le jour où on est sur le Store, ce sera un clic
-              « Ajouter à Chrome ».
-            </p>
-          </div>
+          {!STORE_URL && (
+            <div className="hud-card mt-6 max-w-2xl px-5 py-4 text-sm leading-relaxed text-ink-soft">
+              <p className="font-semibold text-ink">Pourquoi un fichier ZIP ?</p>
+              <p className="mt-1.5">
+                Prompta n&apos;est <strong className="font-medium text-ink">pas encore</strong> sur
+                le Chrome Web Store (le « magasin » d&apos;extensions) — la
+                soumission est en cours. En attendant, on te donne
+                l&apos;extension en fichier compressé : tu le dézippes, tu le
+                charges une fois dans Chrome, et le P apparaît en haut. Dès que
+                le Store valide, ce sera un clic « Ajouter à Chrome ».
+              </p>
+            </div>
+          )}
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <a
-              href="/downloads/prompta-everywhere.zip"
-              download="prompta-everywhere.zip"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-semibold text-white shadow-lg shadow-accent/25 hover:bg-accent-hover"
-            >
-              <Download className="h-5 w-5" />
-              Télécharger l&apos;extension (ZIP)
-            </a>
+            {STORE_URL ? (
+              <a
+                href={STORE_URL}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-accent px-6 text-base font-semibold text-accent-ink shadow-glow-sm transition-all hover:bg-accent-hover hover:shadow-glow"
+              >
+                <Puzzle className="h-5 w-5" />
+                Ajouter à Chrome — gratuit
+              </a>
+            ) : (
+              <a
+                href="/downloads/prompta-everywhere.zip"
+                download="prompta-everywhere.zip"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-accent px-6 text-base font-semibold text-accent-ink shadow-glow-sm transition-all hover:bg-accent-hover hover:shadow-glow"
+              >
+                <Download className="h-5 w-5" />
+                Télécharger l&apos;extension (ZIP)
+              </a>
+            )}
             <Link
               href="/quick"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-line bg-card px-6 text-base font-medium text-ink hover:border-accent"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-line bg-card px-6 text-base font-medium text-ink transition-all hover:border-accent/50 hover:shadow-glow-sm"
             >
               Essayer sans installer (/quick)
             </Link>
@@ -188,30 +205,26 @@ export default function PromptaPartoutPage() {
             Firefox et Safari : pas encore.
           </p>
 
-          <h3 className="mt-10 text-sm font-semibold uppercase tracking-wide text-accent">
-            Ça marche
-          </h3>
+          <h3 className="hud-label mt-10">[ Ça marche ]</h3>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {BROWSERS_OK.map((b) => (
               <div
                 key={b.name}
-                className="rounded-2xl border border-line bg-card px-5 py-4"
+                className="hud-card px-5 py-4"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-display font-semibold text-ink">{b.name}</span>
-                  <span className="rounded-full border border-accent/25 bg-accent-light px-2 py-0.5 text-[11px] font-medium text-accent">
+                  <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider text-accent">
                     {b.badge}
                   </span>
                 </div>
                 <p className="mt-2 text-sm leading-relaxed text-ink-soft">{b.note}</p>
-                <p className="mt-2 font-mono text-xs text-ink/70">{b.url}</p>
+                <p className="mt-2 font-mono text-xs text-ink-faint">{b.url}</p>
               </div>
             ))}
           </div>
 
-          <h3 className="mt-10 text-sm font-semibold uppercase tracking-wide text-ink-soft">
-            Pas supporté tel quel
-          </h3>
+          <h3 className="mt-10 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-faint">[ Pas supporté tel quel ]</h3>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {BROWSERS_NO.map((b) => (
               <div
@@ -229,17 +242,18 @@ export default function PromptaPartoutPage() {
       <section className="border-b border-line bg-card2/40">
         <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8">
           <h2 className="font-display text-2xl font-bold text-ink sm:text-3xl">
-            Installation (Chromium)
+            {STORE_URL ? "Installation manuelle (méthode avancée)" : "Installation (Chromium)"}
           </h2>
           <p className="mt-2 max-w-2xl text-ink-soft">
-            Pas encore sur les stores — tu l&apos;installes en mode développeur,
-            une fois. Ensuite : recharge l&apos;extension après chaque mise à jour.
+            {STORE_URL
+              ? "Tu préfères charger l'extension toi-même (version de développement, mises à jour manuelles) ? Voici la méthode ZIP — sinon, le bouton « Ajouter à Chrome » ci-dessus suffit."
+              : "Pas encore sur les stores — tu l'installes en mode développeur, une fois. Ensuite : recharge l'extension après chaque mise à jour."}
           </p>
           <ol className="mt-10 space-y-6">
             {INSTALL_STEPS.map((s) => (
               <li key={s.n} className="flex gap-4">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-sm font-bold text-white">
-                  {s.n}
+                <span className="hud-corners flex h-10 w-10 shrink-0 items-center justify-center border border-accent/30 bg-accent/10 font-mono text-sm font-bold text-accent">
+                  {s.n.padStart(2, "0")}
                 </span>
                 <div>
                   <h3 className="font-display text-lg font-semibold text-ink">{s.title}</h3>
@@ -248,7 +262,7 @@ export default function PromptaPartoutPage() {
               </li>
             ))}
           </ol>
-          <div className="mt-8 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card px-5 py-4 text-sm text-ink-soft">
+          <div className="hud-card mt-8 flex flex-wrap items-center gap-3 px-5 py-4 text-sm text-ink-soft">
             <Pin className="h-5 w-5 shrink-0 text-accent" />
             <span>
               Après une mise à jour : page Extensions → ⟳ sur Prompta Everywhere,
@@ -269,7 +283,7 @@ export default function PromptaPartoutPage() {
           </p>
           <div className="mt-10 grid gap-6 sm:grid-cols-3">
             {USE_WAYS.map((w) => (
-              <div key={w.title} className="rounded-2xl border border-line bg-card p-6">
+              <div key={w.title} className="hud-card p-6">
                 <w.icon className="h-8 w-8 text-accent" />
                 <h3 className="mt-4 font-display font-semibold text-ink">{w.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-ink-soft">{w.desc}</p>
@@ -285,7 +299,7 @@ export default function PromptaPartoutPage() {
             Un cerveau, deux vitesses
           </h2>
           <div className="mt-10 grid gap-6 sm:grid-cols-2">
-            <div className="rounded-2xl border border-line bg-card p-7">
+            <div className="hud-card p-7">
               <MessageSquare className="h-9 w-9 text-accent" />
               <h3 className="mt-4 font-display text-lg font-semibold text-ink">
                 Tac au tac
@@ -296,7 +310,7 @@ export default function PromptaPartoutPage() {
                 voit ce que tu vois.
               </p>
             </div>
-            <div className="rounded-2xl border border-line bg-card p-7">
+            <div className="hud-card p-7">
               <Rocket className="h-9 w-9 text-accent" />
               <h3 className="mt-4 font-display text-lg font-semibold text-ink">
                 Mission
@@ -329,7 +343,7 @@ export default function PromptaPartoutPage() {
             Configuration
           </h2>
           <div className="mt-10 grid gap-6 lg:grid-cols-2">
-            <div className="rounded-2xl border border-line bg-card p-7">
+            <div className="hud-card p-7">
               <KeyRound className="h-8 w-8 text-accent" />
               <h3 className="mt-4 font-display font-semibold text-ink">
                 Apps & clés API
@@ -346,7 +360,7 @@ export default function PromptaPartoutPage() {
                 Ouvrir Connexions <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
-            <div className="rounded-2xl border border-line bg-card p-7">
+            <div className="hud-card p-7">
               <ShieldCheck className="h-8 w-8 text-accent" />
               <h3 className="mt-4 font-display font-semibold text-ink">
                 Instance Prompta
@@ -356,7 +370,7 @@ export default function PromptaPartoutPage() {
                 changer l&apos;URL (dev local, autre domaine) : service worker de
                 l&apos;extension → console →
               </p>
-              <pre className="mt-3 overflow-x-auto rounded-xl bg-[#101019] px-4 py-3 text-xs text-white/85">
+              <pre className="mt-3 overflow-x-auto rounded-lg border border-line bg-bg px-4 py-3 font-mono text-xs text-ink-soft">
                 {`chrome.storage.sync.set({\n  promptaBaseUrl: "https://ton-domaine"\n})`}
               </pre>
             </div>
@@ -387,10 +401,10 @@ export default function PromptaPartoutPage() {
             ].map((e) => (
               <li
                 key={e.q}
-                className="flex flex-col gap-1 rounded-xl border border-line bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+                className="hud-card flex flex-col gap-1 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <span className="text-sm text-ink">« {e.q} »</span>
-                <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-accent">
+                <span className="shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-accent">
                   {e.t}
                 </span>
               </li>
@@ -413,13 +427,13 @@ export default function PromptaPartoutPage() {
             <a
               href="/downloads/prompta-everywhere.zip"
               download="prompta-everywhere.zip"
-              className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-7 text-base font-semibold text-white hover:bg-accent-hover"
+              className="inline-flex h-12 items-center gap-2 rounded-lg bg-accent px-7 text-base font-semibold text-accent-ink shadow-glow-sm transition-all hover:bg-accent-hover hover:shadow-glow"
             >
               <Download className="h-5 w-5" /> Télécharger le ZIP
             </a>
             <Link
               href="/dashboard/connexions"
-              className="inline-flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-7 text-base font-medium text-ink hover:border-accent"
+              className="inline-flex h-12 items-center gap-2 rounded-lg border border-line bg-card px-7 text-base font-medium text-ink transition-all hover:border-accent/50 hover:shadow-glow-sm"
             >
               Configurer mes connexions
             </Link>

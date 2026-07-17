@@ -33,7 +33,7 @@ export function PlanQuotaCard() {
   return (
     <div
       className={`rounded-xl border p-4 ${
-        full ? "border-amber-300 bg-amber-50" : "border-accent/30 bg-accent/5"
+        full ? "border-warning/30 bg-warning/10" : "border-accent/30 bg-accent/5"
       }`}
     >
       <p className="flex items-center gap-2 text-sm font-medium text-ink">
@@ -48,7 +48,7 @@ export function PlanQuotaCard() {
         )}
       </p>
       {full ? (
-        <p className="mt-1.5 text-xs text-amber-800">
+        <p className="mt-1.5 text-xs text-warning">
           Quota atteint — cet agent sera enregistré en brouillon.{" "}
           <Link href="/pricing" className="font-semibold text-accent hover:underline">
             <Sparkles className="inline h-3 w-3" /> Passer au plan supérieur

@@ -6,11 +6,32 @@ import { getBuilderApiKey } from "@/lib/builder/api-key";
 import { builderRateLimit } from "@/lib/builder/rate-limit";
 import { listUserConnections } from "@/lib/connections";
 import { buildInstantAgent, sanitizeUrlForContext, type PageContext } from "@/lib/extension/instant-agent";
+import { getAvailableBalance, debitPlatformUsage, CREDIT_VALUE_CENTS } from "@/lib/credits";
+import { getCreditCircuitStatus } from "@/lib/billing/circuit-breaker";
+import { getModelPricing } from "@/lib/llm/pricing";
 
 export const dynamic = "force-dynamic";
 // Le run tourne dans after() : une mission avec pilotage navigateur (dialogue
-// homme-machine) peut durer plusieurs minutes.
-export const maxDuration = 300;
+// homme-machine) a un plancher orchestrateur de 10 min — on s'aligne dessus.
+export const maxDuration = 600;
+
+/** Estimation (cents) du coût de l'appel de planification — ~4 car./token. */
+function estimatePlanningCostCents(
+  apiModel: string,
+  goal: string,
+  page: PageContext,
+  outputChars: number,
+): number {
+  const pricing = getModelPricing(apiModel);
+  const inputChars =
+    4_000 + // prompt système + instructions
+    goal.length +
+    Math.min(page.content?.length ?? 0, 12_000) +
+    1_200 * Math.min(page.openTabs?.length ?? 0, 30);
+  const inTok = Math.ceil(inputChars / 4);
+  const outTok = Math.ceil(Math.max(outputChars, 200) / 4);
+  return (inTok * pricing.inputPer1M + outTok * pricing.outputPer1M) / 1_000_000;
+}
 
 /**
  * Extension « Prompta Everywhere » : ordre en langage naturel + contexte de la
@@ -52,6 +73,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "no_api_key", message: keyResult.error }, { status: 503 });
   }
 
+  // ── Garde-fous crédits AVANT de payer la planification (clé plateforme) ──
+  const onPlatformKey = keyResult.source === "platform";
+  if (onPlatformKey) {
+    const circuit = await getCreditCircuitStatus().catch(() => null);
+    if (circuit && !circuit.allowed) {
+      return NextResponse.json(
+        {
+          error: "credits_paused",
+          message: "Les runs en crédits sont en pause (protection plateforme). Utilise ta propre clé API (BYOK) ou réessaie plus tard.",
+        },
+        { status: 503 },
+      );
+    }
+    const available = await getAvailableBalance(user.id);
+    if (available < CREDIT_VALUE_CENTS) {
+      return NextResponse.json(
+        {
+          error: "no_credits",
+          message: "Crédits IA épuisés — recharge dans Dashboard → Crédits, ou ajoute ta propre clé API (BYOK, illimité).",
+        },
+        { status: 402 },
+      );
+    }
+  }
+
   const connections = await listUserConnections(user.id);
   const usable = new Set(connections.filter((c) => c.usable).map((c) => c.connectorId));
 
@@ -72,9 +118,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // La planification a coûté un appel LLM plateforme : débit systématique
+  // (markup inclus), quel que soit le dénouement (clarify / 409 / run).
+  const billPlanning = (outputChars: number, runId?: string | null) => {
+    if (!onPlatformKey) return;
+    const cost = estimatePlanningCostCents(keyResult.resolved.apiModel, goal, page, outputChars);
+    void debitPlatformUsage(user.id, cost, "Planification de mission", runId ?? null);
+  };
+
   // L'agent demande des précisions avant de bâtir un plan (mission complexe /
   // ordre ambigu) : pas de run, on renvoie les questions à l'interface.
   if (built.kind === "clarify") {
+    billPlanning(JSON.stringify(built.questions).length);
     return NextResponse.json({ clarify: built.questions });
   }
 
@@ -82,6 +137,7 @@ export async function POST(request: NextRequest) {
   // le ferait échouer d'emblée). On renvoie la liste pour que l'extension
   // propose de connecter l'app, sans consommer de run.
   if (built.missingConnectors.length > 0) {
+    billPlanning(JSON.stringify(built.manifest ?? {}).length);
     return NextResponse.json(
       {
         error: "missing_connectors",
@@ -132,6 +188,8 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  billPlanning(JSON.stringify(built.manifest).length, run.id);
 
   // Détaché de la requête : l'abort du proxy ne doit pas tuer le run.
   after(async () => {

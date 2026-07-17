@@ -46,10 +46,10 @@ export function ActionWorkspacePanel({ step, isLive = false }: Props) {
 
   if (!step) {
     return (
-      <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/[0.03] p-8 text-center">
-        <Bot className="mb-3 h-10 w-10 text-white/30" />
-        <p className="text-sm text-white/50">L&apos;agent ouvrira ici Gmail, Sheets, Slack…</p>
-        <p className="mt-1 text-xs text-white/30">Vue workspace — suivez les actions en direct</p>
+      <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-line bg-card2/40 p-8 text-center">
+        <Bot className="mb-3 h-10 w-10 text-ink-faint" />
+        <p className="text-sm text-ink-soft">L&apos;agent ouvrira ici Gmail, Sheets, Slack…</p>
+        <p className="mt-1 text-xs text-ink-faint">Vue workspace — suivez les actions en direct</p>
       </div>
     );
   }
@@ -57,14 +57,14 @@ export function ActionWorkspacePanel({ step, isLive = false }: Props) {
   const running = step.status === "running" || isLive;
 
   return (
-    <div className="flex h-full min-h-[280px] flex-col overflow-hidden rounded-xl border border-white/10 bg-[#111820]">
-      <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
-        {app === "sheets" && <Sheet className="h-4 w-4 text-emerald-400" />}
-        {app === "gmail" && <Mail className="h-4 w-4 text-red-400" />}
-        {app === "slack" && <MessageSquare className="h-4 w-4 text-purple-400" />}
-        {app === "web" && <Globe className="h-4 w-4 text-sky-400" />}
-        {(app === "llm" || app === "generic") && <Bot className="h-4 w-4 text-sky-400" />}
-        <span className="text-sm font-medium text-white/90">
+    <div className="flex h-full min-h-[280px] flex-col overflow-hidden rounded-xl border border-line bg-card">
+      <div className="flex items-center gap-2 border-b border-line bg-card2 px-4 py-2.5">
+        {app === "sheets" && <Sheet className="h-4 w-4 text-success" />}
+        {app === "gmail" && <Mail className="h-4 w-4 text-destructive" />}
+        {app === "slack" && <MessageSquare className="h-4 w-4 text-accent" />}
+        {app === "web" && <Globe className="h-4 w-4 text-accent" />}
+        {(app === "llm" || app === "generic") && <Bot className="h-4 w-4 text-accent" />}
+        <span className="text-sm font-medium text-ink">
           {app === "sheets" && "Google Sheets"}
           {app === "gmail" && "Gmail"}
           {app === "slack" && "Slack"}
@@ -73,22 +73,22 @@ export function ActionWorkspacePanel({ step, isLive = false }: Props) {
           {app === "generic" && step.label}
         </span>
         {running && (
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-amber-300">
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-warning">
             <Loader2 className="h-3 w-3 animate-spin" /> En cours…
           </span>
         )}
         {!running && step.status === "success" && (
-          <span className="ml-auto text-xs text-emerald-400">Terminé</span>
+          <span className="ml-auto text-xs text-success">Terminé</span>
         )}
       </div>
 
       <div className="flex-1 overflow-auto p-4">
         {app === "sheets" && (
-          <div className="overflow-x-auto rounded-lg border border-emerald-500/20">
+          <div className="overflow-x-auto rounded-lg border border-success/30">
             <table className="w-full min-w-[420px] border-collapse text-left text-xs">
               <tbody>
                 {parseSheetPreview(step.output).map((row, ri) => (
-                  <tr key={ri} className={ri === 0 ? "bg-emerald-500/15 font-semibold text-emerald-100" : "border-t border-white/5 text-white/75"}>
+                  <tr key={ri} className={ri === 0 ? "bg-success/10 font-semibold text-success" : "border-t border-line-soft text-ink-soft"}>
                     {row.map((cell, ci) => (
                       <td key={ci} className="px-3 py-2 whitespace-nowrap max-w-[180px] truncate">
                         {cell || "—"}
@@ -99,7 +99,7 @@ export function ActionWorkspacePanel({ step, isLive = false }: Props) {
               </tbody>
             </table>
             {running && (
-              <p className="mt-3 animate-pulse text-xs text-emerald-300/70">
+              <p className="mt-3 animate-pulse text-xs text-success/70">
                 Remplissage des cellules…
               </p>
             )}
@@ -107,10 +107,10 @@ export function ActionWorkspacePanel({ step, isLive = false }: Props) {
         )}
 
         {app === "gmail" && (
-          <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-red-300/80">Brouillon email</p>
-            <p className="mt-2 text-sm font-medium text-white/90">Objet : (généré par l&apos;agent)</p>
-            <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-3 text-xs leading-relaxed text-white/75">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+            <p className="hud-label !text-destructive">Brouillon email</p>
+            <p className="mt-2 text-sm font-medium text-ink">Objet : (généré par l&apos;agent)</p>
+            <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-3 text-xs leading-relaxed text-ink-soft">
               {step.output ?? (running ? "Rédaction du message…" : "—")}
             </pre>
           </div>
@@ -118,9 +118,9 @@ export function ActionWorkspacePanel({ step, isLive = false }: Props) {
 
         {app === "slack" && (
           <div className="space-y-2">
-            <div className="rounded-lg bg-[#1a1d21] p-3">
-              <p className="text-[10px] font-bold text-purple-300"># canal-agent</p>
-              <pre className="mt-2 whitespace-pre-wrap text-sm text-white/85">
+            <div className="rounded-lg border border-line bg-card2 p-3">
+              <p className="font-mono text-[10px] font-bold text-accent"># canal-agent</p>
+              <pre className="mt-2 whitespace-pre-wrap text-sm text-ink">
                 {step.output ?? (running ? "Envoi du message…" : "—")}
               </pre>
             </div>
@@ -128,7 +128,7 @@ export function ActionWorkspacePanel({ step, isLive = false }: Props) {
         )}
 
         {(app === "web" || app === "llm" || app === "generic") && (
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-black/30 p-4 text-xs leading-relaxed text-white/80">
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-black/30 p-4 text-xs leading-relaxed text-ink-soft">
             {step.output ?? (running ? "Traitement en cours…" : "En attente de sortie")}
           </pre>
         )}

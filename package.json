@@ -13,8 +13,6 @@
     "start": "next start -H 0.0.0.0",
     "lint": "eslint .",
     "seed:admin": "tsx scripts/seed-admin.ts",
-    "seed:signature-agent": "tsx scripts/seed-signature-agent.ts",
-    "validate:signature-agent": "tsx scripts/validate-signature-agent.ts",
     "validate:complex-agents": "tsx scripts/validate-complex-agents.ts",
     "worker": "tsx worker/run-worker.ts",
     "test:e2e": "playwright test",

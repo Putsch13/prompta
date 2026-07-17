@@ -57,7 +57,7 @@ export function ConnectionStatusRow({ connectorId, returnUrl }: Props) {
 
   if (connected) {
     return (
-      <p className="text-[10px] text-green-700">
+      <p className="text-[10px] text-success">
         ✅ Connecté{account ? ` · ${account}` : ""}
       </p>
     );
@@ -65,7 +65,7 @@ export function ConnectionStatusRow({ connectorId, returnUrl }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <p className="text-[10px] text-amber-700">⚠️ Non connecté</p>
+      <p className="text-[10px] text-warning">⚠️ Non connecté</p>
       {/* Nouvel onglet : la création en cours n'est pas perdue — le statut se
           rafraîchit automatiquement au retour (listener focus). */}
       <a

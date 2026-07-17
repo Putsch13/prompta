@@ -17,7 +17,7 @@ const PROVIDER_LABELS: Record<LLMProvider, string> = {
 };
 
 export type BuilderApiKeyResult =
-  | { ok: true; apiKey: string; resolved: ResolvedModel }
+  | { ok: true; apiKey: string; resolved: ResolvedModel; source: "byok" | "platform" }
   | { ok: false; error: string };
 
 export async function getBuilderApiKey(
@@ -27,9 +27,11 @@ export async function getBuilderApiKey(
   const resolved = resolveModelOrDefault(modelId);
   const provider = resolved.provider as KeyProvider;
 
+  let source: "byok" | "platform" = "byok";
   let apiKey = await getUserKey(userId, provider);
   if (!apiKey) {
     apiKey = PLATFORM_KEYS[resolved.provider] ?? null;
+    source = "platform";
   }
 
   if (!apiKey) {
@@ -39,5 +41,5 @@ export async function getBuilderApiKey(
     };
   }
 
-  return { ok: true, apiKey, resolved };
+  return { ok: true, apiKey, resolved, source };
 }

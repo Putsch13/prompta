@@ -100,7 +100,7 @@ export function ResourceSelect({
   if (needsConnection || needsReconnect) {
     return (
       <div className="space-y-1">
-        {reconnectMessage && <p className="text-[10px] text-amber-700">{reconnectMessage}</p>}
+        {reconnectMessage && <p className="text-[10px] text-warning">{reconnectMessage}</p>}
         <div className="flex items-center gap-3">
           {/* Nouvel onglet : on ne perd pas la progression du builder / du run. */}
           <a

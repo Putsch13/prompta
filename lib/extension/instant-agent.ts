@@ -261,6 +261,7 @@ A) Si l'ordre est exécutable (avec au besoin une hypothèse raisonnable) → le
 B) Si une info CRITIQUE manque pour une VRAIE mission (quel fichier/ressource précise, quel format de livrable, quel destinataire, quel périmètre) OU si l'ordre est si ambigu que plusieurs interprétations très différentes sont possibles → demande des précisions AU LIEU d'un plan :
 { "clarify": ["question courte 1", "question courte 2"] }  (1 à 3 questions max, courtes, concrètes)
 N'utilise "clarify" QUE si c'est vraiment bloquant. JAMAIS pour une question simple/conversationnelle. Si une hypothèse raisonnable existe (destinataire = l'utilisateur, format = Doc, etc.), PRENDS-LA et produis le plan plutôt que de demander.
+CAS OBLIGATOIRES de clarify : l'ordre référence une SOURCE DE DONNÉES (« la bdd », « mon CRM », « le fichier », « la liste ») qui n'est NI visible dans le contexte fourni, NI identifiée par une URL/un nom précis, ET que plusieurs ressources pourraient correspondre → demande LAQUELLE (ex. « Quelle bdd exactement : un Google Sheet, un Airtable, une page Notion ? Donne son nom ou son lien »). Ne planifie JAMAIS une lecture de ressource que tu ne sais pas identifier.
 
 TYPES D'ÉTAPES DISPONIBLES (format RUNTIME strict) :
 - {"type":"llm","model":"MODEL_ID","prompt":"…{{variable}}…","outputKey":"cle"}
@@ -304,7 +305,7 @@ export async function buildInstantAgent(params: {
     `ORDRE DE L'UTILISATEUR : ${goal}`,
     "",
     `Email de l'utilisateur (rapports/livrables) : ${userEmail}`,
-    `Connecteurs utilisables : ${[...usableConnectors].join(", ") || "aucun"}`,
+    `Connecteurs DÉJÀ CONNECTÉS : ${[...usableConnectors].join(", ") || "aucun"}. Si l'ordre vise une app précise NON connectée (ex. HubSpot, Notion…), planifie QUAND MÊME avec ce connecteur : le système proposera la connexion à l'utilisateur puis relancera la mission. NE contourne JAMAIS une app manquante par une étape llm qui ferait semblant, et ne substitue pas une autre app.`,
     "",
     buildPageContextBlock(page),
   ].join("\n");
@@ -350,6 +351,41 @@ export async function buildInstantAgent(params: {
       m[key] = (m[key] as unknown[])
         .map((x) => (typeof x === "string" ? x : typeof x === "object" && x ? String((x as Record<string, unknown>).key ?? (x as Record<string, unknown>).name ?? "") : ""))
         .filter((x) => typeof x === "string" && x.length > 0);
+    }
+  }
+
+  // Idem pour `inputs` : le LLM émet parfois ["nom_du_champ"] au lieu
+  // d'objets {key,label} — on coerce plutôt que de jeter tout le plan.
+  if (Array.isArray(m.inputs)) {
+    m.inputs = (m.inputs as unknown[])
+      .map((x) => {
+        if (typeof x === "string" && x.trim()) {
+          const key = x.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60);
+          return key ? { key, label: x.trim().slice(0, 120) } : null;
+        }
+        if (x && typeof x === "object") {
+          const o = x as Record<string, unknown>;
+          const key = typeof o.key === "string" && o.key ? o.key : typeof o.name === "string" ? o.name : "";
+          if (!key) return null;
+          return { ...o, key, label: typeof o.label === "string" && o.label ? o.label : key };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  // Et pour les params d'étapes : nombres/booléens → chaînes (le schéma exige
+  // record<string,string> ; « rows: 5 » ne doit pas invalider le plan).
+  if (Array.isArray(m.steps)) {
+    for (const step of m.steps as Record<string, unknown>[]) {
+      if (step && typeof step === "object" && step.params && typeof step.params === "object") {
+        const params = step.params as Record<string, unknown>;
+        for (const [k, v] of Object.entries(params)) {
+          if (typeof v === "number" || typeof v === "boolean") params[k] = String(v);
+          else if (v == null) delete params[k];
+          else if (typeof v === "object") params[k] = JSON.stringify(v);
+        }
+      }
     }
   }
 

@@ -34,13 +34,13 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "text-amber-600",
-  queued: "text-amber-600",
-  running: "text-blue-600",
-  awaiting_approval: "text-purple-600",
-  completed: "text-green-600",
-  failed: "text-red-600",
-  suspended: "text-orange-600",
+  pending: "text-warning",
+  queued: "text-warning",
+  running: "text-accent",
+  awaiting_approval: "text-violet-300",
+  completed: "text-success",
+  failed: "text-destructive",
+  suspended: "text-warning",
   cancelled: "text-ink-faint",
 };
 
@@ -280,7 +280,7 @@ function RunsHistoryContent() {
                 type="button"
                 onClick={() => setFilter(f.id)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                  filter === f.id ? "bg-accent text-white" : "bg-card2 text-ink-soft"
+                  filter === f.id ? "bg-accent text-accent-ink" : "bg-card2 text-ink-soft"
                 }`}
               >
                 {f.label}
@@ -325,7 +325,7 @@ function RunsHistoryContent() {
                   {run.status === "awaiting_approval" && (
                     <button
                       onClick={() => setExpanded(run.id)}
-                      className="flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-400"
+                      className="flex items-center gap-1 rounded-lg bg-warning px-3 py-1.5 text-xs font-semibold text-accent-ink hover:bg-warning/90"
                     >
                       <MessageSquareReply className="h-3 w-3" /> Répondre
                     </button>

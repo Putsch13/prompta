@@ -30,9 +30,9 @@ export function WalletBalanceBadge() {
 
   return (
     <Link
-      href="/wallet"
-      className="hidden items-center gap-1.5 rounded-full border border-line bg-card2 px-3 py-1.5 text-xs font-medium text-ink-soft hover:text-ink sm:flex"
-      title="Mon wallet"
+      href="/dashboard/credits"
+      className="hidden items-center gap-1.5 rounded-full border border-line bg-card2 px-3 py-1.5 font-mono text-xs font-medium text-ink-soft transition-colors hover:border-accent/40 hover:text-ink sm:flex"
+      title="Mes crédits IA"
     >
       <Coins className="h-3.5 w-3.5 text-accent" />
       {eur} €

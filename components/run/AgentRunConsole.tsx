@@ -88,31 +88,31 @@ function statusBadge(status: string) {
   switch (status) {
     case "success":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+        <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
           <Check className="h-3 w-3" /> OK
         </span>
       );
     case "failed":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+        <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive">
           <X className="h-3 w-3" /> Erreur
         </span>
       );
     case "running":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+        <span className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
           <Loader2 className="h-3 w-3 animate-spin" /> En cours
         </span>
       );
     case "skipped":
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+        <span className="inline-flex items-center gap-1 rounded-full border border-line bg-card2 px-2 py-0.5 text-[10px] font-semibold text-ink-faint">
           <SkipForward className="h-3 w-3" /> Ignoré
         </span>
       );
     default:
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+        <span className="inline-flex items-center gap-1 rounded-full border border-line bg-card2 px-2 py-0.5 text-[10px] font-semibold text-ink-faint">
           <Clock className="h-3 w-3" /> Attente
         </span>
       );
@@ -550,14 +550,14 @@ export function AgentRunConsole({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-gradient-to-b from-card to-card2 shadow-sm">
-      <div className="border-b border-line bg-[#0f1419] px-4 py-4 text-white sm:px-5">
+      <div className="border-b border-line bg-card2 px-4 py-4 text-ink sm:px-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-sky-400" />
+              <Sparkles className="h-4 w-4 text-accent" />
               <p className="text-sm font-semibold">{title}</p>
             </div>
-            <p className="mt-1 text-xs text-white/70">
+            <p className="mt-1 text-xs text-ink-soft">
               {statusLabel}
               {progressTotal > 0 && (
                 <span>
@@ -566,19 +566,19 @@ export function AgentRunConsole({
                 </span>
               )}
               {elapsed > 0 && (
-                <span className="ml-2 inline-flex items-center gap-1">
+                <span className="ml-2 inline-flex items-center gap-1 font-mono">
                   <Timer className="inline h-3 w-3" />
                   {formatElapsed(elapsed)}
                 </span>
               )}
             </p>
             {currentStep && isActive && (
-              <p className="mt-1 text-xs text-sky-300">
+              <p className="mt-1 text-xs text-accent">
                 En cours : {currentStep.label}
               </p>
             )}
             {heartbeatAt && isActive && (
-              <p className="mt-0.5 text-[10px] text-white/40">
+              <p className="mt-0.5 font-mono text-[10px] text-ink-faint">
                 Dernier signal : {new Date(heartbeatAt).toLocaleTimeString("fr-FR")}
               </p>
             )}
@@ -586,8 +586,8 @@ export function AgentRunConsole({
           <div className="flex items-center gap-2">
             {isActive && (
               <span className="relative flex h-3 w-3">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-60" />
-                <span className="relative inline-flex h-3 w-3 rounded-full bg-sky-400" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-accent shadow-glow-sm" />
               </span>
             )}
             {isActive && runId && (
@@ -595,7 +595,7 @@ export function AgentRunConsole({
                 type="button"
                 onClick={cancelRun}
                 disabled={cancelling}
-                className="flex items-center gap-1.5 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-200 hover:bg-red-500/30 disabled:opacity-60"
+                className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 disabled:opacity-60"
               >
                 {cancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
                 {cancelling ? "Arrêt en cours…" : "Arrêter"}
@@ -606,9 +606,9 @@ export function AgentRunConsole({
                 type="button"
                 onClick={copyReport}
                 title="Copier le rapport (JSON des étapes)"
-                className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20"
+                className="flex items-center gap-1.5 rounded-lg border border-line bg-card px-3 py-1.5 text-xs font-medium text-ink hover:border-accent/40 hover:bg-card2"
               >
-                {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
+                {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
                 {copied ? "Copié" : "Rapport"}
               </button>
             )}
@@ -616,23 +616,23 @@ export function AgentRunConsole({
               <button
                 type="button"
                 onClick={onRetry}
-                className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20"
+                className="flex items-center gap-1.5 rounded-lg border border-line bg-card px-3 py-1.5 text-xs font-medium text-ink hover:border-accent/40 hover:bg-card2"
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Relancer
               </button>
             )}
           </div>
         </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-line/60">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-sky-400 to-emerald-400 transition-all duration-500 ease-out"
+            className="h-full rounded-full bg-gradient-to-r from-accent to-success shadow-glow-sm transition-all duration-500 ease-out"
             style={{ width: `${isActive && progressPct < 5 ? 5 : progressPct}%` }}
           />
         </div>
       </div>
 
       {errorMessage && runStatus === "failed" && (
-        <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:px-5">
+        <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:px-5">
           <p className="font-medium">Erreur</p>
           <p className="mt-0.5 text-xs leading-relaxed">{errorMessage}</p>
         </div>
@@ -671,11 +671,11 @@ export function AgentRunConsole({
                   <div
                     className={`relative z-10 flex shrink-0 items-center justify-center rounded-full border ${step.sub ? "h-7 w-7" : "h-8 w-8"} ${
                       step.status === "success"
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        ? "border-success/40 bg-success/10 text-success"
                         : step.status === "failed"
-                          ? "border-red-200 bg-red-50 text-red-700"
+                          ? "border-destructive/40 bg-destructive/10 text-destructive"
                           : step.status === "running"
-                            ? "border-blue-200 bg-blue-50 text-blue-700"
+                            ? "border-accent/40 bg-accent/10 text-accent shadow-glow-sm"
                             : "border-line bg-card text-ink-soft"
                     }`}
                   >
@@ -698,7 +698,7 @@ export function AgentRunConsole({
                             {step.displayNo ?? step.index + 1}. {step.label}
                           </span>
                           {step.sub && (
-                            <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                            <span className="rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
                               Branche {step.sub.branch + 1}
                             </span>
                           )}
@@ -706,27 +706,27 @@ export function AgentRunConsole({
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1.5">
                           {step.type !== "pending" && (
-                            <span className="rounded bg-line/70 px-1.5 py-0.5 text-[10px] uppercase text-ink-faint">
+                            <span className="rounded bg-line/70 px-1.5 py-0.5 font-mono text-[10px] uppercase text-ink-faint">
                               {step.type}
                             </span>
                           )}
                           {step.model && (
-                            <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">
+                            <span className="rounded bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] text-accent">
                               {step.model}
                             </span>
                           )}
                           {step.actionSlug && (
-                            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
+                            <span className="rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] text-accent">
                               {step.actionSlug}
                             </span>
                           )}
                           {step.simulated && (
-                            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                            <span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
                               Aperçu — rien n&apos;a été envoyé
                             </span>
                           )}
                           {step.durationMs != null && (
-                            <span className="text-[10px] text-ink-faint">{step.durationMs} ms</span>
+                            <span className="font-mono text-[10px] text-ink-faint">{step.durationMs} ms</span>
                           )}
                         </div>
                         {step.error && (
@@ -741,7 +741,7 @@ export function AgentRunConsole({
                     </button>
 
                     {isOpen && (step.input || step.output) && (
-                      <div className="mt-3 space-y-2 rounded-xl border border-line bg-card p-3">
+                      <div className="mt-3 space-y-2 rounded-xl border border-line bg-card2 p-3">
                         <button
                           type="button"
                           onClick={() => {
@@ -749,13 +749,13 @@ export function AgentRunConsole({
                               .writeText(JSON.stringify({ step: step.label, input: step.input, output: step.output, error: step.error }, null, 2))
                               .catch(() => undefined);
                           }}
-                          className="inline-flex items-center gap-1 rounded border border-line px-2 py-0.5 text-[10px] text-ink-faint hover:bg-card2"
+                          className="inline-flex items-center gap-1 rounded border border-line px-2 py-0.5 text-[10px] text-ink-faint hover:border-accent/40 hover:text-ink-soft"
                         >
                           <ClipboardCopy className="h-3 w-3" /> Copier cette étape
                         </button>
                         {step.input && (
                           <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wide text-ink-faint">
+                            <p className="hud-label !text-[10px] !text-ink-faint">
                               Entrée
                             </p>
                             <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-ink-soft">
@@ -765,7 +765,7 @@ export function AgentRunConsole({
                         )}
                         {step.output && (
                           <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wide text-ink-faint">
+                            <p className="hud-label !text-[10px] !text-ink-faint">
                               Sortie
                             </p>
                             <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-ink">
@@ -784,15 +784,15 @@ export function AgentRunConsole({
       </div>
 
       {runStatus === "awaiting_approval" && approval && (
-        <div className="border-t border-amber-300/50 bg-amber-50 p-4 sm:p-5">
+        <div className="border-t border-warning/30 bg-warning/10 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium text-amber-900">
+            <p className="text-sm font-medium text-warning">
               ⏸️ L&apos;agent attend votre validation pour continuer.
             </p>
             <button
               type="button"
               onClick={() => setModalDismissed(false)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-400"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-warning px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-warning/90"
             >
               Répondre
             </button>

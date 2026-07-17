@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { grantWelcomeCredits } from "@/lib/billing/entitlements";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,10 @@ export async function GET(request: Request) {
       } = await supabase.auth.getUser();
 
       if (user) {
+        // 2 € de bienvenue dès la première connexion (idempotent) — sans
+        // attendre la première visite du dashboard, promesse de la landing.
+        await grantWelcomeCredits(user.id);
+
         const { data: profile } = await supabase
           .from("profiles")
           .select("username")
