@@ -112,6 +112,45 @@ body {
     border-top: none;
   }
 
+  /* Révélation au scroll (composant Reveal) — état final direct si motion réduit. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(26px);
+    transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+  }
+  .reveal.is-revealed {
+    opacity: 1;
+    transform: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+
+  /* Cascade interne d'un bloc révélé : chaque .stagger suit avec son délai. */
+  .reveal .stagger {
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal.is-revealed .stagger {
+    opacity: 1;
+    transform: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal .stagger { opacity: 1; transform: none; transition: none; }
+  }
+
+  /* Vignette cinéma : assombrit doucement les bords du hero. */
+  .hud-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(2, 4, 8, 0.55) 100%),
+      linear-gradient(to bottom, rgba(2, 4, 8, 0.35), transparent 18%, transparent 82%, rgba(5, 7, 13, 1) 100%);
+  }
+
   /* Ligne de balayage verticale (hero, panneaux « live »). */
   .hud-scanline {
     position: absolute;

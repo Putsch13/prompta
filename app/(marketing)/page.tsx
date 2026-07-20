@@ -15,6 +15,8 @@ import {
 import Link from "next/link";
 import { PLANS } from "@/lib/billing/plans";
 import { Logo } from "@/components/Logo";
+import { AiCoreScene } from "@/components/marketing/AiCoreScene";
+import { Reveal } from "@/components/marketing/Reveal";
 
 export const revalidate = 900;
 
@@ -53,33 +55,6 @@ const DEMO_STEPS = [
   { label: "Récap envoyé par email", state: "pending" },
 ];
 
-/** Anneaux concentriques animés du hero — signature visuelle « AI Core ». */
-function AiCoreRings() {
-  return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="relative h-[540px] w-[540px] max-w-[92vw]">
-        {/* Halo central */}
-        <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.10),transparent_62%)]" />
-        {/* Anneau 1 — plein, fin */}
-        <div className="absolute inset-[8%] rounded-full border border-accent/15" />
-        {/* Anneau 2 — pointillé, rotation lente */}
-        <div className="absolute inset-[16%] animate-ring-spin-slow rounded-full border border-dashed border-accent/25" />
-        {/* Anneau 3 — arc lumineux, rotation inverse */}
-        <div
-          className="absolute inset-[26%] animate-ring-spin-rev rounded-full"
-          style={{
-            background:
-              "conic-gradient(from 0deg, rgba(56,189,248,0.5), transparent 70deg, transparent 300deg, rgba(56,189,248,0.5))",
-            WebkitMask: "radial-gradient(circle, transparent 66%, black 67%, black 69%, transparent 70%)",
-            mask: "radial-gradient(circle, transparent 66%, black 67%, black 69%, transparent 70%)",
-          }}
-        />
-        {/* Anneau 4 — graduations */}
-        <div className="absolute inset-[36%] animate-ring-spin rounded-full border border-accent/20 [border-style:dotted]" />
-      </div>
-    </div>
-  );
-}
 
 export default async function HomePage() {
   // Logos officiels des apps phares (catalogue Composio, cache serveur 15 min).
@@ -101,23 +76,24 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      {/* ── HERO ────────────────────────────────────────────────────────── */}
-      <section className="bg-hud-grid relative overflow-hidden">
-        <div aria-hidden className="bg-hud-halo pointer-events-none absolute inset-x-0 -top-10 h-[520px]" />
-        <AiCoreRings />
+      {/* ── HERO cinématique : cœur de particules 3D en fond ────────────── */}
+      <section className="relative flex min-h-[92vh] flex-col justify-center overflow-hidden">
+        <div aria-hidden className="bg-hud-grid absolute inset-0 opacity-60" />
+        <AiCoreScene />
+        <div aria-hidden className="hud-vignette" />
         <div aria-hidden className="hud-scanline animate-scan top-0" />
-        <div className="relative mx-auto max-w-page px-4 pb-16 pt-20 sm:px-6 sm:pt-28 lg:px-8">
+        <div className="relative mx-auto w-full max-w-page px-4 pb-16 pt-20 sm:px-6 sm:pt-24 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <p className="hud-label animate-fade-up mx-auto inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent-light/60 px-4 py-1.5 backdrop-blur-sm">
               <span className="h-1.5 w-1.5 animate-blink rounded-full bg-accent" />
               Prompta partout — l&apos;assistant dans ton navigateur
             </p>
             <h1
-              className="animate-fade-up mt-6 font-display text-4xl font-bold tracking-tight text-ink sm:text-6xl"
-              style={{ animationDelay: "0.08s" }}
+              className="animate-fade-up mt-7 font-display text-[2.6rem] font-bold leading-[1.06] tracking-tight text-ink sm:text-7xl"
+              style={{ animationDelay: "0.08s", textShadow: "0 2px 40px rgba(2,6,12,0.9)" }}
             >
               <span className="block">L&apos;IA qui voit ton écran</span>
-              <span className="bg-gradient-to-r from-accent via-[#7DD3FC] to-accent bg-clip-text text-transparent [filter:drop-shadow(0_0_18px_rgba(56,189,248,0.35))]">
+              <span className="bg-gradient-to-r from-accent via-[#BAE6FD] to-accent bg-clip-text text-transparent [filter:drop-shadow(0_0_24px_rgba(56,189,248,0.45))]">
                 et fait le travail.
               </span>
             </h1>
@@ -155,53 +131,63 @@ export default async function HomePage() {
             </p>
           </div>
 
-          {/* ── Panneau extension (mock produit) ── */}
-          <div
-            className="hud-corners animate-fade-up mx-auto mt-16 max-w-2xl overflow-hidden rounded-2xl border border-accent/20 bg-card/90 shadow-glow-lg backdrop-blur-md"
-            style={{ animationDelay: "0.32s" }}
-          >
-            <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
-              <Logo size={22} animate={false} />
-              <span className="font-mono text-[11px] tracking-wide text-ink-soft">
-                PROMPTA PARTOUT — SUR TA PAGE, DANS TES ONGLETS
-              </span>
-              <span className="ml-auto flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 font-mono text-[10px] font-bold text-success">
-                <span className="h-1.5 w-1.5 animate-blink rounded-full bg-success" /> LIVE
-              </span>
-            </div>
-            <div className="p-4">
-              <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md border border-accent/30 bg-accent-light px-4 py-2 text-sm text-ink">
-                Compare les 3 devis ouverts dans mes onglets et remplis le formulaire
-                fournisseur avec le meilleur
-              </p>
-              <ul className="mt-4 space-y-1">
-                {DEMO_STEPS.map((s, i) => (
-                  <li key={s.label} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
-                    <span className="w-4 font-mono text-[10px] text-ink-faint">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    {s.state === "done" && <Check className="h-4 w-4 shrink-0 text-success" />}
-                    {s.state === "waiting" && (
-                      <ShieldCheck className="h-4 w-4 shrink-0 animate-pulse text-warning" />
-                    )}
-                    {s.state === "pending" && (
-                      <Loader2 className="h-4 w-4 shrink-0 text-ink-faint" />
-                    )}
-                    <span
-                      className={
-                        s.state === "done"
-                          ? "text-ink-soft"
-                          : s.state === "waiting"
-                            ? "font-medium text-warning"
-                            : "text-ink-faint"
-                      }
+          {/* ── Panneau extension (mock produit) — cascade au scroll ── */}
+          <Reveal className="mx-auto mt-20 max-w-2xl">
+            <div className="hud-corners overflow-hidden rounded-2xl border border-accent/20 bg-card/90 shadow-glow-lg backdrop-blur-md">
+              <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
+                <Logo size={22} animate={false} />
+                <span className="font-mono text-[11px] tracking-wide text-ink-soft">
+                  PROMPTA PARTOUT — SUR TA PAGE, DANS TES ONGLETS
+                </span>
+                <span className="ml-auto flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 font-mono text-[10px] font-bold text-success">
+                  <span className="h-1.5 w-1.5 animate-blink rounded-full bg-success" /> LIVE
+                </span>
+              </div>
+              <div className="p-4">
+                <p className="stagger ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md border border-accent/30 bg-accent-light px-4 py-2 text-sm text-ink">
+                  Compare les 3 devis ouverts dans mes onglets et remplis le formulaire
+                  fournisseur avec le meilleur
+                </p>
+                <ul className="mt-4 space-y-1">
+                  {DEMO_STEPS.map((s, i) => (
+                    <li
+                      key={s.label}
+                      className="stagger flex items-center gap-3 rounded-lg px-3 py-2 text-sm"
+                      style={{ transitionDelay: `${0.25 + i * 0.18}s` }}
                     >
-                      {s.label}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                      <span className="w-4 font-mono text-[10px] text-ink-faint">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      {s.state === "done" && <Check className="h-4 w-4 shrink-0 text-success" />}
+                      {s.state === "waiting" && (
+                        <ShieldCheck className="h-4 w-4 shrink-0 animate-pulse text-warning" />
+                      )}
+                      {s.state === "pending" && (
+                        <Loader2 className="h-4 w-4 shrink-0 text-ink-faint" />
+                      )}
+                      <span
+                        className={
+                          s.state === "done"
+                            ? "text-ink-soft"
+                            : s.state === "waiting"
+                              ? "font-medium text-warning"
+                              : "text-ink-faint"
+                        }
+                      >
+                        {s.label}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
+          </Reveal>
+        </div>
+
+        {/* Indice de scroll */}
+        <div aria-hidden className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2">
+          <div className="flex h-9 w-5 items-start justify-center rounded-full border border-line/80 p-1.5">
+            <span className="h-2 w-[3px] animate-blink rounded-full bg-accent" />
           </div>
         </div>
       </section>
@@ -209,13 +195,13 @@ export default async function HomePage() {
       {/* ── DEUX RÉGIMES ────────────────────────────────────────────────── */}
       <section className="border-t border-line bg-card/40">
         <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
+          <Reveal className="mx-auto max-w-2xl text-center">
             <p className="hud-label">Un cerveau, deux vitesses</p>
             <h2 className="mt-3 font-display text-2xl font-bold text-ink sm:text-3xl">
               Du tac au tac à la mission complète
             </h2>
-          </div>
-          <div className="mx-auto mt-12 grid max-w-4xl gap-6 sm:grid-cols-2">
+          </Reveal>
+          <Reveal className="mx-auto mt-12 grid max-w-4xl gap-6 sm:grid-cols-2" delay={0.12}>
             <div className="hud-card p-7">
               <MessageSquare className="h-9 w-9 text-accent [filter:drop-shadow(0_0_8px_rgba(56,189,248,0.5))]" />
               <h3 className="mt-4 font-display text-lg font-semibold text-ink">
@@ -238,20 +224,20 @@ export default async function HomePage() {
                 exécution live, validations humaines, re-planification si une étape échoue.
               </p>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       {/* ── SUPERPOUVOIRS ───────────────────────────────────────────────── */}
       <section className="border-t border-line">
         <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
+          <Reveal className="mx-auto max-w-2xl text-center">
             <p className="hud-label">Ce qu&apos;aucun chatbot ne fait</p>
             <h2 className="mt-3 font-display text-2xl font-bold text-ink sm:text-3xl">
               Il travaille là où tu travailles
             </h2>
-          </div>
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          </Reveal>
+          <Reveal className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" delay={0.12}>
             {[
               {
                 icon: Eye,
@@ -268,14 +254,18 @@ export default async function HomePage() {
                 title: "Il pilote ton navigateur, sous tes yeux",
                 desc: "Formulaires, clics, navigation : l'agent agit dans ton onglet en copilote visible. Chaque action est annoncée, l'élément visé est surligné, et rien de risqué ne part sans ta confirmation dans la page.",
               },
-            ].map((f) => (
-              <div key={f.title} className="hud-card group p-7 hover:-translate-y-0.5">
+            ].map((f, i) => (
+              <div
+                key={f.title}
+                className="hud-card stagger group p-7 hover:-translate-y-0.5"
+                style={{ transitionDelay: `${i * 0.12}s` }}
+              >
                 <f.icon className="h-9 w-9 text-accent [filter:drop-shadow(0_0_8px_rgba(56,189,248,0.5))]" />
                 <h3 className="mt-4 font-display text-lg font-semibold text-ink">{f.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-ink-soft">{f.desc}</p>
               </div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -322,7 +312,7 @@ export default async function HomePage() {
       <section className="border-t border-line">
         <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
           <div className="grid items-center gap-10 lg:grid-cols-2">
-            <div>
+            <Reveal>
               <p className="hud-label">Contrôle total</p>
               <h2 className="mt-3 font-display text-2xl font-bold text-ink sm:text-3xl">
                 Rien ne part sans ton feu vert
@@ -340,8 +330,8 @@ export default async function HomePage() {
                   </li>
                 ))}
               </ul>
-            </div>
-            <div className="hud-corners rounded-2xl border border-warning/30 bg-warning/5 p-6">
+            </Reveal>
+            <Reveal delay={0.15} className="hud-corners rounded-2xl border border-warning/30 bg-warning/5 p-6">
               <p className="hud-label !text-warning">Confirmation requise</p>
               <p className="mt-2 font-medium text-ink">
                 Prompta veut : envoyer le formulaire fournisseur
@@ -358,7 +348,7 @@ export default async function HomePage() {
                   Refuser
                 </span>
               </div>
-            </div>
+            </Reveal>
           </div>
         </div>
       </section>
@@ -366,7 +356,7 @@ export default async function HomePage() {
       {/* ── CTA FINAL ───────────────────────────────────────────────────── */}
       <section className="bg-hud-grid relative border-t border-line">
         <div aria-hidden className="bg-hud-halo pointer-events-none absolute inset-x-0 top-0 h-full" />
-        <div className="relative mx-auto max-w-page px-4 py-20 text-center sm:px-6 lg:px-8">
+        <Reveal className="relative mx-auto max-w-page px-4 py-20 text-center sm:px-6 lg:px-8">
           <h2 className="font-display text-3xl font-bold text-ink">
             Ton assistant, sur toutes tes pages, dans 2 minutes
           </h2>
@@ -392,7 +382,7 @@ export default async function HomePage() {
             Plans dès {PLANS.free.priceCents === 0 ? "0 €" : `${PLANS.free.priceCents / 100} €`}
             {" · "}BYOK = exécutions illimitées
           </p>
-        </div>
+        </Reveal>
       </section>
     </div>
   );
