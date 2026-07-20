@@ -17,6 +17,35 @@ import { PLANS } from "@/lib/billing/plans";
 import { Logo } from "@/components/Logo";
 import { AiCoreScene } from "@/components/marketing/AiCoreScene";
 import { Reveal } from "@/components/marketing/Reveal";
+import { USE_CASES_SEO } from "@/lib/marketing/use-cases-seo";
+
+/** FAQ de la landing — contenu indexable + FAQPage en JSON-LD. */
+const LANDING_FAQ = [
+  {
+    q: "C'est quoi, Prompta, exactement ?",
+    a: "Un assistant IA installé dans ton navigateur (extension Chrome). Il lit la page que tu regardes et tes onglets ouverts, répond instantanément à tes questions, et exécute des missions complètes sur tes applications — Gmail, Google Sheets, Notion, ton CRM… — avec ta validation sur chaque action sensible.",
+  },
+  {
+    q: "En quoi est-ce différent de ChatGPT ou Gemini ?",
+    a: "Prompta travaille LÀ où tu travailles. Il voit le contenu réel de tes onglets — y compris les pages derrière ton login (CRM, mails, dashboards) — sans copier-coller, et il AGIT : il écrit dans tes apps, remplit des formulaires et pilote ton navigateur sous tes yeux. Un chatbot externe ne voit rien de tout ça.",
+  },
+  {
+    q: "Est-ce que l'IA peut agir sans mon accord ?",
+    a: "Non. Chaque action sensible — envoyer un email, écrire dans le CRM, publier — est bloquée par une validation humaine : tu vois le contenu exact, tu l'édites si besoin, tu autorises ou tu refuses. Le pilotage du navigateur est visible en direct et les actions risquées demandent ta confirmation dans la page. Jamais de mot de passe, jamais de paiement.",
+  },
+  {
+    q: "Combien ça coûte ?",
+    a: "Le compte est gratuit, avec 2 € de crédits IA offerts sans carte bancaire. Ensuite : Starter à 19 €/mois (10 € de crédits inclus), Pro à 49 €/mois (30 € inclus), Scale à 149 €/mois (100 € inclus). Avec tes propres clés API (BYOK), les exécutions sont illimitées et gratuites sur tous les plans.",
+  },
+  {
+    q: "Quelles applications sont compatibles ?",
+    a: "Plus de 1 000 applications connectables en un clic (OAuth) : Gmail, Google Sheets, Drive, Docs, Calendar, Notion, Slack, HubSpot, Trello, Airtable, Shopify, Canva… Et pour la lecture, aucun connecteur n'est nécessaire : Prompta lit tout ce qui s'affiche dans ton navigateur.",
+  },
+  {
+    q: "Mes données sont-elles en sécurité ?",
+    a: "Les contenus de pages ne sont traités qu'à ta demande et ne servent jamais à entraîner des modèles de notre fait. Les jetons OAuth et clés API sont chiffrés. Le contenu des pages est traité comme une donnée non fiable : un texte piégé ne peut pas donner d'ordres à ton agent. Hébergement UE (Render, Supabase), paiements Stripe.",
+  },
+];
 
 export const revalidate = 900;
 
@@ -74,8 +103,39 @@ export default async function HomePage() {
     appLogos = APPS_FALLBACK.map((label) => ({ label }));
   }
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://prompta-sjtf.onrender.com";
+  const jsonLd = [
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      name: "Prompta",
+      operatingSystem: "Chrome, Edge, Brave, Arc, Opera, Firefox",
+      applicationCategory: "BrowserApplication",
+      description:
+        "Assistant IA dans le navigateur : lit tes pages et tes onglets, agit sur 1 000+ applications, pilote ton navigateur — avec validation humaine sur chaque action sensible.",
+      url: appUrl,
+      offers: {
+        "@type": "AggregateOffer",
+        priceCurrency: "EUR",
+        lowPrice: "0",
+        highPrice: (PLANS.scale.priceCents / 100).toFixed(0),
+        offerCount: 4,
+      },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: LANDING_FAQ.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-bg">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       {/* ── HERO cinématique : cœur de particules 3D en fond ────────────── */}
       <section className="relative flex min-h-[92vh] flex-col justify-center overflow-hidden">
         <div aria-hidden className="bg-hud-grid absolute inset-0 opacity-60" />
@@ -350,6 +410,58 @@ export default async function HomePage() {
               </div>
             </Reveal>
           </div>
+        </div>
+      </section>
+
+      {/* ── CAS D'USAGE (maillage SEO interne) ──────────────────────────── */}
+      <section className="border-t border-line bg-card/40">
+        <div className="mx-auto max-w-page px-4 py-20 sm:px-6 lg:px-8">
+          <Reveal className="mx-auto max-w-2xl text-center">
+            <p className="hud-label">Concrètement</p>
+            <h2 className="mt-3 font-display text-2xl font-bold text-ink sm:text-3xl">
+              Ce que les gens en font, tous les jours
+            </h2>
+          </Reveal>
+          <Reveal className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" delay={0.12}>
+            {USE_CASES_SEO.map((u, i) => (
+              <Link
+                key={u.slug}
+                href={`/cas-usage/${u.slug}`}
+                className="hud-card stagger group flex flex-col p-5"
+                style={{ transitionDelay: `${i * 0.08}s` }}
+              >
+                <p className="hud-label !text-ink-faint">{u.kicker}</p>
+                <span className="mt-2 flex-1 text-[15px] font-medium leading-snug text-ink group-hover:text-accent">
+                  {u.h1}
+                </span>
+                <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-accent">
+                  Voir comment <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </Link>
+            ))}
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── FAQ (indexable + JSON-LD) ───────────────────────────────────── */}
+      <section className="border-t border-line">
+        <div className="mx-auto max-w-3xl px-4 py-20 sm:px-6 lg:px-8">
+          <Reveal className="text-center">
+            <p className="hud-label">[ FAQ ]</p>
+            <h2 className="mt-3 font-display text-2xl font-bold text-ink sm:text-3xl">
+              Les questions qu&apos;on nous pose
+            </h2>
+          </Reveal>
+          <Reveal className="mt-10 space-y-3" delay={0.1}>
+            {LANDING_FAQ.map((f) => (
+              <details key={f.q} className="hud-card group p-5 open:shadow-glow-sm">
+                <summary className="cursor-pointer list-none font-medium text-ink marker:content-none">
+                  {f.q}
+                </summary>
+                <p className="mt-3 text-sm leading-relaxed text-ink-soft">{f.a}</p>
+              </details>
+            ))}
+          </Reveal>
         </div>
       </section>
 

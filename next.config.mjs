@@ -21,8 +21,7 @@ const nextConfig = {
       { source: "/explore", destination: "/", permanent: true },
       { source: "/c/:slug*", destination: "/", permanent: true },
       { source: "/u/:username*", destination: "/", permanent: true },
-      { source: "/cas-usage", destination: "/", permanent: true },
-      { source: "/cas-usage/:slug*", destination: "/", permanent: true },
+      // /cas-usage est REVENU comme surface SEO (longue traîne) — ne pas rediriger.
       { source: "/org/:slug*", destination: "/", permanent: true },
       { source: "/listing/:slug*", destination: "/", permanent: true },
       { source: "/dashboard/new", destination: "/dashboard/runs", permanent: true },

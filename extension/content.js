@@ -282,7 +282,8 @@
         <span class="logo">P</span>
         <b>Prompta <span class="sub">· partout</span></b>
         <select data-r="model"><option>…</option></select>
-        <button class="ico" data-r="newconvo" title="Nouvelle conversation">✚</button>\n        <a class="ico" data-r="conns" target="_blank" title="Apps connectées">🔌</a>
+        <button class="ico" data-r="newconvo" title="Nouvelle conversation">✚</button>
+        <a class="ico" data-r="conns" target="_blank" title="Apps connectées">🔌</a>
         <button class="ico" data-r="close" title="Fermer">✕</button>
       </header>
       <div class="feed" data-r="feed"></div>

@@ -10,6 +10,7 @@ import { WalletBalanceBadge } from "@/components/wallet/WalletBalanceBadge";
 
 const NAV = [
   { href: "/prompta-partout", label: "Installer" },
+  { href: "/cas-usage", label: "Cas d'usage" },
   { href: "/pricing", label: "Tarifs" },
   { href: "/aide", label: "Aide" },
   { href: "/dashboard", label: "Dashboard", authOnly: true },
