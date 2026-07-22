@@ -222,6 +222,58 @@ async function main() {
     }
   }
 
+
+  // 16. HYBRIDE naturel : écran (onglet CRM) + Drive (non ouvert) + écriture Sheets
+  {
+    const CRMTAB = tab("https://app.pipedrive.com/pipeline", "Pipeline - Pipedrive", CRM.content);
+    const res = await fetch(`${BASE}/api/extension/execute`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        goal: "prends les deals de mon pipeline affiché, retrouve le fichier 'Objectifs Q3' dans mon Drive, compare les deux et écris le tableau des écarts dans un nouveau Google Sheets",
+        page: { url: CRMTAB.url, title: CRMTAB.title, content: CRMTAB.content, openTabs: [CRMTAB] },
+        modelId: MODEL,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.status === 409) { rec("sources/hybride écran+Drive+Sheets", true, `409 connecteurs (${(body.missingConnectors as string[])?.join(",")}) — plan hybride voulu, OK`); }
+    else if (res.status !== 200 || !body.runId) { rec("sources/hybride écran+Drive+Sheets", false, `status ${res.status} ${JSON.stringify(body).slice(0, 140)}`); }
+    else {
+      const { data: run } = await sb.from("listing_agent_runs").select("inputs").eq("id", String(body.runId)).single();
+      const manifest = JSON.parse(((run?.inputs as Record<string, string>)?.__manifest) ?? "{}");
+      const stepsStr = JSON.stringify(manifest.steps ?? []);
+      const readsScreen = stepsStr.includes("{{tab_") || stepsStr.includes("{{page_active");
+      const usesDrive = /google_?drive\.(search|find|list)/i.test(stepsStr);
+      const noCrmApi = !/pipedrive\.(search|get|list)/i.test(stepsStr);
+      const writesSheets = /google_?sheets\./i.test(stepsStr);
+      rec("sources/hybride écran+Drive+Sheets", readsScreen && usesDrive && noCrmApi && writesSheets,
+        `écran:${readsScreen} drive:${usesDrive} pasApiCrm:${noCrmApi} sheets:${writesSheets}`);
+      await sb.from("listing_agent_runs").update({ status: "cancelled", error_message: "QA plan-check" }).eq("id", String(body.runId));
+    }
+  }
+
+  // 17. API pur : rien d'ouvert qui corresponde → recherche d'app légitime
+  {
+    const res = await fetch(`${BASE}/api/extension/execute`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        goal: "retrouve mes 3 derniers échanges d'emails avec Marie Leroy et fais-moi un résumé de où on en est",
+        page: { url: "https://notion.so/notes", title: "Notes - Notion", content: "Page de notes sans rapport." },
+        modelId: MODEL,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.status === 409) { rec("sources/API légitime (rien d'ouvert)", true, "409 gmail à connecter — recherche API planifiée, OK"); }
+    else if (res.status !== 200 || !body.runId) { rec("sources/API légitime (rien d'ouvert)", false, `status ${res.status} ${JSON.stringify(body).slice(0, 140)}`); }
+    else {
+      const { data: run } = await sb.from("listing_agent_runs").select("inputs").eq("id", String(body.runId)).single();
+      const manifest = JSON.parse(((run?.inputs as Record<string, string>)?.__manifest) ?? "{}");
+      const stepsStr = JSON.stringify(manifest.steps ?? []);
+      const usesGmailSearch = /gmail\.(search|fetch|list|get)/i.test(stepsStr);
+      rec("sources/API légitime (rien d'ouvert)", usesGmailSearch, `gmailApi:${usesGmailSearch} steps:${(manifest.steps ?? []).map((st: Record<string, unknown>) => st.type + (st.action ? ":" + st.action : "")).join(", ").slice(0, 120)}`);
+      await sb.from("listing_agent_runs").update({ status: "cancelled", error_message: "QA plan-check" }).eq("id", String(body.runId));
+    }
+  }
+
   console.log("\n=== BILAN OMNISCIENCE ===");
   for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}`);
   const fails = results.filter(r => !r.ok);
