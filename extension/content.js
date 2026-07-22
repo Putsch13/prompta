@@ -259,6 +259,22 @@
       .composer { border-top:1px solid rgba(56,189,248,.12); padding:10px 13px 14px; flex-shrink:0; }
       .cbox { display:flex; align-items:flex-end; gap:8px; background:rgba(14,21,36,.9); border:1px solid rgba(56,189,248,.18); border-radius:15px; padding:8px; transition:border-color .15s, box-shadow .15s; }
       .cbox:focus-within { border-color:#38BDF8; box-shadow:0 0 0 3px rgba(56,189,248,.12); }
+      .newc { width:32px; height:32px; flex-shrink:0; border-radius:10px; border:1px solid rgba(56,189,248,.3); background:transparent; color:#8FA1BC; font-size:15px; cursor:pointer; transition:all .15s; align-self:flex-end; }
+      .newc:hover { color:#38BDF8; border-color:#38BDF8; box-shadow:0 0 10px rgba(56,189,248,.25); }
+      .histov { display:none; position:absolute; inset:57px 0 0 0; z-index:5; background:rgba(6,9,16,.98); flex-direction:column; }
+      .histov.open { display:flex; }
+      .histhead { display:flex; gap:8px; padding:10px 13px; border-bottom:1px solid rgba(56,189,248,.12); }
+      .histhead input { flex:1; background:rgba(14,21,36,.9); border:1px solid rgba(56,189,248,.18); border-radius:10px; color:#E4EDF9; font-size:12.5px; padding:7px 11px; outline:none; }
+      .histhead input:focus { border-color:#38BDF8; }
+      .histlist { flex:1; overflow-y:auto; padding:8px 10px 16px; }
+      .histitem { padding:10px 11px; border:1px solid transparent; border-radius:11px; cursor:pointer; transition:background .12s, border-color .12s; }
+      .histitem:hover { background:rgba(14,21,36,.85); border-color:rgba(56,189,248,.22); }
+      .histitem .ht { font-size:12.5px; color:#E4EDF9; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+      .histitem .hm { display:flex; align-items:center; gap:7px; margin-top:4px; font-size:10.5px; color:#5B6B85; }
+      .histitem .ha { display:none; gap:8px; margin-top:7px; }
+      .histitem:hover .ha { display:flex; }
+      .histitem .ha button, .histitem .ha a { font-size:11px; padding:4px 10px; border-radius:8px; border:1px solid rgba(56,189,248,.28); background:transparent; color:#38BDF8; cursor:pointer; text-decoration:none; }
+      .histempty { text-align:center; color:#5B6B85; font-size:12px; padding:28px 12px; }
       textarea { flex:1; border:none; background:none; color:#E4EDF9; font-size:13px; resize:none; outline:none; max-height:110px; min-height:20px; line-height:1.45; }
       textarea::placeholder { color:#5B6B85; }
       .snd { width:34px; height:34px; border-radius:11px; background:linear-gradient(135deg,#38BDF8,#1E7FC2); color:#fff; border:none; font-size:15px; cursor:pointer; flex-shrink:0; transition:transform .12s, opacity .15s; box-shadow:0 3px 10px rgba(56,189,248,.35); }
@@ -284,10 +300,17 @@
         <span class="logo">P</span>
         <b>Prompta <span class="sub">· partout</span></b>
         <select data-r="model"><option>…</option></select>
-        <button class="ico" data-r="newconvo" title="Nouvelle conversation">✚</button>
+        <button class="ico" data-r="histbtn" title="Conversations précédentes">🕘</button>
         <a class="ico" data-r="conns" target="_blank" title="Apps connectées">🔌</a>
         <button class="ico" data-r="close" title="Fermer">✕</button>
       </header>
+      <div class="histov" data-r="histov">
+        <div class="histhead">
+          <input data-r="histsearch" type="text" placeholder="Rechercher une conversation…">
+          <button class="ico" data-r="histclose" title="Fermer l'historique">✕</button>
+        </div>
+        <div class="histlist" data-r="histlist"></div>
+      </div>
       <div class="upbar" data-r="upbar"></div>
       <div class="feed" data-r="feed"></div>
       <div class="ctx">
@@ -305,6 +328,7 @@
       </div>
       <div class="composer">
         <div class="cbox">
+          <button class="newc" data-r="newconvo" title="Nouvelle conversation">✚</button>
           <textarea data-r="goal" rows="1" placeholder="Demande simple ou grosse mission…  (Entrée)"></textarea>
           <button class="snd" data-r="send">↑</button>
         </div>
@@ -424,8 +448,8 @@
     // « Réutiliser comme agent » : missions multi-étapes terminées.
     const multiStep = (it.stepsCompleted ?? 0) > 1 || (it.planned?.length ?? 0) > 1;
     const saveBtn = isMission && hasRun && it.status === "completed" && multiStep && !it.savedAgent
-      ? `<button class="mact" data-save="${esc(it.runId)}">💾 garder comme agent</button>` : "";
-    const savedNote = it.savedAgent ? `<a href="${esc(it.savedAgent)}" target="_blank" rel="noopener">agent enregistré ↗</a>` : "";
+      ? `<button class="mact" data-save="${esc(it.runId)}" style="border-color:#38BDF8;background:rgba(56,189,248,.12);color:#38BDF8;font-weight:600">💾 Garder cet agent</button>` : "";
+    const savedNote = it.savedAgent ? `<a href="${esc(it.savedAgent)}" target="_blank" rel="noopener" style="color:#34D399;font-weight:600">✓ agent gardé — dashboard ↗</a>` : "";
     const connectLink = it.status === "failed" && it.needsConnect ? ` <a href="${baseUrl}/dashboard/connexions" target="_blank" rel="noopener">connecter ↗</a>` : "";
     const err = it.status === "failed" && it.error ? `<div class="err">${esc(it.error).slice(0, 220)}${connectLink}</div>` : "";
     const pulse = live && !["completed", "failed", "awaiting_approval"].includes(it.status) ? " pulse" : "";
@@ -744,6 +768,50 @@
     }
   }
   $("close").addEventListener("click", () => toggle(false));
+  // 🕘 Conversations précédentes : overlay type Claude/GPT — recherche, reprise.
+  const fmtDate = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso); const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    return sameDay ? d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  };
+  function renderHist(filter) {
+    const list = $("histlist");
+    const q = (filter || "").toLowerCase();
+    const items = history.filter((h) => !q || (h.title || h.goal || "").toLowerCase().includes(q) || (h.answer || "").toLowerCase().includes(q));
+    if (!items.length) { list.innerHTML = `<div class="histempty">${q ? "Aucune conversation ne correspond." : "Aucune conversation pour l'instant."}</div>`; return; }
+    list.innerHTML = items.map((h, i) => {
+      const dossier = h.runId ? `<a href="${esc(baseUrl)}/dashboard/runs/${esc(h.runId)}" target="_blank" rel="noopener">dossier ↗</a>` : "";
+      return `<div class="histitem" data-hi="${i}">
+        <div class="ht">${esc(h.title || h.goal || "Conversation")}</div>
+        <div class="hm"><span class="dot d-${esc(h.status)}"></span>${esc(statusText(h.status))} · ${esc(fmtDate(h.createdAt))}</div>
+        <div class="ha"><button data-hreuse="${i}">↺ reprendre</button>${dossier}</div>
+      </div>`;
+    }).join("");
+    list.querySelectorAll("[data-hreuse]").forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const h = items[+b.dataset.hreuse];
+      if (!h) return;
+      convoStart = 0; // reprendre = retrouver tout le contexte
+      goalEl.value = h.goal || "";
+      $("histov").classList.remove("open");
+      renderFeed(true); goalEl.focus();
+    }));
+    list.querySelectorAll(".histitem").forEach((el) => el.addEventListener("click", () => {
+      const h = items[+el.dataset.hi];
+      if (h?.runId) window.open(`${baseUrl}/dashboard/runs/${h.runId}`, "_blank");
+    }));
+  }
+  $("histbtn").addEventListener("click", async () => {
+    const ov = $("histov");
+    const opening = !ov.classList.contains("open");
+    ov.classList.toggle("open");
+    if (opening) { await loadHistory(); renderHist($("histsearch").value); $("histsearch").focus(); }
+  });
+  $("histclose").addEventListener("click", () => $("histov").classList.remove("open"));
+  $("histsearch").addEventListener("input", () => renderHist($("histsearch").value));
+  $("histsearch").addEventListener("keydown", (e) => e.stopPropagation());
   // ✚ Nouvelle conversation : frontière nette — le fil repart à zéro et
   // l'historique d'avant n'est plus envoyé au cerveau (fini les fausses suites).
   $("newconvo").addEventListener("click", () => {

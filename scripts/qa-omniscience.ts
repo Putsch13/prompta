@@ -14,6 +14,7 @@ loadEnvFiles();
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const BASE = process.env.QA_BASE_URL ?? "http://localhost:3000";
 const EMAIL = "puccini.f13@gmail.com";
+const MODEL = process.env.QA_MODEL || undefined;
 
 async function mintCookie(): Promise<string> {
   const { data } = await sb.auth.admin.generateLink({ type: "magiclink", email: EMAIL });
@@ -31,7 +32,7 @@ const results: Array<{ name: string; ok: boolean; detail: string }> = [];
 function rec(name: string, ok: boolean, detail: string) { results.push({ name, ok, detail }); console.log(`${ok ? "✅" : "❌"} ${name} — ${detail.slice(0, 150)}`); }
 
 async function instant(goal: string, page: unknown): Promise<{ text: string; mission: boolean; error?: string }> {
-  const res = await fetch(`${BASE}/api/extension/instant`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify({ goal, page }) });
+  const res = await fetch(`${BASE}/api/extension/instant`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify({ goal, page, modelId: MODEL }) });
   if (!res.ok || !res.body) return { text: "", mission: false, error: `HTTP ${res.status} ${(await res.text().catch(()=>"")).slice(0,120)}` };
   const reader = res.body.getReader(); const dec = new TextDecoder();
   let buf = "", text = "", mission = false, error: string | undefined; const deadline = Date.now() + 60_000;
@@ -41,7 +42,7 @@ async function instant(goal: string, page: unknown): Promise<{ text: string; mis
   return { text, mission, error };
 }
 async function execute(goal: string, page: unknown): Promise<{ status: number; body: Record<string, unknown> }> {
-  const res = await fetch(`${BASE}/api/extension/execute`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify({ goal, page }) });
+  const res = await fetch(`${BASE}/api/extension/execute`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify({ goal, page, modelId: MODEL }) });
   return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> };
 }
 async function pollRun(runId: string, timeoutMs = 220_000): Promise<Record<string, unknown>> {
@@ -136,6 +137,7 @@ async function main() {
         goal: "attention ton agent ne m'a pas recensé tous les numéros, hésite pas à cliquer sur afficher le numéro pour les recenser dans l'excel",
         page: { url: SHEETS.url, title: SHEETS.title, content: SHEETS.content, openTabs: [SHEETS, PJ] },
         history: historique,
+        modelId: MODEL,
       }),
     });
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -172,6 +174,7 @@ async function main() {
           { role: "user", content: "Quel est le montant du deal Gamma Inc dans mon CRM ?" },
           { role: "assistant", content: "Le deal Gamma Inc est de 30000€ (étape Découverte)." },
         ],
+        modelId: MODEL,
       }),
     });
     let text = ""; let err;
@@ -186,6 +189,37 @@ async function main() {
     // 30000 / 54500 ≈ 55 %
     const ok = !err && /5[3-8]([.,]\d+)?\s?%/.test(text) && /(54|52)\s?500/.test(text.replace(/ | /g, ' '));
     rec("continuité/instant follow-up", ok, err ?? text.slice(0, 150));
+  }
+
+
+  // 15. OUVERT = ONGLET : « analyse le rapport ouvert dans Claude » ne doit
+  // JAMAIS déclencher une recherche API (gmail.search_messages…) mais lire les tabs
+  {
+    const GMAILTAB = tab("https://mail.google.com/mail/u/0/#inbox/abc", "CAS PRATIQUE Entretien - florent@x.fr - Gmail",
+      "Gmail — message ouvert\nObjet: CAS PRATIQUE Entretien Responsable Commercial\nBonjour, veuillez trouver le cas pratique : équipe inside sales, 6 commerciaux, KPIs R/O et fidélisation, lancement produit SomnoRelax. Diagnostiquez la performance et proposez un plan managérial.");
+    const CLAUDETAB = tab("https://claude.ai/chat/xyz", "Évaluation du rapport - Claude",
+      "Rapport Claude\n## Diagnostic\nCorrélation durée d'appel/fidélisation r=0,82. Amandine -12k€. Jérôme 101,7% R/O. Plan en 13 slides.");
+    const res = await fetch(`${BASE}/api/extension/execute`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        goal: "sur gmail j'ai ouvert un use case, analyse le puis analyse le rapport qui est ouvert dans claude et dis moi si il est pertinent",
+        page: { url: "https://mail.google.com/mail/u/0/#inbox/abc", title: GMAILTAB.title, content: GMAILTAB.content, openTabs: [GMAILTAB, CLAUDETAB] },
+        modelId: MODEL,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.status !== 200 || !body.runId) {
+      rec("ouvert=onglet/gmail+claude", false, `status ${res.status} ${JSON.stringify(body).slice(0, 160)}`);
+    } else {
+      const { data: run } = await sb.from("listing_agent_runs").select("inputs").eq("id", String(body.runId)).single();
+      const manifest = JSON.parse(((run?.inputs as Record<string, string>)?.__manifest) ?? "{}");
+      const steps = (manifest.steps ?? []) as Array<Record<string, unknown>>;
+      const usesApiSearch = steps.some((st) => st.type === "action" && /search|list|get_message|fetch/i.test(String(st.action ?? "")));
+      const readsTabs = JSON.stringify(steps).includes("{{tab_") || JSON.stringify(steps).includes("{{page_active");
+      rec("ouvert=onglet/gmail+claude", !usesApiSearch && readsTabs,
+        `steps: ${steps.map((st) => st.type + (st.action ? ":" + st.action : "")).join(", ")}`);
+      await sb.from("listing_agent_runs").update({ status: "cancelled", error_message: "QA plan-check" }).eq("id", String(body.runId));
+    }
   }
 
   console.log("\n=== BILAN OMNISCIENCE ===");

@@ -10,6 +10,7 @@ loadEnvFiles();
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const BASE = process.env.QA_BASE_URL ?? "http://localhost:3000";
 const EMAIL = "puccini.f13@gmail.com";
+const MODEL = process.env.QA_MODEL || undefined;
 
 async function mintCookie(): Promise<string> {
   const { data } = await sb.auth.admin.generateLink({ type: "magiclink", email: EMAIL });
@@ -39,7 +40,7 @@ async function instant(goal: string, page?: unknown): Promise<{ text: string; mi
   const res = await fetch(`${BASE}/api/extension/instant`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify({ goal, page }),
+    body: JSON.stringify({ goal, page, modelId: MODEL }),
   });
   if (!res.ok || !res.body) {
     const t = await res.text().catch(() => "");
@@ -72,7 +73,7 @@ async function execute(goal: string, page?: unknown): Promise<{ status: number; 
   const res = await fetch(`${BASE}/api/extension/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify({ goal, page }),
+    body: JSON.stringify({ goal, page, modelId: MODEL }),
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { status: res.status, body };
