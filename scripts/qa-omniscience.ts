@@ -345,6 +345,33 @@ async function main() {
     }
   }
 
+
+  // 20. MULTI-MODÈLE par étape : « avec Claude tu analyses, gpt-5.4 tu rédiges »
+  {
+    const T = tab("https://exemple.fr/data", "Données", "Ventes\nProduit | CA\nA | 1000\nB | 2000");
+    const res = await fetch(`${BASE}/api/extension/execute`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        goal: "avec claude analyse les données du tableau affiché, puis avec gpt-5.4 rédige-moi un court résumé commercial de cette analyse",
+        page: { url: T.url, title: T.title, content: T.content, openTabs: [T] },
+        modelId: MODEL,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.status === 200 && body.runId) {
+      const { data: run } = await sb.from("listing_agent_runs").select("inputs").eq("id", String(body.runId)).single();
+      const manifest = JSON.parse(((run?.inputs as Record<string, string>)?.__manifest) ?? "{}");
+      const llmSteps = (manifest.steps ?? []).filter((st: Record<string,unknown>) => st.type === "llm");
+      const models = llmSteps.map((st: Record<string,unknown>) => String(st.model || ""));
+      const hasClaude = models.some((mm: string) => /claude|sonnet|opus|haiku/i.test(mm));
+      const hasGpt = models.some((mm: string) => /gpt/i.test(mm));
+      rec("multi-modèle par étape", hasClaude && hasGpt, `modèles: [${models.join(", ")}]`);
+      await sb.from("listing_agent_runs").update({ status: "cancelled", error_message: "QA plan-check" }).eq("id", String(body.runId));
+    } else {
+      rec("multi-modèle par étape", false, `status ${res.status} ${JSON.stringify(body).slice(0, 120)}`);
+    }
+  }
+
   console.log("\n=== BILAN OMNISCIENCE ===");
   for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}`);
   const fails = results.filter(r => !r.ok);

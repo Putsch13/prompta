@@ -113,6 +113,30 @@ export async function POST(request: NextRequest) {
   const connections = await listUserConnections(user.id);
   const usable = new Set(connections.filter((c) => c.usable).map((c) => c.connectorId));
 
+  // Modèles utilisables (clé BYOK ou plateforme dispo) : permet à l'utilisateur
+  // de piloter le modèle PAR ÉTAPE dans son ordre (« avec Claude tu fais X,
+  // gpt-5.5 tu fais Y »). Le planificateur ne peut assigner que ceux-là.
+  const usableModels = await (async () => {
+    const { AI_MODELS } = await import("@/lib/catalogs");
+    const { getUserKey } = await import("@/lib/keys");
+    const platformKeys: Record<string, boolean> = {
+      openai: !!process.env.PLATFORM_OPENAI_KEY,
+      anthropic: !!(process.env.PLATFORM_ANTHROPIC_KEY ?? process.env.ANTHROPIC_API_KEY),
+      google: !!process.env.PLATFORM_GOOGLE_KEY,
+      mistral: !!process.env.PLATFORM_MISTRAL_KEY,
+    };
+    const byok: Record<string, boolean> = {};
+    for (const p of ["openai", "anthropic", "google", "mistral"] as const) {
+      byok[p] = !!(await getUserKey(user.id, p).catch(() => null));
+    }
+    // Le catalogue nomme les providers en Capitalized (« OpenAI ») — on
+    // normalise en minuscules pour croiser byok/plateforme.
+    return AI_MODELS.filter((m) => {
+      const prov = String(m.provider).toLowerCase();
+      return byok[prov] || platformKeys[prov];
+    }).map((m) => m.id);
+  })();
+
   let built;
   try {
     built = await buildInstantAgent({
@@ -122,6 +146,7 @@ export async function POST(request: NextRequest) {
       apiKey: keyResult.apiKey,
       resolved: keyResult.resolved,
       usableConnectors: usable,
+      usableModels,
       history,
     });
   } catch (err) {

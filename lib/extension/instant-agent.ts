@@ -316,7 +316,11 @@ Réponds UNIQUEMENT avec le JSON : {"manifest":{…}}.`;
  * Normalisation tolérante d'un manifeste émis par un LLM : répare les
  * glissements de forme fréquents plutôt que de jeter tout le plan.
  */
-function normalizeRawManifest(m: Record<string, unknown>, fallbackModel: string): void {
+function normalizeRawManifest(
+  m: Record<string, unknown>,
+  fallbackModel: string,
+  opts?: { perStepModels?: boolean; usableModels?: string[] },
+): void {
   for (const key of ["outputs", "tools", "secrets", "connectors"]) {
     if (Array.isArray(m[key])) {
       m[key] = (m[key] as unknown[])
@@ -374,14 +378,28 @@ function normalizeRawManifest(m: Record<string, unknown>, fallbackModel: string)
         else if (typeof step.tool === "string") step.type = "tool";
         else if (typeof step.goal === "string") step.type = "browser";
       }
-      // Le modèle choisi par l'utilisateur s'applique à TOUTE la mission : on
-      // FORCE (pas juste « si absent ») le modèle sur chaque étape llm/browser,
-      // sinon le planificateur bascule parfois sur un autre modèle sans accord.
-      if (step.type === "llm" || step.type === "browser") step.model = fallbackModel;
-      // aiFills : mêmes remplissages IA, même modèle que la mission.
+      // Modèle des étapes llm/browser :
+      // - multi-modèle demandé → on GARDE le modèle assigné par le planificateur
+      //   s'il est utilisable, sinon repli sur le modèle de la mission ;
+      // - sinon → on FORCE le modèle choisi partout (pas de bascule sauvage).
+      if (step.type === "llm" || step.type === "browser") {
+        if (opts?.perStepModels) {
+          const ok = typeof step.model === "string" && opts.usableModels?.includes(step.model as string);
+          if (!ok) step.model = fallbackModel;
+        } else {
+          step.model = fallbackModel;
+        }
+      }
+      // aiFills : suivent la même règle.
       if (step.aiFills && typeof step.aiFills === "object") {
         for (const fill of Object.values(step.aiFills as Record<string, Record<string, unknown>>)) {
-          if (fill && typeof fill === "object") fill.model = fallbackModel;
+          if (!fill || typeof fill !== "object") continue;
+          if (opts?.perStepModels) {
+            const ok = typeof fill.model === "string" && opts.usableModels?.includes(fill.model as string);
+            if (!ok) fill.model = fallbackModel;
+          } else {
+            fill.model = fallbackModel;
+          }
         }
       }
       if (step.type === "action" && typeof step.connector !== "string" && typeof step.action === "string") {
@@ -418,10 +436,18 @@ export async function buildInstantAgent(params: {
   apiKey: string;
   resolved: ResolvedModel;
   usableConnectors: Set<string>;
+  /** IDs de modèles utilisables (clé dispo) — pour l'assignation par étape. */
+  usableModels?: string[];
   /** Derniers échanges (ordres, réponses, résultats de missions) — plus récent en dernier. */
   history?: ConversationTurn[];
 }): Promise<InstantAgentResult> {
-  const { goal, page, userEmail, apiKey, resolved, usableConnectors, history } = params;
+  const { goal, page, userEmail, apiKey, resolved, usableConnectors, usableModels, history } = params;
+
+  // L'utilisateur nomme-t-il des modèles dans son ordre (« avec claude tu fais…,
+  // gpt-5.5 tu fais… ») ? Si oui, on laisse le planificateur ASSIGNER le modèle
+  // par étape ; sinon on FORCE le modèle choisi partout (pas de bascule).
+  const MODEL_MENTION_RE = /\b(claude|gpt[-\s]?[0-9o]|gemini|mistral|sonnet|opus|haiku|o3\b|o4\b)/i;
+  const perStepModels = MODEL_MENTION_RE.test(goal) && !!(usableModels && usableModels.length);
 
   // Continuité conversationnelle : « tu as oublié les numéros », « corrige »,
   // « continue » doivent être compris comme la SUITE de la mission précédente.
@@ -446,10 +472,16 @@ export async function buildInstantAgent(params: {
     ? `⚠️ CONTRAINTE ABSOLUE — L'utilisateur a EXPLICITEMENT demandé de travailler sur ce qui est OUVERT À L'ÉCRAN. Pour lire/analyser les données, tu DOIS utiliser {{page_active}} et {{tab_N}} (les onglets fournis). INTERDICTION TOTALE de toute action de lecture ou de recherche d'app (gmail.search_messages, google_sheets.get_values, drive.search, hubspot.search…) pour récupérer un contenu déjà à l'écran. Tu peux toujours AGIR/ÉCRIRE dans une app (envoyer, créer) si l'ordre le demande, mais la LECTURE vient de l'écran.`
     : "";
 
+  // Directive multi-modèle : la liste des IDs exacts + consigne d'assignation.
+  const modelDirective = perStepModels
+    ? `MODÈLES PAR ÉTAPE — L'utilisateur a désigné des modèles précis dans son ordre. Assigne le champ "model" de CHAQUE étape llm/browser au modèle demandé, en utilisant EXACTEMENT un de ces IDs disponibles : ${usableModels!.join(", ")}. Mappe les noms courants : « claude » → claude-sonnet-4-6 (ou l'opus/haiku si précisé), « gpt-5.5 » → gpt-5.5, « gpt-5.4 » → gpt-5.4, « gemini » → un gemini-*, « mistral » → un mistral-*. Pour une étape dont le modèle n'est pas précisé, utilise ${resolved.catalogId}. N'invente JAMAIS un ID hors de la liste.`
+    : "";
+
   const userPrompt = [
     `ORDRE DE L'UTILISATEUR : ${goal}`,
     "",
     ...(screenConstraint ? [screenConstraint, ""] : []),
+    ...(modelDirective ? [modelDirective, ""] : []),
     ...historyBlock,
     `Email de l'utilisateur (rapports/livrables) : ${userEmail}`,
     `Connecteurs DÉJÀ CONNECTÉS : ${[...usableConnectors].join(", ") || "aucun"}. Si l'ordre vise une app précise NON connectée (ex. HubSpot, Notion…), planifie QUAND MÊME avec ce connecteur : le système proposera la connexion à l'utilisateur puis relancera la mission. NE contourne JAMAIS une app manquante par une étape llm qui ferait semblant, et ne substitue pas une autre app.`,
@@ -490,7 +522,7 @@ export async function buildInstantAgent(params: {
   }
 
   const m = raw.manifest as Record<string, unknown>;
-  normalizeRawManifest(m, resolved.catalogId);
+  normalizeRawManifest(m, resolved.catalogId, { perStepModels, usableModels });
 
   let parsed = AgentManifestSchema.safeParse(m);
   if (!parsed.success) {
@@ -520,7 +552,7 @@ export async function buildInstantAgent(params: {
       const fixedRaw = parseLlmJson<{ manifest?: unknown }>(fix.content);
       const m2 = (fixedRaw?.manifest ?? fixedRaw) as Record<string, unknown> | null;
       if (m2 && typeof m2 === "object" && Array.isArray((m2 as { steps?: unknown }).steps)) {
-        normalizeRawManifest(m2, resolved.catalogId);
+        normalizeRawManifest(m2, resolved.catalogId, { perStepModels, usableModels });
         parsed = AgentManifestSchema.safeParse(m2);
       }
     } catch {
