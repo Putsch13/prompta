@@ -6,8 +6,10 @@ UN cerveau, DEUX régimes, sur **toutes** vos pages (web, PDF, fichiers locaux) 
   arrive **en streaming**, en moins d'une seconde, directement dans le panneau.
 - **Mission** : dès que l'ordre exige d'agir (apps, livrables, croiser des
   onglets), l'assistant bascule tout seul sur un agent complet — plan, exécution
-  live, **validations humaines**, et **re-planification automatique** si une
-  étape échoue.
+  live, **validations humaines**, **questions en cours de route** (il demande
+  quand il doute, ta réponse alimente la suite), et **re-planification
+  automatique** si une étape échoue. Les corrections conversationnelles
+  (« tu as oublié… ») sont comprises comme la suite de la mission précédente.
 
 Ce que l'extension voit : la page active (même derrière votre login), votre
 sélection, et le **contenu réel de tous les onglets cochés** — capturé par le
@@ -19,8 +21,8 @@ navigateur avec votre session (dashboards, CRM, mails ouverts…).
 |---|---|
 | **Chrome** | Cible officielle |
 | **Edge, Brave, Arc, Opera** | Chromium — même install « charger non empaquetée », en général OK |
-| **Firefox** | Pas supporté tel quel (polyfill `browser.*`, packaging Add-ons) |
-| **Safari** | Pas supporté (conversion Web Extension + compte Apple) |
+| **Firefox** | Bêta — paquet dédié `prompta-firefox.zip` (manifest Gecko), signature AMO requise (`docs/BROWSER-PORTS.md`) |
+| **Safari** | En préparation — conversion prête (`scripts/build-safari.sh`), distribution App Store à venir |
 
 Sans extension : [`/quick`](https://prompta-sjtf.onrender.com/quick) marche partout.
 

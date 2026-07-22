@@ -1,8 +1,10 @@
 # Prompta
 
-**La plateforme pour créer, lancer et débugger tes agents IA — comme Render, mais pour les agents.**
+**L'assistant IA dans ton navigateur : il voit ton écran, agit sur tes apps, et tu valides.**
 
-On construit un agent visuellement, on le connecte à ses outils (Gmail, Google Sheets, Slack, Telegram, Canva…), on le lance pour de vrai et on suit chaque étape dans les logs. Monétisation par **abonnement par agent en production** (les comptes test/QA sont exemptés via `UNRESTRICTED_EMAILS`).
+Prompta vit dans une extension (« Prompta partout ») : un panneau glisse à droite de n'importe quelle page. Il lit ce que tu vois — y compris tes onglets connectés (CRM, mails, dashboards) — répond au tac au tac, et bascule tout seul en **agent complet** pour les vraies missions : plan, exécution sur 1 000+ apps (Composio), pilotage du navigateur sous tes yeux, questions en cours de route, validation humaine sur chaque action sensible.
+
+Monétisation : freemium (2 € de crédits IA offerts) + plans Starter 19 € / Pro 49 € / Scale 149 € (crédits IA inclus, markup ×1,6 sur le coût API) + BYOK gratuit illimité. Source de vérité : `lib/billing/plans.ts`.
 
 ---
 
@@ -10,22 +12,32 @@ On construit un agent visuellement, on le connecte à ses outils (Gmail, Google 
 
 | Couche | Technologie |
 |--------|-------------|
-| Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS |
-| Backend | Routes API Next.js + Supabase (Postgres, Auth, Storage, RLS) |
-| Connecteurs | Composio (défaut) + connecteurs natifs OAuth en secours |
+| Frontend | Next.js 16 (App Router), TypeScript, Tailwind — DA « AI Core » (`docs/DESIGN-SYSTEM.md`) |
+| Extension | Chrome/Chromium MV3 (`extension/`), portage Firefox (`manifest.firefox.json`), Safari préparé (`scripts/build-safari.sh`) |
+| Backend | Routes API Next.js + Supabase (Postgres, Auth, RLS) — déployé sur Render (`render.yaml`) |
+| Connecteurs | Composio (catalogue 1 000+ apps) + registre natif curaté (Gmail, Sheets, Slack…) |
 | LLM | Passerelle multi-fournisseurs (OpenAI, Anthropic, Google, Mistral) — BYOK ou crédits plateforme |
-| Paiements | Stripe (Checkout, Subscriptions, Connect, Tax) |
-| Emails | Resend · Analytics PostHog · Monitoring Sentry |
+| Paiements | Stripe (Checkout, Subscriptions, Tax) |
+| Emails / erreurs | Resend · Sentry · Plausible (optionnel, sans cookie) |
 
 ---
 
-## Concepts clés
+## Comment ça marche (le cerveau)
 
-- **Agent** : un manifeste déclaratif d'étapes (`llm`, `tool`, `connector`, `parallel`, validations humaines). Source de vérité dans `lib/agent/`.
-- **Contrat d'agent** (`lib/agent/contract.ts`) : l'interface de l'agent (entrées, ressources, secrets) **dérivée uniquement de ses étapes**. Plus de listes parallèles à maintenir.
-- **Résolveur** (`lib/agent/resolve-interface.ts`) : décide « qui fournit quoi / quand / avec quel widget » selon la phase (`build`, `sell`, `run`, `preflight`). Consommé par l'orchestrateur, le RunPanel, le NodeInspector et la publication.
-- **Provider-aware** : une connexion peut être **native** (OAuth direct) ou **Composio**. L'exécution et le listing de ressources sont routés en conséquence (`lib/connectors/execute.ts`, `lib/connectors/list-resources.ts`) pour éviter les erreurs 401 et les boucles de reconnexion.
-- **Picker de ressources** (`components/connectors/ResourceSelect.tsx`) : liste automatiquement les ressources d'un compte connecté (feuilles, salons…) avec repli « coller un ID ». Disponible dans le builder et dans le masque de run.
+**Deux régimes, une seule zone de saisie :**
+
+1. **Tac au tac** — `/api/extension/instant` : un appel LLM streamé (SSE). Le modèle répond directement, ou émet la sentinelle `MISSION` → bascule automatique en régime agent. Débité des crédits (clé plateforme) ou gratuit (BYOK).
+2. **Mission** — `/api/extension/execute` : le planificateur (`lib/extension/instant-agent.ts`) transforme l'ordre + le contexte (page active, onglets cochés, **historique de conversation**) en manifeste d'étapes, exécuté par l'orchestrateur (`lib/agent/orchestrator.ts`) via le worker (`worker/run-worker.ts`, filet `/api/cron/tick`).
+
+**Doctrine de choix des sources** (dans le prompt du planificateur) : sous les yeux de l'utilisateur → `{{page_active}}`/`{{tab_N}}` ; dans une app non ouverte → `<app>.search` ; web public → `web_fetch`. L'hybride est le cas normal, l'historique tranche les ambiguïtés, l'écran gagne en cas de doute.
+
+**Types d'étapes** (`lib/agent/schema.ts`) : `llm`, `tool` (web_search/web_fetch…), `action` (Composio/natif), `browser` (pilotage du navigateur, ciblage d'onglet via `tabHint`), `ask` (**question à l'utilisateur en cours de mission** — pause, réponse → `{{outputKey}}`), `approval` (validation humaine), `condition`, `parallel`, `retrieve`, `code`.
+
+**Dialogue complet** : clarification avant plan (`clarify`), question en cours de route (`ask`), corrections après coup (« tu as oublié… » compris comme suite de mission grâce à l'historique envoyé par les 3 fronts).
+
+**Garde-fous** : validation humaine avant toute écriture sensible (in-panel), connecteur manquant → 409 + boutons « Connecter » + **reprise automatique post-OAuth**, contenu de page traité comme donnée non fiable, plans invalides auto-réparés, replan borné après échec, idempotence des actions externes, reaper de runs bloqués.
+
+**Billing étanche** : tout appel LLM sur clé plateforme est débité (markup ×1,6) — tac au tac, planification, replan, aiFills, missions (hold/settle). Plafond mensuel par plan, circuit-breaker plateforme, marges pire cas ≥ 55 % par plan. Cockpit rentabilité : `/admin` (`lib/admin/kpis.ts`).
 
 ---
 
@@ -33,24 +45,44 @@ On construit un agent visuellement, on le connecte à ses outils (Gmail, Google 
 
 ```bash
 npm install
-cp .env.example .env.local   # puis remplir les variables (voir ci-dessous)
+cp .env.example .env.local   # puis remplir (voir ci-dessous)
 npm run dev                  # http://localhost:3000
 ```
 
 Vérifications :
 
 ```bash
-npx tsc --noEmit
-npm run lint
-npm run test:unit
-npm run build
+npx tsc --noEmit && npm run lint && npm run test:unit && npm run build
 ```
+
+QA de bout en bout (endpoints réels, session mintée — nécessite le serveur local lancé) :
+
+```bash
+npx tsx scripts/qa-extension-flows.ts    # 7 flux de base (tac au tac, clarify, 409, agent, validation)
+npx tsx scripts/qa-omniscience.ts        # 18 scénarios multi-onglets, sources, dialogue mi-mission
+# Clé OpenAI à sec ? QA_MODEL=claude-sonnet-4-6 npx tsx scripts/qa-omniscience.ts
+```
+
+### Worker
+
+```bash
+npm run worker   # en prod : Background Worker Render (voir render.yaml)
+```
+
+---
+
+## Extension « Prompta partout »
+
+- Code dans `extension/` : `content.js` (panneau Shadow DOM + pilotage in-page), `bg.js` (service worker : réseau avec session, file de pilotage, check de mise à jour), `popup.*`.
+- **Packaging** : `node scripts/pack-extension.mjs` (lancé au prebuild) → `public/downloads/prompta-everywhere.zip` (Chrome) + `prompta-firefox.zip` (manifest Gecko).
+- **Publication stores** : guides pas-à-pas dans `docs/CHROME-WEB-STORE.md` et `docs/BROWSER-PORTS.md` (Firefox/AMO, Safari/Xcode). Une fois publié, renseigner sur Render `NEXT_PUBLIC_CHROME_STORE_URL` / `NEXT_PUBLIC_FIREFOX_ADDON_URL` : la page `/prompta-partout` bascule seule sur « Ajouter à Chrome/Firefox ».
+- Un ZIP hors store ne s'auto-met pas à jour (règle navigateur) : l'extension compare sa version à `/api/extension/version` et affiche un bandeau « mise à jour disponible ». **Penser à bumper `version` dans LES DEUX manifests à chaque livraison.**
 
 ---
 
 ## Variables d'environnement
 
-Copier `.env.example` → `.env.local` (dev) et renseigner **aussi** en prod (Render).
+Copier `.env.example` → `.env.local` (dev) et renseigner **aussi** sur Render (prod).
 
 ### Obligatoires
 
@@ -58,28 +90,28 @@ Copier `.env.example` → `.env.local` (dev) et renseigner **aussi** en prod (Re
 |----------|-------|
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client + serveur Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Routes API admin/cron (jamais côté client) |
-| `ENCRYPTION_KEY` | Chiffrement des secrets/clés utilisateur (`openssl rand -hex 32`) |
+| `ENCRYPTION_KEY` | Chiffrement des clés/jetons utilisateur (`openssl rand -hex 32`) |
 | `NEXT_PUBLIC_APP_URL` | URLs canoniques, OAuth callbacks, emails |
 
 ### Connecteurs & runtime
 
 | Variable | Usage |
 |----------|-------|
-| `COMPOSIO_API_KEY` | Active Composio comme provider de connecteurs par défaut (recommandé) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth natif Gmail / Google Sheets (secours si pas de Composio) |
+| `COMPOSIO_API_KEY` | Connecteurs Composio (1 000+ apps) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth natif Gmail/Sheets (secours) |
 | `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` | OAuth natif Slack |
-| `PLATFORM_OPENAI_KEY` / `PLATFORM_ANTHROPIC_KEY` / `PLATFORM_GOOGLE_KEY` / `PLATFORM_MISTRAL_KEY` | *(optionnel)* clés plateforme (crédits / quota gratuit) |
-| `PLATFORM_SERPER_KEY` | *(optionnel)* recherche web pour les agents |
-| `UNRESTRICTED_EMAILS` | Comptes test/QA exemptés de crédits & quota (CSV d'emails) |
+| `PLATFORM_OPENAI_KEY` / `PLATFORM_ANTHROPIC_KEY` / `PLATFORM_GOOGLE_KEY` / `PLATFORM_MISTRAL_KEY` | Clés plateforme (mode crédits) |
+| `PLATFORM_SERPER_KEY` | Recherche web des agents |
+| `UNRESTRICTED_EMAILS` | Comptes test/QA exemptés de crédits & quotas (CSV) |
 
-### Paiements & cron
+### Paiements, stores & divers
 
 | Variable | Usage |
 |----------|-------|
-| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Abonnements & paiements |
-| `STRIPE_CONNECT_CLIENT_ID` | Onboarding des créateurs (revenus) |
-| `RESEND_API_KEY` · `SENTRY_DSN` · `NEXT_PUBLIC_POSTHOG_KEY` | Emails · erreurs · analytics |
-| `CRON_SECRET` | Protège les endpoints `/api/cron/*` |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Plans & packs de crédits |
+| `NEXT_PUBLIC_CHROME_STORE_URL` / `NEXT_PUBLIC_FIREFOX_ADDON_URL` | Bascule la page d'install sur les stores |
+| `RESEND_API_KEY` · `SENTRY_DSN` · `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` | Emails · erreurs · audience (sans cookie) |
+| `CRON_SECRET` | Protège `/api/cron/*` |
 
 > **Sécurité :** jamais de préfixe `NEXT_PUBLIC_` sur un secret serveur.
 
@@ -87,9 +119,7 @@ Copier `.env.example` → `.env.local` (dev) et renseigner **aussi** en prod (Re
 
 ## Migrations Supabase
 
-Exécuter **dans l'ordre** via Supabase → SQL Editor (ou `supabase db push`). Le dossier `supabase/migrations/` fait foi (de `0001_init.sql` jusqu'aux migrations connecteurs/contrat, ex. `0040_agent_contract.sql`).
-
-Te passer admin / compte test après migration :
+`supabase/migrations/` fait foi — exécuter dans l'ordre (SQL Editor ou `supabase db push`). Après migration, se passer admin/QA :
 
 ```sql
 update profiles set is_admin = true, unrestricted_usage = true where username = 'TON_USERNAME';
@@ -97,94 +127,40 @@ update profiles set is_admin = true, unrestricted_usage = true where username = 
 
 ---
 
-## Exécution des agents (runtime)
-
-1. **Build** — `/dashboard/new` puis l'éditeur (`components/builder/`). Les entrées requises sont dérivées des étapes (contrat).
-2. **Connexions** — `/dashboard/connexions` : brancher Gmail, Sheets, Slack… Le picker liste ensuite les ressources sans copier d'ID.
-3. **Run** — bouton **Lancer** = exécution réelle (`dryRun: false`, `async: true`). **Aperçu** = exécution à blanc explicite.
-4. **Debug** — `/dashboard/runs` : vue par agent (sélection d'un agent → ses runs, logs par étape et erreurs), erreurs traduites en actions concrètes (`lib/agent/error-map.ts`).
-
-> Éditer un agent depuis la bibliothèque (`/dashboard/contenus`) rouvre son arborescence dédiée ; le manifeste complet est préservé à chaque nouvelle version.
-
-### Dépannage Google (403 « autorisation manquante »)
-
-Un 403 « autorisation manquante » sur Gmail/Sheets/Drive = le jeton de la connexion n'a pas la permission requise. Solution : **Connexions → l'app → « Reconnecter »** (force la ré-autorisation OAuth). ⚠️ Ne JAMAIS forcer de scopes personnalisés sur l'auth « managed » de Composio (`lib/composio/connect.ts`) : leur app OAuth est vérifiée par Google pour un jeu de scopes précis — une demande modifiée fait BLOQUER tout le consentement (« Cette application est bloquée »). La reconnexion forcée réinitialise l'auth config aux défauts managed. Autres causes possibles : la feuille n'est pas partagée avec le compte connecté.
-
-### Worker
-
-Les runs en attente sont traités par :
-
-```bash
-npm run worker
-```
-
-En prod : un **Background Worker** Render avec `npm run worker`. Filet de sécurité : `/api/cron/tick` traite aussi quelques runs pending à chaque invocation.
-
----
-
-## Connecteurs : catalogue dynamique (300+) + registre natif
-
-Deux niveaux complémentaires :
-
-- **Catalogue Composio (300+ apps)** — exposé dynamiquement, **sans code par app**. Le builder d'agent (`NodeInspector`) liste tous les toolkits Composio (`/api/composio/toolkits`) et, à la sélection, toutes leurs actions avec leur schéma d'entrées (`/api/composio/tools?toolkit=…`, `lib/composio/catalog.ts`). Le schéma de l'outil est **snapshoté** sur l'étape (`inputsSchema`, voir `lib/agent/schema.ts`) pour que contrat/résolveur/exécution fonctionnent sur n'importe quel outil (`lib/connectors/action-inputs.ts`). L'exécution route directement les slugs `UPPER_SNAKE` vers Composio (`lib/connectors/execute.ts`).
-- **Registre natif curaté** — pour Gmail/Sheets/Slack… une UX soignée (libellés FR, ressources listables, defaults). Voir **[docs/ADD-CONNECTOR.md](./docs/ADD-CONNECTOR.md)** :
-  1. Déclarer le connecteur et ses actions dans `lib/connectors/registry.ts` (chaque entrée requise a un `kind`, un `help`, un `placeholder` ; pas de valeur magique type `"*"`).
-  2. Déclarer les types de ressources listables dans `lib/connectors/resource-types.ts`.
-  3. Le validateur `lib/connectors/registry-conformance.ts` (testé en CI) refuse toute définition non conforme.
-
-Le registre natif est **prioritaire** sur le catalogue (même `id`) ; toute autre app passe par le catalogue dynamique.
-
-### Picker de ressources universel
-
-Tout paramètre `*_id` d'un toolkit Composio devient une **ressource listable** (type synthétique `composio:<toolkit>:<param>`, `lib/connectors/resource-types.ts`). Au moment du listing, `lib/composio/discover-list-action.ts` inspecte les outils du toolkit et choisit la meilleure action « lister/rechercher » (score sur verbes `LIST/SEARCH/…`, nom de ressource, nombre d'entrées requises), l'exécute, puis parse la sortie via un parseur récursif générique (`parseComposioResourceList`). Aucun candidat crédible → repli sur la saisie manuelle d'ID.
-
-### Wizard co-construit avec l'IA
-
-L'étape « Co-construire » (`components/builder/canvas/GuidedBuilder.tsx`) place l'arborescence en grand puis un **Copilote** qui guide nœud par nœud. La complétude est calculée de façon **déterministe** (`lib/builder/agent-readiness.ts`, sans dépendre du JSON d'un LLM) : par nœud, ce qui manque (connecteur, paramètre requis, prompt, condition). Le copilote propose des **actions fiables** (« Demander à l'abonné », « Générer par IA », « Valeur fixe ») et un **champ libre** qui passe par le moteur d'édition de plan (`/api/builder/edit-plan`). Boutons : mode manuel ↔ guidé, ajouter un nœud, tout compléter par IA, évaluer la progression. Quand tout est prêt → CTA « Lancer le test ».
-
-### Champs en IA (génération automatique)
-
-Sur un paramètre en **champ libre**, le builder propose « Remplir par IA » (`components/builder/canvas/AiFillField.tsx`) : on choisit un modèle et on décrit la valeur attendue (le prompt peut référencer `{{variables}}` et sorties d'étapes). Au run, l'orchestrateur génère la valeur via le modèle (`aiFills` sur l'étape action, `lib/agent/schema.ts` / `lib/agent/orchestrator.ts`). Ces paramètres ne sont **pas** demandés à l'abonné (`lib/agent/contract.ts`).
-
----
-
 ## Structure du repo
 
 ```
+extension/              # Prompta partout (MV3) : content.js, bg.js, popup, manifests Chrome+Firefox
 app/
-  (marketing)/          # Landing agent-centric
-  dashboard/            # Espace agent : agents, runs & logs, connexions, validations, facturation
-  admin/                # KPI + modération + agents ops internes
-  api/                  # Routes API (run, connectors, stripe, cron…)
+  (marketing)/          # Landing (hero AI Core), pricing, cas-usage (SEO), prompta-partout, aide
+  (auth)/               # Login, signup, onboarding (→ installation extension)
+  quick/                # Assistant autonome hors extension (même cerveau)
+  dashboard/            # Runs & agents gardés, validations, connexions, abonnements, crédits
+  admin/                # Cockpit rentabilité (KPI), agents ops, santé worker
+  api/                  # extension/* (instant, execute, save-agent…), run/*, approvals, stripe, cron
 components/
-  builder/              # Éditeur d'agent (canvas, wizard, inspector)
-  run/                  # Masque de run, console, champs ressources
-  connectors/           # ResourceSelect (picker auto-liste)
+  marketing/            # AiCoreScene (hero particules), Reveal, démos
+  run/                  # Console de run, timeline, modale de validation
 lib/
-  agent/                # Manifeste, contrat, résolveur, orchestrateur, error-map, step-key
-  connectors/           # Exécution & listing (Composio + natif), conformance
-  composio/             # Backend Composio
-  billing/              # Crédits, quota gratuit, plafonds
-  llm/                  # Passerelle multi-modèles
+  extension/            # Planificateur (instant-agent), replan
+  agent/                # Schema, orchestrateur, browser-pilot, approvals, outils
+  billing/              # Plans, crédits (markup), entitlements, plafonds, circuit-breaker
+  admin/                # KPI rentabilité
+  connectors/ composio/ # Exécution & catalogue d'actions
+  llm/                  # Passerelle multi-modèles, pricing tokens
 worker/                 # run-worker.ts (npm run worker)
-supabase/migrations/    # Migrations SQL
-docs/                   # Guides (ADD-CONNECTOR, Render, Composio…)
-tests/unit/             # Tests (contrat, résolveur, runtime, conformance…)
+scripts/                # pack-extension, build-safari, qa-extension-flows, qa-omniscience…
+docs/                   # DESIGN-SYSTEM, CHROME-WEB-STORE, BROWSER-PORTS, BUSINESS-PLAN…
+supabase/migrations/    # SQL
+tests/unit/             # 365 tests (contrat, résolveur, billing, conformance…)
 ```
 
 ---
 
-## Routes admin
+## Admin & légal
 
-| URL | Description |
-|-----|-------------|
-| `/admin` | Dashboard KPI |
-| `/admin/agents` | Centre de contrôle agents ops (sandbox, budget, validation) |
-| `/admin/moderation` | Modération |
-
-Accessible uniquement si `profiles.is_admin = true`.
-
----
+- `/admin` : burn du jour vs plafond, MRR par plan, marge réelle (coût API vs facturé), comptes à perte, alertes. `/admin/agents`, `/admin/worker-health`. Accès : `profiles.is_admin`.
+- Éditeur : **Puccini EI** (SIREN 932 699 697) — mentions légales `/legal/mentions`, TVA non applicable art. 293 B CGI. Pas de bannière cookies : uniquement des cookies essentiels (session Supabase).
 
 ## Licence
 

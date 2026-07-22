@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight, Check, ShieldCheck, Terminal, Zap } from "lucide-react";
-import { USE_CASES_SEO, useCaseBySlug } from "@/lib/marketing/use-cases-seo";
+import { USE_CASES_SEO, findUseCaseBySlug } from "@/lib/marketing/use-cases-seo";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -14,7 +14,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const uc = useCaseBySlug(slug);
+  const uc = findUseCaseBySlug(slug);
   if (!uc) return {};
   return {
     title: uc.title,
@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function UseCasePage({ params }: Props) {
   const { slug } = await params;
-  const uc = useCaseBySlug(slug);
+  const uc = findUseCaseBySlug(slug);
   if (!uc) notFound();
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://prompta-sjtf.onrender.com";

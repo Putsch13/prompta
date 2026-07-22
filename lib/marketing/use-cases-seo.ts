@@ -178,6 +178,6 @@ export const USE_CASES_SEO: UseCaseSeo[] = [
   },
 ];
 
-export function useCaseBySlug(slug: string): UseCaseSeo | undefined {
+export function findUseCaseBySlug(slug: string): UseCaseSeo | undefined {
   return USE_CASES_SEO.find((u) => u.slug === slug);
 }
