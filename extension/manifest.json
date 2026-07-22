@@ -3,7 +3,7 @@
   "name": "Prompta partout — l'assistant IA qui agit",
   "short_name": "Prompta",
   "description": "L'assistant qui voit vos pages, agit sur vos apps (Gmail, Sheets, Notion…) et pilote votre navigateur sous vos yeux. Chaque action sensible attend votre feu vert.",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "homepage_url": "https://prompta-sjtf.onrender.com",
   "icons": {
     "16": "icons/icon16.png",

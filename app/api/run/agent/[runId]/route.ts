@@ -110,6 +110,28 @@ export async function GET(request: NextRequest, props: Params) {
     }
   }
 
+  // Journal d'activité live : les dernières étapes (label + statut + aperçu)
+  // pour un rapport « au fur et à mesure » dans le panneau (le fil des actions
+  // de l'agent, pas juste « en cours »).
+  let activity: Array<{ label: string; status: string; preview?: string; index: number }> = [];
+  {
+    const activityDb = createAdminClient();
+    const { data: steps } = await activityDb
+      .from("listing_agent_run_steps")
+      .select("step_index, label, status, output_preview, input_preview")
+      .eq("run_id", params.runId)
+      .order("step_index", { ascending: true })
+      .limit(40);
+    const asText = (v: unknown): string =>
+      typeof v === "string" ? v : v == null ? "" : JSON.stringify(v);
+    activity = (steps ?? []).map((s) => ({
+      index: Number(s.step_index ?? 0),
+      label: (s.label as string) || `Étape ${Number(s.step_index ?? 0) + 1}`,
+      status: (s.status as string) || "running",
+      preview: (asText(s.output_preview) || asText(s.input_preview)).slice(0, 220) || undefined,
+    }));
+  }
+
   return NextResponse.json({
     id: run.id,
     status: effectiveStatus,
@@ -123,5 +145,6 @@ export async function GET(request: NextRequest, props: Params) {
     approval,
     browser_task,
     planned_steps,
+    activity,
   });
 }

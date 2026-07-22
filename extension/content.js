@@ -229,6 +229,9 @@
       .caret { display:inline-block; width:7px; height:14px; background:#38BDF8; border-radius:2px; vertical-align:-2px; animation:pblink .9s steps(1) infinite; }
       @keyframes pblink { 50% { opacity:0; } }
       .step { display:flex; gap:8px; font-size:12px; color:#8FA1BC; padding:1.5px 0; } .step .k { width:14px; text-align:center; } .step .k.ok { color:#34D399; } .step .k.run { color:#FBBF24; }
+      .pilotlive { display:flex; align-items:center; gap:7px; margin-top:8px; padding:7px 10px; border-radius:9px; background:rgba(56,189,248,.1); border:1px solid rgba(56,189,248,.28); font-size:12px; color:#E4EDF9; } .pilotlive b { color:#38BDF8; font-weight:600; }
+      .actlog { margin-top:8px; border-left:2px solid rgba(56,189,248,.2); padding-left:9px; display:flex; flex-direction:column; gap:2px; }
+      .actrow { display:flex; gap:7px; font-size:11.5px; color:#8FA1BC; line-height:1.45; } .actrow .k { width:12px; text-align:center; flex-shrink:0; } .actrow .k.ok { color:#34D399; } .actrow .k.ko { color:#F87171; } .actrow .k.run { color:#FBBF24; } .actrow .pv { color:#5B6B85; }
       .think { display:flex; align-items:center; gap:8px; color:#8FA1BC; font-size:12.5px; }
       .think .orb { width:14px; height:14px; border-radius:50%; background:conic-gradient(from 0deg,#38BDF8,#1E7FC2,#38BDF8); animation:pspin 1.1s linear infinite; }
       @keyframes pspin { to { transform:rotate(360deg); } }
@@ -410,6 +413,20 @@
     else if (it.status === "streaming") body += `<div class="think"><span class="orb"></span> Prompta réfléchit…</div>`;
     if (isMission && it.planned?.length) body += `<div style="margin-top:${it.answer ? "8px" : "0"}">${it.planned.map((l, i) => { const d = it.stepsCompleted ?? it.stepsDone ?? 0; const k = i < d ? "✓" : i === d && (it.status === "running" || it.status === "pending") ? "▶" : "·"; return `<div class="step"><span class="k ${i < d ? "ok" : i === d && (it.status === "running" || it.status === "pending") ? "run" : ""}">${k}</span><span>${esc(l)}</span></div>`; }).join("")}</div>`;
     else if (isMission && (it.status === "running" || it.status === "pending")) body += `<div class="think"><span class="orb"></span> Prompta conçoit l'agent…</div>`;
+    // Rapport LIVE : action de pilotage en cours + journal des dernières étapes.
+    if (isMission && live) {
+      if (it.pilotAction) {
+        body += `<div class="pilotlive"><span class="porb"></span> <b>Pilotage :</b> ${esc(it.pilotAction)}</div>`;
+      }
+      const act = (it.activity || []).filter((a) => a && a.label).slice(-6);
+      if (act.length && (it.status === "running" || it.status === "pending")) {
+        body += `<div class="actlog">${act.map((a) => {
+          const ic = a.status === "success" ? "✓" : a.status === "failed" ? "✕" : "▸";
+          const cl = a.status === "success" ? "ok" : a.status === "failed" ? "ko" : "run";
+          return `<div class="actrow"><span class="k ${cl}">${ic}</span><span>${esc(a.label)}${a.status === "running" && a.preview ? ` — <span class="pv">${esc(a.preview.slice(0,60))}</span>` : ""}</span></div>`;
+        }).join("")}</div>`;
+      }
+    }
     // Connexion manquante : carte avec un bouton OAuth par app + reprise auto.
     if (it.status === "needs_connect" && live) {
       const btns = (it.missing || []).map((s) => `<button class="cbtn" data-connect="${esc(s)}">🔌 Connecter ${esc(slugLabel(s))}</button>`).join("");
@@ -476,7 +493,8 @@
     const live = current && !history.some((h) => current.runId && h.runId === current.runId) ? current : null;
     // Signature : on ne reconstruit le DOM que si quelque chose a VRAIMENT changé
     // (sinon un tick de poll identique effacerait la sélection de texte de l'user).
-    const sig = items.map((h) => (h.runId || h.goal) + h.status + (h.savedAgent || "")).join("|") + "#" + (live ? `${live.runId}:${live.status}:${live.stepsCompleted}:${(live.answer || "").length}:${(live.planned || []).length}:${live.approval ? live.approval.id : ""}:${live.approvalError || ""}:${live.connectExpired ? "x" : ""}:${(live.missing || []).join(",")}:${live.notice || ""}` : "") + "?" + (clarifyQ ? clarifyQ.join("|") : "");
+    const actSig = live && live.activity ? live.activity.map((a) => a.status[0]).join("") : "";
+    const sig = items.map((h) => (h.runId || h.goal) + h.status + (h.savedAgent || "")).join("|") + "#" + (live ? `${live.runId}:${live.status}:${live.stepsCompleted}:${(live.answer || "").length}:${(live.planned || []).length}:${live.approval ? live.approval.id : ""}:${live.approvalError || ""}:${live.connectExpired ? "x" : ""}:${(live.missing || []).join(",")}:${live.notice || ""}:${live.pilotAction || ""}:${actSig}` : "") + "?" + (clarifyQ ? clarifyQ.join("|") : "");
     if (!force && sig === lastFeedSig) return;
     lastFeedSig = sig;
     // Ne pas ré-ancrer en bas si l'utilisateur a scrollé vers le haut pour lire.
@@ -586,6 +604,10 @@
       current.planned = r.body.planned_steps?.length ? r.body.planned_steps : current.planned;
       current.error = r.body.error_message; current.answer = extractAnswer(r.body.output);
       current.approvalId = r.body.approval_id ?? null;
+      // Rapport au fur et à mesure : le fil des étapes + l'action de pilotage
+      // en cours (« ce que l'agent touche live »).
+      current.activity = Array.isArray(r.body.activity) ? r.body.activity : current.activity;
+      current.pilotAction = r.body.browser_task?.request?.label || null;
       // Tâche de pilotage en attente : (ré)armer le service worker — couvre le
       // redémarrage du worker ET un plan réparé qui introduit du pilotage.
       if (r.body.browser_task) send("prompta:pilot-watch", { runId: current.runId });
