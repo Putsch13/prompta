@@ -209,6 +209,8 @@
       .logo:hover { animation:none; box-shadow:0 0 22px rgba(56,189,248,.75); }
       @keyframes pglow { 0%,100% { box-shadow:0 0 14px rgba(56,189,248,.45); } 50% { box-shadow:0 0 22px rgba(56,189,248,.65); } }
       header b { flex:1; font-size:11.5px; font-family:ui-monospace,monospace; text-transform:uppercase; letter-spacing:.18em; }
+      .upbar { display:none; padding:7px 14px; background:rgba(251,191,36,.09); border-bottom:1px solid rgba(251,191,36,.25); color:#FBBF24; font-size:11.5px; line-height:1.45; }
+      .upbar a { color:#FBBF24; font-weight:600; text-decoration:underline; }
       header .sub { color:#5B6B85; font-weight:400; }
       select { appearance:none; background:rgba(14,21,36,.85); color:#E4EDF9; border:1px solid rgba(56,189,248,.18); border-radius:9px; padding:4px 9px; font-size:11px; cursor:pointer; max-width:122px; outline:none; }
       select:hover { border-color:rgba(56,189,248,.45); }
@@ -286,6 +288,7 @@
         <a class="ico" data-r="conns" target="_blank" title="Apps connectées">🔌</a>
         <button class="ico" data-r="close" title="Fermer">✕</button>
       </header>
+      <div class="upbar" data-r="upbar"></div>
       <div class="feed" data-r="feed"></div>
       <div class="ctx">
         <div class="ctxh" data-r="ctxh"><span class="cv">▸</span> 👁 <span data-r="ctxsum">Ce que je vois</span></div>
@@ -322,6 +325,14 @@
   const alltabsEl = $("alltabs"), exploreEl = $("explore");
 
   send("prompta:baseUrl").then((r) => { if (r?.baseUrl) { baseUrl = r.baseUrl; $("conns").href = baseUrl + "/dashboard/connexions"; } });
+  // Bandeau « mise à jour » : un ZIP hors store ne s'auto-met pas à jour —
+  // on prévient au moins l'utilisateur quand une version plus récente existe.
+  send("prompta:update").then((r) => {
+    if (!r?.ok || !r.update) return;
+    const bar = $("upbar");
+    bar.innerHTML = `⬆︎ Nouvelle version ${esc(r.update.latest)} disponible (tu es en ${esc(r.update.current)}) — <a href="${esc(baseUrl)}/prompta-partout" target="_blank" rel="noopener">mettre à jour</a>`;
+    bar.style.display = "block";
+  });
 
   // ── Overlay copilote (toast d'action, halo, confirmation in-page) ───────
   const ptoast = $("ptoast"), ptoastmsg = $("ptoastmsg"), pring = $("pring"), pconfirm = $("pconfirm"), pcmsg = $("pcmsg");

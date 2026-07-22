@@ -538,6 +538,20 @@ async function launch() {
 }
 
 // ── Interactions ────────────────────────────────────────────────────────────
+// Bandeau « mise à jour » (ZIP hors store = pas d'auto-update)
+send("prompta:update").then((r) => {
+  if (!r?.ok || !r.update) return;
+  const bar = document.createElement("div");
+  bar.style.cssText = "padding:7px 12px;background:rgba(251,191,36,.09);border-bottom:1px solid rgba(251,191,36,.25);color:var(--amber);font-size:11.5px;line-height:1.45";
+  bar.innerHTML = `⬆︎ Nouvelle version ${esc(r.update.latest)} disponible — <a href="#" id="upd-link" style="color:var(--amber);font-weight:600;text-decoration:underline">mettre à jour</a>`;
+  feed.parentNode.insertBefore(bar, feed);
+  bar.querySelector("#upd-link").addEventListener("click", async (e) => {
+    e.preventDefault();
+    const b = await send("prompta:baseUrl");
+    chrome.tabs.create({ url: (b?.baseUrl || baseUrl) + "/prompta-partout" });
+  });
+});
+
 sendBtn.addEventListener("click", launch);
 // ✚ Nouvelle conversation : le fil repart à zéro, l'historique d'avant n'est
 // plus envoyé au cerveau (fini les fausses « suites de mission »).

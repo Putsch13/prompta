@@ -104,6 +104,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: true, tabs: tabs.map((t) => ({ title: t.title, url: t.url })) });
       } else if (msg?.type === "prompta:tabcontents") {
         sendResponse({ ok: true, tabs: await captureTabContents(msg.urls, msg.maxTabs, msg.maxChars) });
+      } else if (msg?.type === "prompta:update") {
+        const { prompta_update } = await chrome.storage.local.get("prompta_update");
+        sendResponse({ ok: true, update: prompta_update || null });
       } else if (msg?.type === "prompta:baseUrl") {
         sendResponse({ ok: true, baseUrl: await baseUrl() });
       } else if (msg?.type === "prompta:pilot-watch") {
@@ -176,7 +179,32 @@ restorePilotSessions();
 // Alarme périodique : garde le worker vivant tant qu'un pilotage est actif et
 // re-tick les sessions (les setInterval ne survivent pas au recyclage).
 chrome.alarms.create("pilot-keepalive", { periodInMinutes: 0.5 });
+
+// ── Mise à jour : un ZIP en mode développeur ne s'auto-met JAMAIS à jour ──
+// (règle Chrome). On compare donc notre version à celle servie par le site,
+// et les fronts affichent un bandeau « mise à jour disponible ».
+function isNewerVersion(a, b) {
+  const pa = String(a).split(".").map(Number), pb = String(b).split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+async function checkExtensionUpdate() {
+  try {
+    const r = await api("/api/extension/version");
+    const latest = r?.body?.version;
+    const current = chrome.runtime.getManifest().version;
+    const upd = latest && isNewerVersion(latest, current) ? { latest, current } : null;
+    await chrome.storage.local.set({ prompta_update: upd });
+  } catch { /* hors-ligne — retenté au prochain réveil/alarme */ }
+}
+checkExtensionUpdate();
+chrome.alarms.create("update-check", { periodInMinutes: 360 });
+
 chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "update-check") { checkExtensionUpdate(); return; }
   if (alarm.name !== "pilot-keepalive") return;
   (async () => {
     await restorePilotSessions();
