@@ -106,7 +106,7 @@ export default function QuickPage() {
   const [clarify, setClarify] = useState<{ goal: string; questions: string[] } | null>(null);
   const [showContext, setShowContext] = useState(false);
   const [pendingConnect, setPendingConnect] = useState<PendingConnect | null>(null);
-  const [approval, setApproval] = useState<{ id: string; label?: string } | null>(null);
+  const [approval, setApproval] = useState<{ id: string; label?: string; kind?: string; question?: string } | null>(null);
   const [approvalText, setApprovalText] = useState("");
   const [approvalErr, setApprovalErr] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
@@ -187,9 +187,9 @@ export default function QuickPage() {
         (a: { id: string; runId: string }) => (approvalId ? a.id === approvalId : a.runId === runId),
       );
       if (!item) { approvalSeenRef.current = null; return; }
-      const p = (item.payload ?? {}) as { label?: string; preview?: string; full?: string };
-      setApproval({ id: item.id, label: p.label });
-      setApprovalText(p.full || p.preview || "");
+      const p = (item.payload ?? {}) as { label?: string; preview?: string; full?: string; kind?: string };
+      setApproval({ id: item.id, label: p.label, kind: p.kind, question: p.preview || p.label });
+      setApprovalText(p.kind === "question" ? "" : p.full || p.preview || "");
       setApprovalErr(null);
     } catch { approvalSeenRef.current = null; }
   }, []);
@@ -520,20 +520,28 @@ export default function QuickPage() {
           {/* Validation DANS le fil : contenu proposé éditable + décision ici même. */}
           {liveShown && liveShown.status === "awaiting_approval" && approval && (
             <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-accent/50 bg-card2 px-3.5 py-3 text-sm">
-              <p className="font-semibold text-ink">✋ Validation requise{approval.label ? ` — ${approval.label}` : ""}</p>
+              {approval.kind === "question" ? (
+                <>
+                  <p className="font-semibold text-accent">💬 Prompta a besoin d&apos;une précision</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-ink">{approval.question}</p>
+                </>
+              ) : (
+                <p className="font-semibold text-ink">✋ Validation requise{approval.label ? ` — ${approval.label}` : ""}</p>
+              )}
               <textarea
                 value={approvalText}
                 onChange={(e) => setApprovalText(e.target.value)}
-                className="mt-2 min-h-[90px] w-full resize-y rounded-lg border border-line bg-bg p-2 text-xs leading-relaxed text-ink outline-none focus:border-accent"
+                placeholder={approval.kind === "question" ? "Ta réponse…" : undefined}
+                className={`mt-2 w-full resize-y rounded-lg border border-line bg-bg p-2 text-xs leading-relaxed text-ink outline-none focus:border-accent ${approval.kind === "question" ? "min-h-[56px]" : "min-h-[90px]"}`}
               />
               <div className="mt-2 flex justify-end gap-2">
                 <button onClick={() => decideApproval("rejected")} disabled={deciding}
                         className="rounded-lg border border-destructive/50 px-3 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50">
-                  Refuser
+                  {approval.kind === "question" ? "Annuler la mission" : "Refuser"}
                 </button>
-                <button onClick={() => decideApproval("approved")} disabled={deciding}
+                <button onClick={() => decideApproval("approved")} disabled={deciding || (approval.kind === "question" && !approvalText.trim())}
                         className="rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-ink shadow-glow-sm transition-colors hover:bg-accent-hover disabled:opacity-50">
-                  Valider
+                  {approval.kind === "question" ? "Répondre ↵" : "Valider"}
                 </button>
               </div>
               {approvalErr && <p className="mt-1.5 text-xs text-destructive">{approvalErr}</p>}

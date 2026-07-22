@@ -274,6 +274,46 @@ async function main() {
     }
   }
 
+
+  // 18. DIALOGUE MI-MISSION : l'agent pose une question, la réponse alimente la suite
+  {
+    const BDD2 = tab("https://exemple.fr/bdd", "Base produits", "Base produits\nID | PRODUIT | STOCK | PRIX\n1 | Clavier | 12 | 49€\n2 | Souris | -3 | 19€\n3 | Écran | 7 | 249€\n4 | Casque | -1 | 89€");
+    const res = await fetch(`${BASE}/api/extension/execute`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        goal: "Analyse le tableau affiché. Avant de produire l'analyse, pose-moi la question de savoir quel angle je préfère (stocks, prix, ou global), attends ma réponse, puis produis l'analyse selon l'angle choisi.",
+        page: { url: BDD2.url, title: BDD2.title, content: BDD2.content },
+        modelId: MODEL,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.status !== 200 || !body.runId) {
+      rec("dialogue/question mi-mission", false, `status ${res.status} ${JSON.stringify(body).slice(0, 140)}`);
+    } else {
+      const paused = await pollRun(String(body.runId), 150_000);
+      const run1 = (paused.run ?? paused) as Record<string, unknown>;
+      if (String(run1.status) !== "awaiting_approval") {
+        rec("dialogue/question mi-mission", false, `status ${run1.status} (attendu awaiting_approval/question)`);
+      } else {
+        const ap = await fetch(`${BASE}/api/approvals`, { headers: { Cookie: cookie } }).then((x) => x.json()).catch(() => ({}));
+        const item = (ap.items ?? []).find((a: Record<string, unknown>) => a.runId === body.runId) ?? (ap.items ?? [])[0];
+        const payload = (item?.payload ?? {}) as Record<string, unknown>;
+        const isQuestion = payload.kind === "question";
+        // On répond : angle stocks négatifs
+        const dec = await fetch(`${BASE}/api/run/agent/${body.runId}/approve`, {
+          method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+          body: JSON.stringify({ approvalId: item?.id, decision: "approved", modifiedContent: "Concentre-toi uniquement sur les stocks négatifs et leurs risques." }),
+        });
+        const done = await pollRun(String(body.runId), 150_000);
+        const run2 = (done.run ?? done) as Record<string, unknown>;
+        const out = JSON.stringify(run2.output ?? {});
+        const ok = isQuestion && dec.ok && String(run2.status) === "completed" && /(souris|casque|négatif|-3|-1)/i.test(out);
+        rec("dialogue/question mi-mission", ok,
+          `question:${isQuestion} réponse→reprise:${dec.status} final:${run2.status} angle respecté:${/(souris|casque|négatif)/i.test(out)}`);
+      }
+    }
+  }
+
   console.log("\n=== BILAN OMNISCIENCE ===");
   for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}`);
   const fails = results.filter(r => !r.ok);

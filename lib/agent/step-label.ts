@@ -10,6 +10,7 @@ export interface StepLike {
   action?: string;
   label?: string;
   source?: string;
+  question?: string;
   branches?: unknown[];
 }
 
@@ -31,6 +32,8 @@ export function stepDisplayLabel(step: StepLike, index: number): string {
       return "Condition";
     case "approval":
       return step.label?.trim() ? `Validation : ${step.label}` : "Validation humaine";
+    case "ask":
+      return step.question?.trim() ? `Question : ${step.question.slice(0, 60)}` : "Question à l'utilisateur";
     case "code":
       return "Code (sandbox)";
     case "browser":

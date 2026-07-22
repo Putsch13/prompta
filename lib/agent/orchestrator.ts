@@ -244,6 +244,8 @@ async function executeStep(
           ? "Condition"
           : sType === "approval"
             ? `Approbation ${step.label ?? ""}`.trim()
+          : sType === "ask"
+            ? "Question à l'utilisateur"
             : sType === "retrieve"
               ? `Retrieve ${step.source}`
               : sType === "browser"
@@ -768,6 +770,39 @@ async function executeStep(
       };
     }
 
+    if (step.type === "ask") {
+      // Question en cours de mission : même machinerie que l'approbation —
+      // le run se met en pause, la RÉPONSE TAPÉE (modifiedContent) devient la
+      // sortie de l'étape pour les étapes aval ({{outputKey}}).
+      const question = interpolate(step.question, vars, { maxVarChars: 2_000 }).trim();
+      if (simulated || ctx.demoMode) {
+        const preview = `[${ctx.demoMode ? "DÉMO" : "APERÇU"} — question à l'utilisateur]\n${question.slice(0, 300)}`;
+        if (runId && stepDbId) {
+          await logStepSuccess(stepDbId, preview, undefined, stepStartedAt).catch(() => undefined);
+        }
+        return { content: preview };
+      }
+      if (!runId) throw new Error("Une question à l'utilisateur requiert un runId");
+      const approvalId = await createPendingApproval({
+        runId,
+        stepIndex,
+        payload: {
+          kind: "question",
+          label: question.slice(0, 300),
+          preview: question.slice(0, 2000),
+          // full vide : la réponse DOIT venir de l'utilisateur (modifiedContent).
+          full: "",
+        },
+        expiresInMinutes: step.expiresInMinutes,
+      });
+      if (stepDbId) {
+        await logStepSuccess(stepDbId, `Question posée : ${question.slice(0, 200)}`, undefined, stepStartedAt).catch(() => undefined);
+      }
+      const err = new Error("awaiting_approval");
+      (err as Error & { approvalId?: string }).approvalId = approvalId;
+      throw err;
+    }
+
     if (step.type === "approval") {
       // Le contenu À VALIDER = template interpolé + contenu produit par l'étape
       // amont (le rapport/email/message), pour que l'utilisateur voie vraiment
@@ -856,6 +891,8 @@ function describeStep(step: AgentStep, index: number): string {
       return "Condition";
     case "approval":
       return step.label ?? "Approbation";
+    case "ask":
+      return `Question : ${step.question.slice(0, 60)}`;
     case "retrieve":
       return `Retrieve ${step.source}`;
     case "browser":

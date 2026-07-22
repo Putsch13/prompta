@@ -426,7 +426,19 @@
     if (it.status === "awaiting_approval" && live) {
       if (it.approval) {
         const p = it.approval.payload || {};
-        body += `<div style="margin-top:${body ? "8px" : "0"};border:1px solid rgba(56,189,248,.35);border-radius:12px;padding:10px;background:rgba(10,15,27,.6)">
+        const isQuestion = p.kind === "question";
+        body += isQuestion
+          ? `<div style="margin-top:${body ? "8px" : "0"};border:1px solid rgba(56,189,248,.35);border-radius:12px;padding:10px;background:rgba(10,15,27,.6)">
+          <div style="font-weight:600;color:#38BDF8;font-size:12.5px">💬 Prompta a besoin d'une précision</div>
+          <div style="margin-top:6px;color:#E4EDF9;font-size:12.5px;line-height:1.5">${esc(p.preview || p.label || "")}</div>
+          <textarea data-aptext placeholder="Ta réponse…" style="width:100%;margin-top:8px;min-height:56px;max-height:160px;background:rgba(14,21,36,.9);border:1px solid rgba(56,189,248,.2);border-radius:9px;color:#E4EDF9;font-size:12px;padding:8px;resize:vertical;outline:none;line-height:1.45"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end">
+            <button class="apno" data-apreject="1">Annuler la mission</button>
+            <button class="apyes" data-approve="1">Répondre ↵</button>
+          </div>
+          ${it.approvalError ? `<div class="err">${esc(it.approvalError)}</div>` : ""}
+        </div>`
+          : `<div style="margin-top:${body ? "8px" : "0"};border:1px solid rgba(56,189,248,.35);border-radius:12px;padding:10px;background:rgba(10,15,27,.6)">
           <div style="font-weight:600;color:#E4EDF9;font-size:12.5px">✋ Validation requise${p.label ? ` — ${esc(p.label)}` : ""}</div>
           <textarea data-aptext style="width:100%;margin-top:8px;min-height:90px;max-height:200px;background:rgba(14,21,36,.9);border:1px solid rgba(56,189,248,.2);border-radius:9px;color:#E4EDF9;font-size:12px;padding:8px;resize:vertical;outline:none;line-height:1.45">${esc(p.full || p.preview || "")}</textarea>
           <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end">

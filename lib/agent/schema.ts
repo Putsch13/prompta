@@ -96,6 +96,18 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
     ifTrueStepIds: z.array(z.string()).optional(),
     ifFalseStepIds: z.array(z.string()).optional(),
   }),
+  /**
+   * Question posée à l'utilisateur EN COURS de mission : le run se met en
+   * pause (même machinerie que l'approbation), la réponse tapée devient la
+   * sortie de l'étape ({{outputKey}}) pour toutes les étapes aval.
+   */
+  z.object({
+    type: z.literal("ask"),
+    /** La question, précise et unique (peut référencer des {{variables}}). */
+    question: z.string(),
+    outputKey: z.string().optional(),
+    expiresInMinutes: z.number().optional(),
+  }),
   z.object({
     type: z.literal("approval"),
     label: z.string().optional(),

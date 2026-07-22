@@ -260,7 +260,8 @@ A) Si l'ordre est exécutable (avec au besoin une hypothèse raisonnable) → le
 
 B) Si une info CRITIQUE manque pour une VRAIE mission (quel fichier/ressource précise, quel format de livrable, quel destinataire, quel périmètre) OU si l'ordre est si ambigu que plusieurs interprétations très différentes sont possibles → demande des précisions AU LIEU d'un plan :
 { "clarify": ["question courte 1", "question courte 2"] }  (1 à 3 questions max, courtes, concrètes)
-N'utilise "clarify" QUE si c'est vraiment bloquant. JAMAIS pour une question simple/conversationnelle. Si une hypothèse raisonnable existe (destinataire = l'utilisateur, format = Doc, etc.), PRENDS-LA et produis le plan plutôt que de demander.
+N'utilise "clarify" QUE si c'est vraiment bloquant AVANT MÊME de planifier. JAMAIS pour une question simple/conversationnelle. Si une hypothèse raisonnable existe (destinataire = l'utilisateur, format = Doc, etc.), PRENDS-LA et produis le plan plutôt que de demander.
+QUESTIONS EN COURS DE MISSION (étape "ask") : quand un doute ne se lèvera qu'EN ROUTE — quel fichier parmi ceux que la recherche va trouver, quel onglet du classeur, quelle interprétation d'une donnée ambiguë lue à l'écran, confirmation d'un choix avant d'écrire — insère une étape {"type":"ask"} au bon endroit du plan plutôt que de deviner ou d'échouer. UNE question précise, actionnable, qui montre ce que tu as trouvé ({{variables}}). Sa réponse est disponible via {{outputKey}} pour la suite. Règle simple : bloquant dès le départ → clarify ; doute qui apparaît en cours d'exécution → ask ; hypothèse raisonnable possible → ni l'un ni l'autre.
 CAS OBLIGATOIRES de clarify : l'ordre référence une SOURCE DE DONNÉES (« la bdd », « mon CRM », « le fichier », « la liste ») qui n'est NI visible dans le contexte fourni, NI identifiée par une URL/un nom précis, NI identifiable via l'HISTORIQUE RÉCENT, ET que plusieurs ressources pourraient correspondre → demande LAQUELLE (ex. « Quelle bdd exactement : un Google Sheet, un Airtable, une page Notion ? Donne son nom ou son lien »). Ne planifie JAMAIS une lecture de ressource que tu ne sais pas identifier. INTERDIT de clarifier une question dont la réponse figure déjà dans l'historique.
 
 SUITES ET CORRECTIONS (prioritaire) : quand un HISTORIQUE RÉCENT est fourni et que l'ordre s'y réfère (« tu as oublié… », « corrige », « continue », « il manque… », « refais avec… », « attention ton agent n'a pas… »), c'est la SUITE de la mission précédente : reprends la MÊME cible (même document, mêmes onglets, même périmètre), ne refais PAS ce qui est déjà fait, et corrige précisément ce qui est signalé. Si la mission précédente écrivait dans un document (Sheet, Doc, Notion…), la correction met à jour CE document (retrouve-le via l'onglet ouvert ou l'historique). Ne repose aucune question déjà réglée.
@@ -272,6 +273,7 @@ TYPES D'ÉTAPES DISPONIBLES (format RUNTIME strict) :
 - {"type":"action","connector":"google_sheets","action":"google_sheets.create_spreadsheet","params":{"title":"…"},"outputKey":"creation"} puis extraction d'id par étape llm ("Réponds UNIQUEMENT le spreadsheetId de : {{creation}}") puis {"action":"google_sheets.append_row","params":{"spreadsheet_id":"{{id}}","values":"COL1;COL2\\nval1;val2"}}
 - {"type":"action","connector":"gmail","action":"gmail.send","params":{"from":"EMAIL_UTILISATEUR","to":"…","subject":"…","body":"…"}}
 - {"type":"approval","label":"…","payloadTemplate":"{{cle}}","outputKey":"valide"} — validation humaine
+- {"type":"ask","question":"…","outputKey":"reponse_utilisateur"} — POSE UNE QUESTION à l'utilisateur EN COURS de mission : le run se met en pause, sa réponse devient {{outputKey}} pour les étapes suivantes. La question peut référencer des {{variables}} amont (ex. « J'ai trouvé 3 fichiers : {{liste}}. Lequel ? »)
 - {"type":"browser","goal":"objectif précis en langage naturel (quoi faire, sur quelle page, quand s'arrêter)","tabHint":"pagesjaunes","outputKey":"pilotage"} — PILOTE le navigateur de l'utilisateur : clique, remplit des formulaires, navigue, avec sa session, sous ses yeux (il confirme chaque action risquée dans la page). "tabHint" (optionnel) = extrait d'URL ou de titre d'un onglet OUVERT (repris de la liste des onglets fournie) : le pilotage bascule sur CET onglet — indispensable quand l'action vise un AUTRE onglet que la page active (ex. cliquer « Afficher le numéro » dans l'onglet PagesJaunes pendant que l'utilisateur est sur Sheets). Sans tabHint : onglet actif. Résultat = résumé de ce qui a été fait/observé.
 - {"type":"condition","expression":"{{cle}} contains X"}
 - {"type":"parallel","branches":[{"steps":[…],"outputKey":"b1"},…],"outputKey":"tout"}
@@ -304,6 +306,7 @@ const REPAIR_PROMPT = `Tu répares la STRUCTURE JSON d'un manifeste d'agent reje
 - {"type":"tool","tool":"web_search|http_fetch|web_fetch|file_read","params":{clé:valeur STRING},"outputKey":"…"}
 - {"type":"action","connector":"<app>","action":"<app>.<verbe>","params":{clé:valeur STRING},"outputKey":"…"}
 - {"type":"approval","label":"…","payloadTemplate":"…","outputKey":"…"}
+- {"type":"ask","question":"…","outputKey":"…"}
 - {"type":"browser","goal":"…","tabHint":"…","outputKey":"…"}
 - {"type":"condition","expression":"…"} | {"type":"parallel","branches":[{"steps":[…]}]}
 Champs racine : {"kind":"agent","inputs":[{"key","label"}…],"secrets":[],"connectors":[],"tools":[],"outputs":[],"steps":[…]}.
@@ -342,7 +345,8 @@ function normalizeRawManifest(m: Record<string, unknown>, fallbackModel: string)
     m.steps = (m.steps as unknown[]).filter((st) => st && typeof st === "object");
     for (const step of m.steps as Record<string, unknown>[]) {
       if (!step.type) {
-        if (typeof step.prompt === "string") step.type = "llm";
+        if (typeof step.question === "string") step.type = "ask";
+        else if (typeof step.prompt === "string") step.type = "llm";
         else if (typeof step.action === "string") step.type = "action";
         else if (typeof step.tool === "string") step.type = "tool";
         else if (typeof step.goal === "string") step.type = "browser";
@@ -354,6 +358,9 @@ function normalizeRawManifest(m: Record<string, unknown>, fallbackModel: string)
       if (step.type === "approval") {
         if (typeof step.label !== "string") step.label = "Validation avant action sensible";
         if (typeof step.payloadTemplate !== "string") step.payloadTemplate = "";
+      }
+      if (step.type === "ask" && typeof step.question !== "string") {
+        step.question = typeof step.label === "string" ? step.label : typeof step.prompt === "string" ? step.prompt : "Peux-tu préciser ?";
       }
       if (step.params && typeof step.params === "object") {
         const params = step.params as Record<string, unknown>;

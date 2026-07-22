@@ -1025,6 +1025,17 @@ function agentStepToNode(step: BaseAgentStep, id: string, index: number): PlanNo
         requiresApproval: true,
         riskLevel: "medium",
       };
+    case "ask":
+      // Question mi-mission : représentée comme une validation dans le builder
+      // (même mécanique de pause), la question dans le champ prompt.
+      return {
+        ...base,
+        kind: "approval",
+        name: "Question à l'utilisateur",
+        prompt: step.question,
+        requiresApproval: true,
+        riskLevel: "low",
+      };
     case "retrieve":
       return {
         ...base,

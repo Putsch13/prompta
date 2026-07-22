@@ -147,12 +147,14 @@ function msgCard(item, liveSteps) {
   if (item.status === "awaiting_approval" && liveSteps) {
     if (item.approval) {
       const p = item.approval.payload || {};
+      const isQ = p.kind === "question";
       body += `<div style="margin-top:8px;border:1px solid var(--accent);border-radius:11px;padding:9px;background:var(--panel)">
-        <div style="font-weight:600;color:var(--ink);font-size:12px">✋ Validation requise${p.label ? ` — ${esc(p.label)}` : ""}</div>
-        <textarea data-aptext style="width:100%;margin-top:7px;min-height:80px;max-height:170px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:12px;padding:7px;resize:vertical;outline:none;line-height:1.45;box-sizing:border-box">${esc(p.full || p.preview || "")}</textarea>
+        <div style="font-weight:600;color:${isQ ? "var(--accent)" : "var(--ink)"};font-size:12px">${isQ ? "💬 Prompta a besoin d'une précision" : `✋ Validation requise${p.label ? ` — ${esc(p.label)}` : ""}`}</div>
+        ${isQ ? `<div style="margin-top:5px;color:var(--ink);font-size:12px;line-height:1.5">${esc(p.preview || p.label || "")}</div>` : ""}
+        <textarea data-aptext ${isQ ? 'placeholder="Ta réponse…"' : ""} style="width:100%;margin-top:7px;min-height:${isQ ? "52" : "80"}px;max-height:170px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:12px;padding:7px;resize:vertical;outline:none;line-height:1.45;box-sizing:border-box">${isQ ? "" : esc(p.full || p.preview || "")}</textarea>
         <div style="display:flex;gap:7px;margin-top:7px;justify-content:flex-end">
-          <button class="mact" data-apreject="1" style="border-color:var(--red);color:var(--red);padding:5px 11px;font-size:12px">Refuser</button>
-          <button data-approve="1" style="background:var(--accent);color:#04121F;border:none;border-radius:8px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer">Valider</button>
+          <button class="mact" data-apreject="1" style="border-color:var(--red);color:var(--red);padding:5px 11px;font-size:12px">${isQ ? "Annuler la mission" : "Refuser"}</button>
+          <button data-approve="1" style="background:var(--accent);color:#04121F;border:none;border-radius:8px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer">${isQ ? "Répondre ↵" : "Valider"}</button>
         </div>
         ${item.approvalError ? `<div class="err" style="margin-top:5px;font-size:11px">${esc(item.approvalError)}</div>` : ""}
       </div>`;
