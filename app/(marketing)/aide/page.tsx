@@ -21,7 +21,7 @@ const SECTIONS: Array<{ title: string; items: Array<{ q: string; a: string }> }>
       },
       {
         q: "Ça marche sur Firefox ou Safari ?",
-        a: "Pas tel quel. Firefox demanderait un polyfill et un packaging Add-ons ; Safari une conversion Web Extension + compte Apple. En attendant : /quick marche dans n'importe quel navigateur.",
+        a: "Chrome, Edge, Brave, Arc et Opera : oui. Firefox : en bêta (paquet dédié sur la page d'installation). Safari : en préparation. Et /quick marche dans n'importe quel navigateur, sans installation.",
       },
       {
         q: "L'assistant peut-il lire mes autres onglets ?",

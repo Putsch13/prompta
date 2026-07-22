@@ -92,7 +92,10 @@ export default function SignupPage() {
             Créer un compte
           </h1>
           <p className="mt-2 text-sm text-ink-soft">
-            Rejoins la communauté des builders IA
+            Ton assistant IA sur toutes tes pages
+          </p>
+          <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-3 py-1 font-mono text-xs text-accent">
+            2 € de crédits IA offerts · sans carte
           </p>
         </div>
 

@@ -43,7 +43,7 @@ const FAQ = [
   },
   {
     q: "L'extension marche sur Safari / Firefox ?",
-    a: "Pas encore. Chrome, Edge, Brave, Arc, Opera oui. Sur Safari/Firefox, utilise /quick en attendant.",
+    a: "Chrome, Edge, Brave, Arc, Opera : oui. Firefox : en bêta (paquet dédié). Safari : en préparation. Sinon /quick marche partout, sans installation.",
   },
 ];
 

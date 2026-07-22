@@ -30,7 +30,9 @@ export function PlanGrid({ plans }: { plans: PlanCardData[] }) {
         body: JSON.stringify({ plan: planId }),
       });
       if (res.status === 401) {
-        router.push(`/signup?next=${encodeURIComponent("/pricing")}`);
+        // signup lit `redirect` (pas `next`) — sinon le visiteur non connecté
+        // qui clique un plan payant ne revient jamais finaliser.
+        router.push(`/signup?redirect=${encodeURIComponent("/pricing")}`);
         return;
       }
       const data = await res.json();
