@@ -140,6 +140,16 @@ export async function POST(request: NextRequest) {
 
   await admin.from("listings").update({ current_version_id: version.id }).eq("id", listing.id);
 
+  // Rattacher le run d'ORIGINE (extension : listing_id null) au nouvel agent :
+  // sinon l'agent gardé n'a aucun run et reste invisible dans le dashboard,
+  // qui groupe par listing_id. Le run garde son historique sous l'agent.
+  await admin
+    .from("listing_agent_runs")
+    .update({ listing_id: listing.id, version_id: version.id })
+    .eq("id", runId)
+    .eq("user_id", user.id)
+    .is("listing_id", null);
+
   return NextResponse.json({
     listingId: listing.id,
     title,

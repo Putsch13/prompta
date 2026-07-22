@@ -374,7 +374,16 @@ function normalizeRawManifest(m: Record<string, unknown>, fallbackModel: string)
         else if (typeof step.tool === "string") step.type = "tool";
         else if (typeof step.goal === "string") step.type = "browser";
       }
-      if (step.type === "llm" && typeof step.model !== "string") step.model = fallbackModel;
+      // Le modèle choisi par l'utilisateur s'applique à TOUTE la mission : on
+      // FORCE (pas juste « si absent ») le modèle sur chaque étape llm/browser,
+      // sinon le planificateur bascule parfois sur un autre modèle sans accord.
+      if (step.type === "llm" || step.type === "browser") step.model = fallbackModel;
+      // aiFills : mêmes remplissages IA, même modèle que la mission.
+      if (step.aiFills && typeof step.aiFills === "object") {
+        for (const fill of Object.values(step.aiFills as Record<string, Record<string, unknown>>)) {
+          if (fill && typeof fill === "object") fill.model = fallbackModel;
+        }
+      }
       if (step.type === "action" && typeof step.connector !== "string" && typeof step.action === "string") {
         step.connector = String(step.action).split(".")[0];
       }
@@ -427,9 +436,20 @@ export async function buildInstantAgent(params: {
         ]
       : [];
 
+  // Contrainte déterministe : quand l'utilisateur désigne EXPLICITEMENT l'écran
+  // (« les pages ouvertes », « à l'écran », « mes onglets », « ce qui est
+  // affiché/ouvert »), on interdit dur toute action de LECTURE/recherche d'app
+  // pour ces données — le planificateur DOIT lire {{page_active}}/{{tab_N}}.
+  const SCREEN_INTENT_RE = /\b(page[s]?\s+ouvert|onglet[s]?\s+ouvert|(sur|dans|depuis)\s+(les?\s+)?(page[s]?|onglet[s]?)\s+ouvert|à\s+l'?[ée]cran|ce\s+qui\s+est\s+(ouvert|affich|à\s+l'?[ée]cran)|sous\s+(mes|tes)\s+yeux|ce\s+que\s+(je|tu)\s+vois|le[s]?\s+onglet[s]?|mes\s+onglet|utilise\s+les?\s+page)/i;
+  const screenForced = SCREEN_INTENT_RE.test(goal);
+  const screenConstraint = screenForced
+    ? `⚠️ CONTRAINTE ABSOLUE — L'utilisateur a EXPLICITEMENT demandé de travailler sur ce qui est OUVERT À L'ÉCRAN. Pour lire/analyser les données, tu DOIS utiliser {{page_active}} et {{tab_N}} (les onglets fournis). INTERDICTION TOTALE de toute action de lecture ou de recherche d'app (gmail.search_messages, google_sheets.get_values, drive.search, hubspot.search…) pour récupérer un contenu déjà à l'écran. Tu peux toujours AGIR/ÉCRIRE dans une app (envoyer, créer) si l'ordre le demande, mais la LECTURE vient de l'écran.`
+    : "";
+
   const userPrompt = [
     `ORDRE DE L'UTILISATEUR : ${goal}`,
     "",
+    ...(screenConstraint ? [screenConstraint, ""] : []),
     ...historyBlock,
     `Email de l'utilisateur (rapports/livrables) : ${userEmail}`,
     `Connecteurs DÉJÀ CONNECTÉS : ${[...usableConnectors].join(", ") || "aucun"}. Si l'ordre vise une app précise NON connectée (ex. HubSpot, Notion…), planifie QUAND MÊME avec ce connecteur : le système proposera la connexion à l'utilisateur puis relancera la mission. NE contourne JAMAIS une app manquante par une étape llm qui ferait semblant, et ne substitue pas une autre app.`,

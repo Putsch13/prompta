@@ -314,6 +314,37 @@ async function main() {
     }
   }
 
+
+  // 19. CONTRAINTE ÉCRAN : « utilise les pages ouvertes » → JAMAIS d'API de lecture
+  {
+    const SHEETSTAB = tab("https://docs.google.com/spreadsheets/d/abc", "Prospects - Google Sheets",
+      "Prospects\nNom | Email | Ville\nAcme | a@acme.fr | Paris\nBeta | b@beta.fr | Lyon");
+    const res = await fetch(`${BASE}/api/extension/execute`, {
+      method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        goal: "utilise uniquement les pages ouvertes : compte combien de prospects il y a dans le tableau affiché et donne-moi la liste des villes",
+        page: { url: SHEETSTAB.url, title: SHEETSTAB.title, content: SHEETSTAB.content, openTabs: [SHEETSTAB] },
+        modelId: MODEL,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.status === 200 && body.runId) {
+      const { data: run } = await sb.from("listing_agent_runs").select("inputs").eq("id", String(body.runId)).single();
+      const manifest = JSON.parse(((run?.inputs as Record<string, string>)?.__manifest) ?? "{}");
+      const stepsStr = JSON.stringify(manifest.steps ?? []);
+      const usesReadApi = /(sheets|drive|gmail|airtable)\S*\.(get|read|search|list|values)/i.test(stepsStr);
+      const readsScreen = stepsStr.includes("{{tab_") || stepsStr.includes("{{page_active");
+      // tous les modèles llm = le modèle demandé (Claude), aucun gpt
+      const models = (manifest.steps ?? []).filter((st: Record<string,unknown>) => st.type === "llm").map((st: Record<string,unknown>) => String(st.model || ""));
+      const modelOk = models.length === 0 || models.every((mm: string) => mm.includes("claude") || mm.includes("sonnet"));
+      rec("contrainte/écran-only + modèle", !usesReadApi && readsScreen && modelOk,
+        `apiRead:${usesReadApi} écran:${readsScreen} modèles:[${models.join(",")}]`);
+      await sb.from("listing_agent_runs").update({ status: "cancelled", error_message: "QA plan-check" }).eq("id", String(body.runId));
+    } else {
+      rec("contrainte/écran-only + modèle", false, `status ${res.status} ${JSON.stringify(body).slice(0, 120)}`);
+    }
+  }
+
   console.log("\n=== BILAN OMNISCIENCE ===");
   for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}`);
   const fails = results.filter(r => !r.ok);
