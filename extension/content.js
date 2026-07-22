@@ -508,15 +508,27 @@
     feed.querySelectorAll("[data-resume]").forEach((b) => b.addEventListener("click", () => {
       if (!pendingConnect) return;
       const g = pendingConnect.goal;
+      const origPage = pendingConnect.page;
       pendingConnect = null; stopConnectPoll();
       launching = true; sendBtn.disabled = true;
-      launchMission(g);
+      launchMission(g, null, origPage);
     }));
     // Validation in-feed : contenu éditable + décision, puis reprise du suivi.
     const apText = feed.querySelector("[data-aptext]");
-    if (apText) apText.addEventListener("keydown", (e) => e.stopPropagation());
+    const isQ = current && current.approval && (current.approval.payload || {}).kind === "question";
+    if (apText) {
+      apText.addEventListener("keydown", (e) => e.stopPropagation());
+      // Une question exige une réponse non vide (comme /quick) : bouton grisé.
+      if (isQ) {
+        const yesBtn = feed.querySelector("[data-approve]");
+        const sync = () => { if (yesBtn) yesBtn.disabled = !apText.value.trim(); };
+        sync();
+        apText.addEventListener("input", sync);
+      }
+    }
     feed.querySelectorAll("[data-approve],[data-apreject]").forEach((b) => b.addEventListener("click", async () => {
       if (!current || !current.approval) return;
+      if (b.hasAttribute("data-approve") && isQ && (!apText || !apText.value.trim())) return;
       const decision = b.hasAttribute("data-approve") ? "approved" : "rejected";
       feed.querySelectorAll("[data-approve],[data-apreject]").forEach((x) => { x.disabled = true; });
       const r = await send("prompta:approve", {
@@ -627,11 +639,12 @@
       const usable = new Set(r.body.connections.filter((c) => c.usable).map((c) => connKey(c.connectorId)));
       const still = pendingConnect.missing.filter((s) => !usable.has(connKey(s)));
       if (still.length) return;
-      // Tout est connecté : reprise automatique de la mission mémorisée.
-      const { goal: g, missing } = pendingConnect;
+      // Tout est connecté : reprise automatique de la mission mémorisée, sur la
+      // page d'ORIGINE (pas la page de connexions où l'utilisateur a atterri).
+      const { goal: g, missing, page: origPage } = pendingConnect;
       pendingConnect = null; stopConnectPoll();
       launching = true; sendBtn.disabled = true;
-      launchMission(g, `✓ ${missing.map(slugLabel).join(", ")} connecté — je reprends la mission`);
+      launchMission(g, `✓ ${missing.map(slugLabel).join(", ")} connecté — je reprends la mission`, origPage);
     }, CONNECT_POLL_MS);
   }
 
@@ -664,16 +677,21 @@
   }
 
   /** Bascule mission : capture des onglets cochés (session incluse) puis pipeline agent. */
-  async function launchMission(goal, notice) {
+  async function launchMission(goal, notice, pageOverride) {
     current = { kind: "mission", runId: "…", goal, model: modelEl.value || null, status: "pending", planned: [], stepsCompleted: 0, notice: notice || null };
     renderFeed();
-    const page = capturePage(exploreEl.checked);
-    const targeted = openTabs.filter((t) => t.checked).map((t) => ({ title: t.title, url: t.url }));
-    if (targeted.length) {
-      // Contenu réel des onglets, lu PAR le navigateur : c'est ce qui permet de
-      // croiser des pages derrière login (dashboards, CRM, mails ouverts…).
-      const cap = await send("prompta:tabcontents", { urls: targeted.map((t) => t.url), maxTabs: 8, maxChars: 8000 });
-      page.openTabs = (cap?.ok && Array.isArray(cap.tabs) ? cap.tabs : targeted).filter((t) => t.url !== location.href);
+    // À la reprise post-OAuth, on réutilise la page d'ORIGINE (pageOverride) :
+    // sinon on re-capturerait la page de connexions où l'utilisateur a atterri.
+    let page = pageOverride;
+    if (!page) {
+      page = capturePage(exploreEl.checked);
+      const targeted = openTabs.filter((t) => t.checked).map((t) => ({ title: t.title, url: t.url }));
+      if (targeted.length) {
+        // Contenu réel des onglets, lu PAR le navigateur : c'est ce qui permet de
+        // croiser des pages derrière login (dashboards, CRM, mails ouverts…).
+        const cap = await send("prompta:tabcontents", { urls: targeted.map((t) => t.url), maxTabs: 8, maxChars: 8000 });
+        page.openTabs = (cap?.ok && Array.isArray(cap.tabs) ? cap.tabs : targeted).filter((t) => t.url !== location.href);
+      }
     }
     const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, history: buildConvoHistory() } });
     // L'agent demande des précisions : on affiche les questions, pas de run.
@@ -690,7 +708,7 @@
         current.status = "needs_connect";
         current.missing = r.body.missingConnectors;
         current.error = r.body.message || `Cette mission a besoin de : ${r.body.missingConnectors.join(", ")}.`;
-        pendingConnect = { goal, missing: [...r.body.missingConnectors], expired: false };
+        pendingConnect = { goal, missing: [...r.body.missingConnectors], page, expired: false };
         startConnectPoll();
       } else {
         current.status = "failed";
@@ -752,6 +770,10 @@
     if (goal.length < 2) return;
     launching = true; sendBtn.disabled = true;
     goalEl.value = ""; goalEl.style.height = "auto";
+    // Le poll de la mission précédente DOIT être coupé avant d'en lancer une
+    // autre : sinon son tick lit le `current` réassigné et corrompt l'état
+    // (le run continue serveur, mais l'UI ne le suit plus — comme /quick).
+    stopPoll();
     // Nouvelle demande explicite : la mission en attente de connexion est
     // abandonnée (sinon sa reprise auto écraserait le suivi de celle-ci).
     if (pendingConnect) { pendingConnect = null; stopConnectPoll(); }
@@ -831,6 +853,13 @@
     pendingClarify = null; clarifyQ = null;
     if (pendingConnect) { pendingConnect = null; stopConnectPoll(); }
     stopPoll();
+    // Une mission en vol est ABANDONNÉE : on l'annule côté serveur (crédits
+    // libérés) et on coupe son pilotage (sinon la page continue d'être cliquée
+    // sans mission visible).
+    if (current && current.runId && current.runId !== "…" && !["completed", "failed", "cancelled"].includes(current.status)) {
+      send("prompta:cancel", { runId: current.runId });
+      send("prompta:pilot-stop", { runId: current.runId });
+    }
     current = null; launching = false; sendBtn.disabled = false;
     renderFeed(true); goalEl.focus();
   });

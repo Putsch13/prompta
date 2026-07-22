@@ -178,9 +178,17 @@ export async function decideApproval(
     return null;
   }
 
-  const payload = (approval.payload ?? {}) as { preview?: string; full?: string; label?: string };
+  const payload = (approval.payload ?? {}) as { preview?: string; full?: string; label?: string; kind?: string };
+  // Une QUESTION (étape ask) : la sortie DOIT être la réponse tapée par
+  // l'utilisateur. Pas de repli sur preview (= le texte de la question), sinon
+  // l'étape aval reçoit la question à la place de la réponse.
+  const isQuestion = payload.kind === "question";
+  const answer = options?.modifiedContent?.trim() ?? "";
+  if (isQuestion && !answer) {
+    throw new Error("Réponse vide : réponds à la question pour que la mission continue.");
+  }
   // Priorité : contenu modifié par l'humain > contenu intégral > préview (anciens runs).
-  const approvedContent = options?.modifiedContent?.trim() || payload.full || payload.preview || "";
+  const approvedContent = isQuestion ? answer : (options?.modifiedContent?.trim() || payload.full || payload.preview || "");
 
   const { data: runRow } = await db()
     .from("listing_agent_runs")

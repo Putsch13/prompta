@@ -115,6 +115,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const tabId = msg.tabId ?? _sender?.tab?.id;
         if (msg.runId && tabId) watchPilotRun(msg.runId, tabId);
         sendResponse({ ok: true });
+      } else if (msg?.type === "prompta:pilot-stop") {
+        // L'utilisateur abandonne (✚ nouvelle conversation) : couper le pilotage
+        // de ce run pour que la page cesse d'être manipulée sans mission visible.
+        if (msg.runId) stopPilot(msg.runId);
+        sendResponse({ ok: true });
       } else {
         sendResponse({ ok: false, status: 0, body: { message: "message inconnu" } });
       }

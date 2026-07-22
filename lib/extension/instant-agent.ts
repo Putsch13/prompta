@@ -343,6 +343,29 @@ function normalizeRawManifest(m: Record<string, unknown>, fallbackModel: string)
   }
   if (Array.isArray(m.steps)) {
     m.steps = (m.steps as unknown[]).filter((st) => st && typeof st === "object");
+    // Les étapes de PAUSE (ask/approval/browser) ne peuvent pas vivre dans une
+    // branche `parallel` : l'orchestrateur y calcule un stepIndex composite
+    // (i*100+…) qui casse la reprise (decideApproval lit manifest.steps[210]).
+    // On aplatit tout parallel qui en contient : ses branches deviennent des
+    // étapes séquentielles au même niveau, dans l'ordre.
+    const PAUSING = new Set(["ask", "approval", "browser"]);
+    const flattened: unknown[] = [];
+    for (const step of m.steps as Record<string, unknown>[]) {
+      if (step.type === "parallel" && Array.isArray(step.branches)) {
+        const branches = step.branches as Array<Record<string, unknown>>;
+        const hasPausing = branches.some(
+          (b) => Array.isArray(b?.steps) && (b.steps as Record<string, unknown>[]).some((s) => PAUSING.has(String(s?.type))),
+        );
+        if (hasPausing) {
+          for (const b of branches) {
+            if (Array.isArray(b?.steps)) flattened.push(...(b.steps as unknown[]));
+          }
+          continue;
+        }
+      }
+      flattened.push(step);
+    }
+    m.steps = flattened;
     for (const step of m.steps as Record<string, unknown>[]) {
       if (!step.type) {
         if (typeof step.question === "string") step.type = "ask";

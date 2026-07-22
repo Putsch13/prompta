@@ -169,9 +169,14 @@ export default function QuickPage() {
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
-  // Auto-scroll vers le bas quand le fil change.
+  // Auto-scroll vers le bas quand le fil change — SEULEMENT si l'utilisateur y
+  // est déjà (sinon chaque tick de poll le ramène en bas pendant qu'il lit).
   useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
+    const el = threadRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
   }, [history, live]);
 
   const usableCount = conns.filter((c) => c.usable).length;

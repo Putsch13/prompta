@@ -251,12 +251,20 @@ function renderFeed(force) {
     const g = pendingConnect.goal;
     setPendingConnect(null);
     launching = true; sendBtn.disabled = true;
-    launchMission(g);
+    launchMission(g, null, pendingConnect && pendingConnect.page);
   }));
   // Validation in-feed : décision ici même, puis reprise du suivi du run.
   const apText = feed.querySelector("[data-aptext]");
+  const isQ = current && current.approval && (current.approval.payload || {}).kind === "question";
+  if (apText && isQ) {
+    const yesBtn = feed.querySelector("[data-approve]");
+    const sync = () => { if (yesBtn) yesBtn.disabled = !apText.value.trim(); };
+    sync();
+    apText.addEventListener("input", sync);
+  }
   feed.querySelectorAll("[data-approve],[data-apreject]").forEach((b) => b.addEventListener("click", async () => {
     if (!current || !current.approval) return;
+    if (b.hasAttribute("data-approve") && isQ && (!apText || !apText.value.trim())) return;
     const decision = b.hasAttribute("data-approve") ? "approved" : "rejected";
     feed.querySelectorAll("[data-approve],[data-apreject]").forEach((x) => { x.disabled = true; });
     const r = await send("prompta:approve", {
@@ -275,7 +283,9 @@ function renderFeed(force) {
       renderFeed(true);
     }
   }));
-  feed.scrollTop = feed.scrollHeight;
+  // Ne ré-ancrer en bas que si l'utilisateur y est déjà : sinon on le ramène
+  // de force en bas à chaque tick de poll pendant qu'il remonte lire.
+  if (feed.scrollHeight - feed.scrollTop - feed.clientHeight < 90) feed.scrollTop = feed.scrollHeight;
 }
 
 // ── Connexion manquante : mémorisation + reprise automatique ────────────────
@@ -304,10 +314,10 @@ function startConnectPoll() {
     const usable = new Set(r.body.connections.filter((c) => c.usable).map((c) => connKey(c.connectorId)));
     const still = pendingConnect.missing.filter((s) => !usable.has(connKey(s)));
     if (still.length) return;
-    const { goal: g, missing } = pendingConnect;
+    const { goal: g, missing, page: origPage } = pendingConnect;
     setPendingConnect(null);
     launching = true; sendBtn.disabled = true;
-    launchMission(g, `✓ ${missing.map(slugLabel).join(", ")} connecté — je reprends la mission`);
+    launchMission(g, `✓ ${missing.map(slugLabel).join(", ")} connecté — je reprends la mission`, origPage);
   }, CONNECT_POLL_MS);
 }
 
@@ -401,16 +411,20 @@ async function ensureApproval() {
 }
 
 /** Bascule mission : capture des onglets cochés (session incluse) puis pipeline agent. */
-async function launchMission(goal, notice) {
+async function launchMission(goal, notice, pageOverride) {
   current = { kind: "mission", runId: "…", goal, model: modelEl.value || null, status: "pending", stepsCompleted: 0, planned: [], notice: notice || null };
   renderFeed();
-  activePage = await captureActivePage();
-  const page = { ...activePage };
-  if (!exploreEl.checked) page.links = undefined;
-  const targeted = openTabs.filter((t) => t.checked).map((t) => ({ title: t.title, url: t.url }));
-  if (targeted.length) {
-    const cap = await send("prompta:tabcontents", { urls: targeted.map((t) => t.url), maxTabs: 8, maxChars: 8000 });
-    page.openTabs = (cap?.ok && Array.isArray(cap.tabs) ? cap.tabs : targeted).filter((t) => t.url !== page.url);
+  // Reprise post-OAuth : page d'origine mémorisée, pas la page de connexions.
+  let page = pageOverride;
+  if (!page) {
+    activePage = await captureActivePage();
+    page = { ...activePage };
+    if (!exploreEl.checked) page.links = undefined;
+    const targeted = openTabs.filter((t) => t.checked).map((t) => ({ title: t.title, url: t.url }));
+    if (targeted.length) {
+      const cap = await send("prompta:tabcontents", { urls: targeted.map((t) => t.url), maxTabs: 8, maxChars: 8000 });
+      page.openTabs = (cap?.ok && Array.isArray(cap.tabs) ? cap.tabs : targeted).filter((t) => t.url !== page.url);
+    }
   }
 
   const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, history: buildConvoHistory() } });
@@ -427,7 +441,7 @@ async function launchMission(goal, notice) {
       current.status = "needs_connect";
       current.missing = r.body.missingConnectors;
       current.error = r.body.message || `Cette mission a besoin de : ${r.body.missingConnectors.join(", ")}.`;
-      setPendingConnect({ goal, missing: [...r.body.missingConnectors], startedAt: Date.now() });
+      setPendingConnect({ goal, missing: [...r.body.missingConnectors], page, startedAt: Date.now() });
       startConnectPoll();
     } else {
       current.status = "failed";
@@ -526,6 +540,8 @@ async function launch() {
   if (goal.length < 2) return;
   launching = true; sendBtn.disabled = true;
   goalEl.value = ""; goalEl.style.height = "auto";
+  // Couper le poll de la mission précédente avant d'en lancer une autre.
+  stopPolling();
   // Nouvelle demande explicite : la mission en attente de connexion est
   // abandonnée (sinon sa reprise auto écraserait le suivi de celle-ci).
   if (pendingConnect) setPendingConnect(null);
@@ -562,6 +578,10 @@ $("newconvo-btn").addEventListener("click", () => {
   pendingClarify = null; clarifyQ = null;
   setPendingConnect(null);
   clearInterval(pollTimer); pollTimer = null;
+  if (current && current.runId && current.runId !== "…" && !["completed", "failed", "cancelled"].includes(current.status)) {
+    send("prompta:cancel", { runId: current.runId });
+    send("prompta:pilot-stop", { runId: current.runId });
+  }
   current = null; launching = false; sendBtn.disabled = false;
   renderFeed(true); goalEl.focus();
 });

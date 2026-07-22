@@ -97,11 +97,15 @@ export async function reapStaleRunningRuns(): Promise<number> {
       Object.keys(run.output as object).length > 0;
 
     if (stepsCompleted > 0 && hasPartialOutput) {
+      // Anti-rejeu : toute étape à effet de bord réel dans le monde — action
+      // externe OU pilotage navigateur (clic « Envoyer », etc.) — bloque la
+      // reprise automatique. Un `browser` a le step_type "browser", jamais
+      // "action" : sans lui, le reaper rejouait les clics non idempotents.
       const { count: completedActions } = await db
         .from("listing_agent_run_steps")
         .select("*", { count: "exact", head: true })
         .eq("run_id", run.id)
-        .eq("step_type", "action")
+        .in("step_type", ["action", "browser"])
         .eq("status", "success");
 
       if ((completedActions ?? 0) > 0) {

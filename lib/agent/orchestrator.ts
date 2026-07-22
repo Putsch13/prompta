@@ -1030,7 +1030,11 @@ export async function runAgent(
     ...manifest.limits,
     max_steps: Math.max(manifest.limits.max_steps, manifest.steps.length + 2),
     max_tokens: Math.max(manifest.limits.max_tokens, 16_000),
-    timeout_ms: Math.max(manifest.limits.timeout_ms ?? 60_000, hasBrowserStep ? 600_000 : 120_000),
+    // Le timeout orchestrateur doit rester STRICTEMENT sous le maxDuration de
+    // la fonction (`/api/extension/execute` = 600 s) : sinon la plateforme tue
+    // la fonction avant que le Promise.race ne marque le run `failed`, et il
+    // reste coincé en `running` jusqu'au reaper. 540 s pour un pilotage browser.
+    timeout_ms: Math.max(manifest.limits.timeout_ms ?? 60_000, hasBrowserStep ? 540_000 : 120_000),
     max_tool_calls: Math.max(manifest.limits.max_tool_calls ?? 5, 10),
     max_output_bytes: Math.max(manifest.limits.max_output_bytes ?? 51_200, 512_000),
   };
