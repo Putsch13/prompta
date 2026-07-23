@@ -63,7 +63,7 @@ interface TaskResponse {
 
 const TASK_TIMEOUT_MS = 60_000;
 const TASK_POLL_MS = 900;
-const DEFAULT_MAX_ACTIONS = 12;
+const DEFAULT_MAX_ACTIONS = 22;
 const SNAPSHOT_TEXT_CAP = 6_000;
 const MAX_ELEMENTS = 80;
 
@@ -216,7 +216,9 @@ export async function runBrowserPilot(params: {
   const apiKey = apiKeys[resolved.provider];
   if (!apiKey) throw new Error(`Clé ${resolved.provider} manquante pour le pilotage du navigateur.`);
 
-  const maxActions = Math.min(Math.max(params.maxActions ?? DEFAULT_MAX_ACTIONS, 1), 20);
+  // Plafond relevé : les tâches répétitives (révéler N numéros, dérouler des
+  // résultats) épuisaient vite 12 actions. 40 max reste borné contre la boucle.
+  const maxActions = Math.min(Math.max(params.maxActions ?? DEFAULT_MAX_ACTIONS, 1), 40);
   const history: string[] = [];
   let inputTokens = 0;
   let outputTokens = 0;

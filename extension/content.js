@@ -292,6 +292,7 @@
       .pconfirm { position:fixed; top:64px; left:50%; transform:translateX(-50%); display:none; background:rgba(10,15,27,.97);
         border:1px solid rgba(56,189,248,.45); border-radius:14px; padding:13px 15px; color:#E4EDF9; font-size:13px;
         max-width:440px; box-shadow:0 16px 48px rgba(0,0,0,.65); line-height:1.5; pointer-events:auto; }
+      .pcalways { display:flex; align-items:center; gap:7px; margin-top:9px; font-size:11.5px; color:#8FA1BC; cursor:pointer; } .pcalways input { accent-color:#38BDF8; cursor:pointer; }
       .pcbtns { display:flex; gap:8px; margin-top:10px; justify-content:flex-end; }
       .pcbtns button { border:none; border-radius:9px; padding:6px 14px; font-size:12px; cursor:pointer; font-weight:600; }
       .pcyes { background:#38BDF8; color:#04121F; }
@@ -341,6 +342,7 @@
     <div class="pring" data-r="pring"></div>
     <div class="pconfirm" data-r="pconfirm">
       <div><b>Prompta veut :</b> <span data-r="pcmsg"></span></div>
+      <label class="pcalways"><input type="checkbox" data-r="pcalways"> Ne plus me demander pour ce type d'action (cette mission)</label>
       <div class="pcbtns"><button class="pcno" data-r="pcno">Refuser</button><button class="pcyes" data-r="pcyes">Autoriser</button></div>
     </div>`;
 
@@ -380,18 +382,33 @@
   }
   function pilotClearHighlight() { pring.style.display = "none"; }
   let confirmResolve = null;
+  let currentConfirmSig = null;
+  const autoApproveSigs = new Set(); // types d'action « ne plus me demander » (cette mission)
+  // Signature normalisée d'une action de pilotage (« clic sur Afficher le
+  // n° 04… » → « clic sur afficher le n° ») : identifie un TYPE d'action pour
+  // l'auto-approbation « ne plus me demander ».
+  function actionSig(label) {
+    return String(label || "").toLowerCase().replace(/[0-9«»"'()@.,:/–—-]+/g, " ").replace(/\s+/g, " ").trim();
+  }
   function pilotConfirm(label) {
+    // Déjà auto-approuvé pour ce type d'action dans cette mission : on passe.
+    if (autoApproveSigs.has(actionSig(label))) return Promise.resolve(true);
     return new Promise((resolve) => {
       // Une seule confirmation à la fois : l'ancienne (zombie) est refusée.
       if (confirmResolve) confirmResolve(false);
       confirmResolve = resolve;
+      currentConfirmSig = actionSig(label);
       pcmsg.textContent = label;
+      $("pcalways").checked = false;
       pconfirm.style.display = "block";
       // Auto-refus avant l'expiration de la tâche serveur (60 s) : silence = non.
       setTimeout(() => { if (confirmResolve === resolve) settleConfirm(false); }, 40_000);
     });
   }
   function settleConfirm(value) {
+    // « Ne plus me demander » coché + autorisé → mémorise le type d'action.
+    if (value && $("pcalways").checked && currentConfirmSig) autoApproveSigs.add(currentConfirmSig);
+    currentConfirmSig = null;
     pconfirm.style.display = "none";
     if (confirmResolve) { confirmResolve(value); confirmResolve = null; }
   }
@@ -873,6 +890,7 @@
   $("newconvo").addEventListener("click", () => {
     convoStart = Date.now();
     pendingClarify = null; clarifyQ = null;
+    autoApproveSigs.clear(); // les « ne plus me demander » ne franchissent pas une nouvelle mission
     if (pendingConnect) { pendingConnect = null; stopConnectPoll(); }
     stopPoll();
     // Une mission en vol est ABANDONNÉE : on l'annule côté serveur (crédits
