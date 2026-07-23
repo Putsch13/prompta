@@ -64,8 +64,12 @@ function RunsHistoryContent() {
   const searchParams = useSearchParams();
   const focusRunId = searchParams.get("id");
   const [runs, setRuns] = useState<RunRow[]>([]);
+  const [savedAgents, setSavedAgents] = useState<
+    { id: string; title: string; versionId: string; createdAt: string }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [relancing, setRelancing] = useState<string | null>(null);
+  const [launchingAgent, setLaunchingAgent] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(focusRunId);
   const [filter, setFilter] = useState<RunFilter>("all");
@@ -76,8 +80,31 @@ function RunsHistoryContent() {
   function loadRuns() {
     fetch("/api/runs")
       .then((r) => r.json())
-      .then((d) => setRuns(d.runs ?? []))
+      .then((d) => {
+        setRuns(d.runs ?? []);
+        setSavedAgents(d.savedAgents ?? []);
+      })
       .finally(() => setLoading(false));
+  }
+
+  /** Relance un agent gardé depuis zéro (nouveau run, même chemin worker). */
+  async function launchSavedAgent(agent: { id: string; versionId: string }) {
+    setLaunchingAgent(agent.id);
+    try {
+      const res = await fetch("/api/run/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: agent.id, versionId: agent.versionId, inputs: {}, async: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.runId) {
+        setSelectedAgent(agent.id);
+        setExpanded(data.runId);
+      }
+      loadRuns();
+    } finally {
+      setLaunchingAgent(null);
+    }
   }
 
   useEffect(() => {
@@ -261,6 +288,43 @@ function RunsHistoryContent() {
           ))}
           {agents.length === 0 && (
             <p className="px-2 text-xs text-ink-faint">Aucun agent exécuté.</p>
+          )}
+
+          {/* Bibliothèque : agents gardés depuis l'extension, relançables. */}
+          {savedAgents.length > 0 && (
+            <>
+              <p className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+                Agents sauvegardés
+              </p>
+              {savedAgents.map((a) => (
+                <div
+                  key={a.id}
+                  className={`group flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    selectedAgent === a.id ? "bg-accent/10" : "hover:bg-card2"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAgent(a.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  >
+                    <span className="text-accent">🤖</span>
+                    <span className={`truncate font-medium ${selectedAgent === a.id ? "text-accent" : "text-ink-soft"}`}>
+                      {a.title}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => launchSavedAgent(a)}
+                    disabled={launchingAgent === a.id}
+                    title="Relancer cet agent"
+                    className="shrink-0 rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
+                  >
+                    {launchingAgent === a.id ? "…" : "▶ Relancer"}
+                  </button>
+                </div>
+              ))}
+            </>
           )}
         </aside>
 

@@ -42,7 +42,7 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  const [{ data: promptRuns }, { data: agentRuns }] = await Promise.all([
+  const [{ data: promptRuns }, { data: agentRuns }, { data: savedListings }] = await Promise.all([
     supabase
       .from("runs")
       .select(
@@ -59,7 +59,26 @@ export async function GET() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(50),
+    // Agents GARDÉS (bibliothèque) : listings créés par l'utilisateur depuis
+    // l'extension — relançables même sans run récent.
+    admin
+      .from("listings")
+      .select("id, title, current_version_id, created_at")
+      .eq("creator_id", user.id)
+      .eq("type", "agent")
+      .neq("status", "deleted")
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
+
+  const savedAgents = (savedListings ?? [])
+    .filter((l) => l.current_version_id)
+    .map((l) => ({
+      id: l.id as string,
+      title: (l.title as string) || "Agent",
+      versionId: l.current_version_id as string,
+      createdAt: l.created_at as string,
+    }));
 
   // Dérive « en attente de validation » depuis agent_approvals (source de
   // vérité) — le statut du run peut être resté « running » si la contrainte
@@ -105,5 +124,5 @@ export async function GET() {
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
-  return NextResponse.json({ runs: merged.slice(0, 50) });
+  return NextResponse.json({ runs: merged.slice(0, 50), savedAgents });
 }
