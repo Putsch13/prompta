@@ -156,25 +156,40 @@ export async function decideApproval(
 
   const { data: run } = await db()
     .from("listing_agent_runs")
-    .select("user_id")
+    .select("user_id, used_credits, credit_hold_estimate_cents")
     .eq("id", approval.run_id)
     .single();
 
   if (!run || run.user_id !== userId) return null;
 
   if (decision === "rejected") {
-    await db()
+    // Garde anti-course (reaper d'expiration, double clic) : un seul update
+    // gagne — si l'approbation n'est plus pending, ne pas re-clore le run.
+    const { data: updated } = await db()
       .from("agent_approvals")
       .update({
         status: "rejected",
         decided_at: new Date().toISOString(),
         decided_by: userId,
       })
-      .eq("id", approvalId);
+      .eq("id", approvalId)
+      .eq("status", "pending")
+      .select("id");
+    if (!updated?.length) return null;
     await db()
       .from("listing_agent_runs")
       .update({ status: "failed", error_message: "Action rejetée par l'utilisateur" })
       .eq("id", approval.run_id);
+    // Libère le hold de crédits : le reaper ne repasse jamais sur un run
+    // failed — sans ça, le hold ampute le solde affiché à vie.
+    if (run.used_credits && run.credit_hold_estimate_cents != null) {
+      const { releaseAgentRunCredits } = await import("@/lib/billing/agent-run-billing");
+      await releaseAgentRunCredits(
+        userId,
+        approval.run_id,
+        Number(run.credit_hold_estimate_cents),
+      ).catch((e) => console.error("[approvals] release hold failed (rejected)", e));
+    }
     return null;
   }
 

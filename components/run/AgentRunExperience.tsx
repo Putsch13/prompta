@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   Download,
@@ -261,8 +261,18 @@ export function AgentRunExperience({
     status === "queued" ||
     status === "checking";
 
+  // Bascule automatique vers « Apps » UNE seule fois : sans le ref, cliquer
+  // l'onglet « Live » pendant une action renvoyait instantanément sur
+  // « Apps » (le bouton paraissait cassé).
+  const autoSwitchedRef = useRef(false);
   useEffect(() => {
-    if (isActive && workspaceStep?.type === "action" && view === "live") {
+    if (
+      isActive &&
+      workspaceStep?.type === "action" &&
+      view === "live" &&
+      !autoSwitchedRef.current
+    ) {
+      autoSwitchedRef.current = true;
       setView("workspace");
     }
   }, [isActive, workspaceStep?.type, view]);

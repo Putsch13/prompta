@@ -1161,6 +1161,19 @@ export async function runAgent(
         // ─── Parallel step ────────────────────────────────────────────────
         if (step.type === "parallel") {
           const parallelStep = step as ParallelStep;
+          // Plafond vérifié AVANT de lancer les branches : le post-check
+          // (après allSettled) laissait toutes les actions s'exécuter d'abord.
+          const plannedCalls = parallelStep.branches.reduce(
+            (n, branch) =>
+              n +
+              branch.steps.filter((s) =>
+                ["tool", "action", "browser"].includes((s as BaseAgentStep).type),
+              ).length,
+            0,
+          );
+          if (toolCalls + plannedCalls > maxToolCalls) {
+            throw new Error("Plafond max_tool_calls atteint");
+          }
           const ctxWithMemory = { ...effectiveContext, memoryEnabled };
 
           const branchResults = await Promise.allSettled(
@@ -1184,7 +1197,11 @@ export async function runAgent(
                 }
                 if (subUsage) usageLog.push(subUsage);
 
-                if (subStep.type === "tool" || subStep.type === "action") {
+                if (
+                  subStep.type === "tool" ||
+                  subStep.type === "action" ||
+                  subStep.type === "browser"
+                ) {
                   toolCalls++;
                 }
                 if (subStep.type === "llm" && subUsage) {
@@ -1275,6 +1292,14 @@ export async function runAgent(
         }
 
         // ─── Sequential step (existant) ──────────────────────────────────
+        // Plafond vérifié AVANT l'exécution : l'ancien post-check laissait
+        // partir une action externe de trop (off-by-one à effet de bord).
+        if (
+          (step.type === "tool" || step.type === "action" || step.type === "browser") &&
+          toolCalls + 1 > maxToolCalls
+        ) {
+          throw new Error("Plafond max_tool_calls atteint");
+        }
         const ctxWithMemory = { ...effectiveContext, memoryEnabled };
         const { content, usage } = await executeStepWithRetry(
           step,
@@ -1286,7 +1311,6 @@ export async function runAgent(
 
         if (step.type === "tool" || step.type === "action" || step.type === "browser") {
           toolCalls++;
-          if (toolCalls > maxToolCalls) throw new Error("Plafond max_tool_calls atteint");
         }
 
         if (step.type === "llm" && usage) {

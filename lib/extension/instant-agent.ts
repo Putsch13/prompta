@@ -446,7 +446,11 @@ export async function buildInstantAgent(params: {
   // L'utilisateur nomme-t-il des modèles dans son ordre (« avec claude tu fais…,
   // gpt-5.5 tu fais… ») ? Si oui, on laisse le planificateur ASSIGNER le modèle
   // par étape ; sinon on FORCE le modèle choisi partout (pas de bascule).
-  const MODEL_MENTION_RE = /\b(claude|gpt[-\s]?[0-9o]|gemini|mistral|sonnet|opus|haiku|o3\b|o4\b)/i;
+  // « claude » nu est ambigu (prénom courant : « envoie un mail à Claude ») :
+  // il ne compte que qualifié (claude sonnet/opus/4…) ou en contexte d'outil
+  // (« avec/utilise/via claude »).
+  const MODEL_MENTION_RE =
+    /\b(claude[-\s]?(sonnet|opus|haiku|\d)|(avec|utilise\w*|via)\s+claude\b|gpt[-\s]?[0-9o]|gemini|mistral|sonnet|opus|haiku|o3\b|o4\b)/i;
   const perStepModels = MODEL_MENTION_RE.test(goal) && !!(usableModels && usableModels.length);
 
   // Continuité conversationnelle : « tu as oublié les numéros », « corrige »,
@@ -466,7 +470,9 @@ export async function buildInstantAgent(params: {
   // (« les pages ouvertes », « à l'écran », « mes onglets », « ce qui est
   // affiché/ouvert »), on interdit dur toute action de LECTURE/recherche d'app
   // pour ces données — le planificateur DOIT lire {{page_active}}/{{tab_N}}.
-  const SCREEN_INTENT_RE = /\b(page[s]?\s+ouvert|onglet[s]?\s+ouvert|(sur|dans|depuis)\s+(les?\s+)?(page[s]?|onglet[s]?)\s+ouvert|à\s+l'?[ée]cran|ce\s+qui\s+est\s+(ouvert|affich|à\s+l'?[ée]cran)|sous\s+(mes|tes)\s+yeux|ce\s+que\s+(je|tu)\s+vois|le[s]?\s+onglet[s]?|mes\s+onglet|utilise\s+les?\s+page)/i;
+  // ['’] : l'apostrophe typographique (défaut macOS/iOS) doit matcher comme
+  // l'ASCII, sinon « à l’écran » n'active pas la contrainte.
+  const SCREEN_INTENT_RE = /\b(page[s]?\s+ouvert|onglet[s]?\s+ouvert|(sur|dans|depuis)\s+(les?\s+)?(page[s]?|onglet[s]?)\s+ouvert|à\s+l['’]?[ée]cran|ce\s+qui\s+est\s+(ouvert|affich|à\s+l['’]?[ée]cran)|sous\s+(mes|tes)\s+yeux|ce\s+que\s+(je|tu)\s+vois|le[s]?\s+onglet[s]?|mes\s+onglet|utilise\s+les?\s+page)/i;
   const screenForced = SCREEN_INTENT_RE.test(goal);
   const screenConstraint = screenForced
     ? `⚠️ CONTRAINTE ABSOLUE — L'utilisateur a EXPLICITEMENT demandé de travailler sur ce qui est OUVERT À L'ÉCRAN. Pour lire/analyser les données, tu DOIS utiliser {{page_active}} et {{tab_N}} (les onglets fournis). INTERDICTION TOTALE de toute action de lecture ou de recherche d'app (gmail.search_messages, google_sheets.get_values, drive.search, hubspot.search…) pour récupérer un contenu déjà à l'écran. Tu peux toujours AGIR/ÉCRIRE dans une app (envoyer, créer) si l'ordre le demande, mais la LECTURE vient de l'écran.`

@@ -5,6 +5,43 @@ import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Id d'abonnement d'une facture — API Stripe 2026 : le champ racine
+ * `invoice.subscription` a disparu au profit de
+ * `invoice.parent.subscription_details.subscription`. Fallback legacy inclus.
+ */
+function invoiceSubscriptionId(invoice: unknown): string | null {
+  const inv = invoice as {
+    subscription?: string | { id?: string } | null;
+    parent?: {
+      subscription_details?: { subscription?: string | { id?: string } | null } | null;
+    } | null;
+  };
+  const raw = inv.parent?.subscription_details?.subscription ?? inv.subscription ?? null;
+  if (!raw) return null;
+  return typeof raw === "string" ? raw : (raw.id ?? null);
+}
+
+/**
+ * Fin de période d'un abonnement — API 2026 : `current_period_end` vit sur les
+ * items, plus à la racine. new Date(undefined) lèverait un RangeError qui
+ * faisait 500 tout le webhook (résiliations jamais persistées).
+ */
+function subscriptionPeriodEndIsoFromEvent(subscription: {
+  current_period_end?: number;
+  items?: { data?: Array<{ current_period_end?: number }> };
+}): string | null {
+  let maxEnd = typeof subscription.current_period_end === "number"
+    ? subscription.current_period_end
+    : null;
+  for (const item of subscription.items?.data ?? []) {
+    if (typeof item.current_period_end === "number") {
+      maxEnd = maxEnd === null ? item.current_period_end : Math.max(maxEnd, item.current_period_end);
+    }
+  }
+  return maxEnd === null ? null : new Date(maxEnd * 1000).toISOString();
+}
+
 export async function POST(request: Request) {
   const body = await request.text();
   const sig = (await headers()).get("stripe-signature");
@@ -76,7 +113,8 @@ export async function POST(request: Request) {
         id: string;
         status: string;
         customer: string;
-        current_period_end: number;
+        current_period_end?: number;
+        items?: { data?: Array<{ current_period_end?: number }> };
         cancel_at_period_end?: boolean;
         metadata?: {
           listing_id?: string;
@@ -88,7 +126,7 @@ export async function POST(request: Request) {
       };
 
       const isDeleted = event.type === "customer.subscription.deleted";
-      const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+      const periodEnd = subscriptionPeriodEndIsoFromEvent(subscription);
       const cancelAtPeriodEnd = isDeleted ? false : Boolean(subscription.cancel_at_period_end);
       const localStatus = isDeleted ? "canceled" : subscription.status;
 
@@ -118,11 +156,10 @@ export async function POST(request: Request) {
 
     case "invoice.paid": {
       const invoice = event.data.object as {
-        subscription?: string | null;
         customer_email?: string | null;
         amount_paid?: number;
       };
-      const subscriptionId = invoice.subscription;
+      const subscriptionId = invoiceSubscriptionId(invoice);
       if (subscriptionId) {
         // ── Plan Prompta : crédits IA mensuels inclus (idempotent/facture) ──
         const { data: platformSub } = await admin
@@ -137,7 +174,13 @@ export async function POST(request: Request) {
           const invoiceId = (invoice as { id?: string }).id;
           if (invoiceId) {
             const { grantPlanMonthlyCredits } = await import("@/lib/billing/entitlements");
-            await grantPlanMonthlyCredits(platformSub.user_id, platformSub.plan, invoiceId).catch(
+            // amount_paid borne le grant (com ≥ 20 % même sur facture legacy/prorata).
+            await grantPlanMonthlyCredits(
+              platformSub.user_id,
+              platformSub.plan,
+              invoiceId,
+              invoice.amount_paid,
+            ).catch(
               (e) => console.error("[webhook] plan credit grant failed:", e),
             );
           } else {
@@ -182,9 +225,12 @@ export async function POST(request: Request) {
     }
 
     case "invoice.payment_failed": {
-      const invoice = event.data.object as { subscription?: string | null };
-      const subscriptionId = invoice.subscription;
+      const subscriptionId = invoiceSubscriptionId(event.data.object);
       if (subscriptionId) {
+        await admin
+          .from("platform_subscriptions")
+          .update({ status: "past_due" })
+          .eq("stripe_subscription_id", subscriptionId);
         await admin
           .from("subscriptions")
           .update({ status: "past_due" })

@@ -30,6 +30,7 @@ function ValidationsContent() {
   const [items, setItems] = useState<ApprovalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  const [decideErrors, setDecideErrors] = useState<Record<string, string>>({});
   // Contenu éditable + instruction de correction, par approbation.
   const [edited, setEdited] = useState<Record<string, string>>({});
   const [instruction, setInstruction] = useState<Record<string, string>>({});
@@ -37,22 +38,29 @@ function ValidationsContent() {
   const focusRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/approvals");
-    if (res.ok) {
-      const data = await res.json();
-      const next: ApprovalItem[] = data.items ?? [];
-      setItems(next);
-      // Pré-remplit le contenu éditable avec ce que l'agent propose.
-      setEdited((prev) => {
-        const merged = { ...prev };
-        for (const it of next) {
-          // Contenu INTÉGRAL (full) — la préview 2000 car. ne sert qu'aux notifs.
-          if (merged[it.id] === undefined) merged[it.id] = it.payload?.full ?? it.payload?.preview ?? "";
-        }
-        return merged;
-      });
+    // try/finally : un fetch rejeté (réseau coupé) ne doit pas laisser le
+    // spinner tourner à vie — le setInterval retentera.
+    try {
+      const res = await fetch("/api/approvals");
+      if (res.ok) {
+        const data = await res.json();
+        const next: ApprovalItem[] = data.items ?? [];
+        setItems(next);
+        // Pré-remplit le contenu éditable avec ce que l'agent propose.
+        setEdited((prev) => {
+          const merged = { ...prev };
+          for (const it of next) {
+            // Contenu INTÉGRAL (full) — la préview 2000 car. ne sert qu'aux notifs.
+            if (merged[it.id] === undefined) merged[it.id] = it.payload?.full ?? it.payload?.preview ?? "";
+          }
+          return merged;
+        });
+      }
+    } catch {
+      // silencieux : le poll suivant réessaie
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -69,6 +77,7 @@ function ValidationsContent() {
 
   async function decide(item: ApprovalItem, decision: "approved" | "rejected") {
     setActing(item.id);
+    setDecideErrors((prev) => ({ ...prev, [item.id]: "" }));
     try {
       const res = await fetch(`/api/run/agent/${item.runId}/approve`, {
         method: "POST",
@@ -79,7 +88,22 @@ function ValidationsContent() {
           ...(decision === "approved" ? { modifiedContent: edited[item.id] ?? "" } : {}),
         }),
       });
-      if (res.ok) await load();
+      if (res.ok) {
+        await load();
+        return;
+      }
+      // Surfacer le refus (réponse vide à une question, approbation expirée…)
+      // au lieu d'un clic dans le vide.
+      const body = await res.json().catch(() => ({}));
+      setDecideErrors((prev) => ({
+        ...prev,
+        [item.id]: body.error ?? body.message ?? `Décision refusée (${res.status}) — réessaie.`,
+      }));
+    } catch {
+      setDecideErrors((prev) => ({
+        ...prev,
+        [item.id]: "Erreur réseau — vérifie ta connexion et réessaie.",
+      }));
     } finally {
       setActing(null);
     }
@@ -203,6 +227,9 @@ function ValidationsContent() {
                     <Sparkles className="h-3.5 w-3.5" /> Voir le run complet →
                   </Link>
                 </div>
+                {decideErrors[item.id] ? (
+                  <p className="mt-2 text-sm text-destructive">{decideErrors[item.id]}</p>
+                ) : null}
               </div>
             );
           })}

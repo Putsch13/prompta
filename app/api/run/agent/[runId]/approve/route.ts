@@ -35,9 +35,19 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     return NextResponse.json({ error: "approvalId et decision requis" }, { status: 400 });
   }
 
-  const result = await decideApproval(approvalId, user.id, decision, {
-    modifiedContent: decision === "approved" ? modifiedContent : undefined,
-  });
+  // decideApproval throw (ex. réponse vide à une étape « question ») : 400
+  // avec le message FR — pas un 500 générique que le front avale en silence.
+  let result;
+  try {
+    result = await decideApproval(approvalId, user.id, decision, {
+      modifiedContent: decision === "approved" ? modifiedContent : undefined,
+    });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Décision impossible" },
+      { status: 400 },
+    );
+  }
   if (!result && decision === "approved") {
     return NextResponse.json({ error: "Approbation introuvable ou déjà traitée" }, { status: 404 });
   }

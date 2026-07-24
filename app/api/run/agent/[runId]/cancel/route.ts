@@ -52,17 +52,31 @@ export async function POST(_request: NextRequest, props: { params: Promise<{ run
   // l'annulation coopérative (arrêt à la prochaine étape).
   const immediate =
     run.status === "pending" || run.status === "queued" || run.status === "awaiting_approval";
-  const update: { cancel_requested: boolean; status?: string; cancelled_at?: string } = {
-    cancel_requested: true,
-  };
+
+  // Garde anti-course : le worker a pu claim le run entre notre lecture et
+  // ici. On n'annule « immédiat » (avec libération du hold) que si le statut
+  // n'a pas bougé — sinon le hold serait libéré DEUX fois (ici + worker),
+  // effaçant les holds des autres runs en cours. À défaut, on retombe sur
+  // l'annulation coopérative.
+  let cancelledNow = false;
   if (immediate) {
-    update.status = "cancelled";
-    update.cancelled_at = new Date().toISOString();
+    const { data: updated } = await admin
+      .from("listing_agent_runs")
+      .update({
+        cancel_requested: true,
+        status: "cancelled",
+        cancelled_at: new Date().toISOString(),
+      })
+      .eq("id", runId)
+      .eq("status", run.status)
+      .select("id");
+    cancelledNow = Boolean(updated?.length);
+  }
+  if (!cancelledNow) {
+    await admin.from("listing_agent_runs").update({ cancel_requested: true }).eq("id", runId);
   }
 
-  await admin.from("listing_agent_runs").update(update).eq("id", runId);
-
-  if (immediate) {
+  if (cancelledNow) {
     // Libère le hold de crédits (sinon il reste posé à vie — le reaper ne
     // repasse pas sur un run cancelled).
     if (run.used_credits && run.credit_hold_estimate_cents != null) {
@@ -83,7 +97,9 @@ export async function POST(_request: NextRequest, props: { params: Promise<{ run
   }
 
   return NextResponse.json({
-    status: immediate ? "cancelled" : "cancelling",
-    message: immediate ? "Run annulé." : "Arrêt demandé — l'agent s'arrêtera à la prochaine étape.",
+    status: cancelledNow ? "cancelled" : "cancelling",
+    message: cancelledNow
+      ? "Run annulé."
+      : "Arrêt demandé — l'agent s'arrêtera à la prochaine étape.",
   });
 }

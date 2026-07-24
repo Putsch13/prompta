@@ -47,21 +47,27 @@ export default function RunDetailPage() {
   const [immersive, setImmersive] = useState(false);
 
   const load = useCallback(async () => {
-    const [runRes, stepsRes, delivRes] = await Promise.all([
-      fetch(`/api/run/agent/${runId}`),
-      fetch(`/api/run/agent/${runId}/steps`),
-      fetch(`/api/run/agent/${runId}/deliverables`),
-    ]);
-    if (runRes.ok) setRun(await runRes.json());
-    if (stepsRes.ok) {
-      const d = await stepsRes.json();
-      setSteps(d.steps ?? []);
+    // try/finally : un rejet réseau ne doit pas laisser le spinner à vie.
+    try {
+      const [runRes, stepsRes, delivRes] = await Promise.all([
+        fetch(`/api/run/agent/${runId}`),
+        fetch(`/api/run/agent/${runId}/steps`),
+        fetch(`/api/run/agent/${runId}/deliverables`),
+      ]);
+      if (runRes.ok) setRun(await runRes.json());
+      if (stepsRes.ok) {
+        const d = await stepsRes.json();
+        setSteps(d.steps ?? []);
+      }
+      if (delivRes.ok) {
+        const d = await delivRes.json();
+        setDeliverables(d.deliverables ?? []);
+      }
+    } catch {
+      // silencieux : le rafraîchissement suivant réessaie
+    } finally {
+      setLoading(false);
     }
-    if (delivRes.ok) {
-      const d = await delivRes.json();
-      setDeliverables(d.deliverables ?? []);
-    }
-    setLoading(false);
   }, [runId]);
 
   useEffect(() => {

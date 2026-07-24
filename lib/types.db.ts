@@ -1116,7 +1116,7 @@ export type Database = {
           started_at: string | null
           status: string
           steps_completed: number | null
-          used_credits: boolean
+          used_credits: boolean | null
           user_id: string
           version_id: string | null
         }
@@ -1139,7 +1139,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           steps_completed?: number | null
-          used_credits?: boolean
+          used_credits?: boolean | null
           user_id: string
           version_id?: string | null
         }
@@ -1162,7 +1162,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           steps_completed?: number | null
-          used_credits?: boolean
+          used_credits?: boolean | null
           user_id?: string
           version_id?: string | null
         }

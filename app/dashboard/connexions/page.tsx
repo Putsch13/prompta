@@ -43,25 +43,31 @@ function ConnexionsContent() {
   const [loading, setLoading] = useState(true);
 
   async function loadAll() {
-    const [keysRes, connRes, tkRes] = await Promise.all([
-      fetch("/api/keys"),
-      fetch("/api/connectors"),
-      fetch("/api/composio/toolkits"),
-    ]);
-    if (keysRes.ok) {
-      const data = await keysRes.json();
-      setKeys(data.keys ?? []);
+    // try/finally : un rejet réseau ne doit pas laisser le skeleton à vie.
+    try {
+      const [keysRes, connRes, tkRes] = await Promise.all([
+        fetch("/api/keys"),
+        fetch("/api/connectors"),
+        fetch("/api/composio/toolkits"),
+      ]);
+      if (keysRes.ok) {
+        const data = await keysRes.json();
+        setKeys(data.keys ?? []);
+      }
+      if (connRes.ok) {
+        const data = await connRes.json();
+        setConnections(data.connections ?? []);
+      }
+      if (tkRes.ok) {
+        const data = await tkRes.json();
+        setComposioEnabled(Boolean(data.enabled));
+        setToolkits(data.toolkits ?? []);
+      }
+    } catch {
+      // silencieux : rechargement manuel possible
+    } finally {
+      setLoading(false);
     }
-    if (connRes.ok) {
-      const data = await connRes.json();
-      setConnections(data.connections ?? []);
-    }
-    if (tkRes.ok) {
-      const data = await tkRes.json();
-      setComposioEnabled(Boolean(data.enabled));
-      setToolkits(data.toolkits ?? []);
-    }
-    setLoading(false);
   }
 
   useEffect(() => {

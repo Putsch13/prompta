@@ -31,18 +31,23 @@ export async function POST(request: NextRequest, props: { params: Promise<{ trig
   const secret = trigger.webhook_secret as string | null;
   const rawBody = await request.text();
 
-  // Un secret configuré rend la signature OBLIGATOIRE : sans elle (ou si elle
-  // ne correspond pas), on refuse. Comparaison en temps constant.
-  if (secret) {
-    if (!signature) {
-      return NextResponse.json({ error: "Signature manquante" }, { status: 401 });
-    }
-    const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-    const sigBuf = Buffer.from(signature);
-    const expBuf = Buffer.from(expected);
-    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
-      return NextResponse.json({ error: "Signature invalide" }, { status: 401 });
-    }
+  // Deny-by-default : sans secret, n'importe qui connaissant l'URL pourrait
+  // lancer des runs facturés au propriétaire avec un payload attaquant injecté
+  // dans les {{variables}} du manifeste.
+  if (!secret) {
+    return NextResponse.json(
+      { error: "Trigger sans secret — configure webhook_secret pour activer ce webhook" },
+      { status: 403 },
+    );
+  }
+  if (!signature) {
+    return NextResponse.json({ error: "Signature manquante" }, { status: 401 });
+  }
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return NextResponse.json({ error: "Signature invalide" }, { status: 401 });
   }
 
   try {

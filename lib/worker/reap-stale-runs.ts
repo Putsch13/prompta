@@ -51,8 +51,86 @@ export async function reapStalePendingRuns(): Promise<number> {
   return stalePending.length;
 }
 
+/**
+ * Expire les validations humaines restées sans réponse (expires_at dépassé)
+ * et clôt leurs runs. Sans ce passage, un run en attente d'une validation
+ * jamais tranchée restait bloqué à vie — hold de crédits gelé compris — car le
+ * reaper des runs stale exclut par design les runs à approbation pendante.
+ */
+export async function reapExpiredApprovals(): Promise<number> {
+  const db = createAdminClient();
+  const nowIso = new Date().toISOString();
+
+  const { data: expired } = await db
+    .from("agent_approvals")
+    .select("id, run_id")
+    .eq("status", "pending")
+    .not("expires_at", "is", null)
+    .lt("expires_at", nowIso);
+
+  if (!expired?.length) return 0;
+
+  let closed = 0;
+  for (const approval of expired) {
+    // Garde anti-course : si l'utilisateur tranche au même moment, un seul
+    // update gagne (filtre status=pending) — on ne clôt le run que si on a
+    // réellement expiré l'approbation.
+    const { data: updated, error } = await db
+      .from("agent_approvals")
+      .update({ status: "expired", decided_at: nowIso })
+      .eq("id", approval.id)
+      .eq("status", "pending")
+      .select("id");
+    if (error || !updated?.length) continue;
+
+    const { data: run } = await db
+      .from("listing_agent_runs")
+      .select("id, user_id, status, used_credits, credit_hold_estimate_cents")
+      .eq("id", approval.run_id)
+      .maybeSingle();
+    if (!run || run.status === "completed" || run.status === "failed") continue;
+
+    await db
+      .from("listing_agent_runs")
+      .update({
+        status: "failed",
+        error_message:
+          "Validation expirée : aucune réponse dans le délai — mission annulée. Relance l'agent si besoin.",
+      })
+      .eq("id", run.id)
+      .neq("status", "completed");
+
+    if (run.used_credits && run.credit_hold_estimate_cents != null) {
+      await releaseAgentRunCredits(
+        run.user_id,
+        run.id,
+        Number(run.credit_hold_estimate_cents),
+      ).catch((e) =>
+        console.error("[worker:reap] release credits failed (approval expired)", {
+          runId: run.id,
+          err: e,
+        }),
+      );
+    }
+
+    closed += 1;
+    console.warn("[worker:reap] approval expired, run closed", {
+      runId: run.id,
+      approvalId: approval.id,
+    });
+  }
+
+  return closed;
+}
+
 export async function reapStaleRunningRuns(): Promise<number> {
   const admin = createAdminClient();
+
+  // D'abord purger les validations expirées : leurs runs sortent de la liste
+  // d'exclusion « pause légitime » ci-dessous et sont clos proprement.
+  await reapExpiredApprovals().catch((e) =>
+    console.error("[worker:reap] reapExpiredApprovals failed", e),
+  );
 
   const heartbeatCutoff = new Date(Date.now() - STALE_HEARTBEAT_MS).toISOString();
   const createdCutoff = new Date(Date.now() - STALE_CREATED_MS).toISOString();

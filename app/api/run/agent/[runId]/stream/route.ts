@@ -63,12 +63,37 @@ export async function GET(_request: NextRequest, props: Params) {
             return;
           }
 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: steps } = await admin
+          const { data: rawSteps } = await admin
             .from("listing_agent_run_steps")
-            .select("id, step_index, step_type, label, status, output_preview, error_code, error_message, started_at, finished_at")
+            .select("*")
             .eq("run_id", params.runId)
             .order("step_index", { ascending: true });
+
+          // Même forme camelCase que /api/run/agent/[runId]/steps : le client
+          // (mapDbStep) lit stepIndex/outputPreview/durationMs — en snake_case
+          // brut, toutes les étapes retombaient sur des placeholders « Étape N ».
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const steps = (rawSteps ?? []).map((s: any) => ({
+            id: s.id,
+            stepIndex: s.step_index,
+            stepId: s.step_id,
+            stepType: s.step_type,
+            label: s.label,
+            status: s.status,
+            startedAt: s.started_at,
+            finishedAt: s.finished_at,
+            durationMs: s.duration_ms,
+            inputPreview: s.input_preview,
+            outputPreview: s.output_preview,
+            errorCode: s.error_code,
+            errorMessage: sanitizeErrorForUser(s.error_message, s.error_code),
+            errorDetail: s.error_detail ?? null,
+            provider: s.provider,
+            model: s.model,
+            toolSlug: s.tool_slug,
+            actionSlug: s.action_slug,
+            usage: s.usage,
+          }));
 
           let approval_id: string | null = null;
           let approval: {
@@ -110,7 +135,7 @@ export async function GET(_request: NextRequest, props: Params) {
             approval,
           });
 
-          send("steps", { steps: steps ?? [] });
+          send("steps", { steps });
 
           if (TERMINAL.has(run.status) || run.status === "awaiting_approval") {
             close();
@@ -119,7 +144,7 @@ export async function GET(_request: NextRequest, props: Params) {
 
           // Backoff : si l'état (statut + steps + heartbeat) ne change pas, on
           // espace progressivement les requêtes jusqu'à POLL_MAX_MS.
-          const sig = `${run.status}:${run.steps_completed}:${(steps ?? []).length}:${run.heartbeat_at}`;
+          const sig = `${run.status}:${run.steps_completed}:${steps.length}:${run.heartbeat_at}`;
           if (sig === lastSig) stableIterations++;
           else {
             stableIterations = 0;
@@ -145,4 +170,12 @@ export async function GET(_request: NextRequest, props: Params) {
       Connection: "keep-alive",
     },
   });
+}
+
+function sanitizeErrorForUser(message: string | null, code: string | null): string | null {
+  if (!message) return null;
+  if (message.includes("x-api-key") || message.includes("Bearer")) {
+    return `Erreur provider (${code ?? "unknown"}) — contactez le support si le problème persiste`;
+  }
+  return message.slice(0, 500);
 }

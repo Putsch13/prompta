@@ -248,10 +248,13 @@ function renderFeed(force) {
   }));
   feed.querySelectorAll("[data-resume]").forEach((b) => b.addEventListener("click", () => {
     if (!pendingConnect) return;
+    // Lire la page AVANT setPendingConnect(null) — sinon la page d'origine est
+    // perdue et la mission repart sur la page courante (celle des connexions).
     const g = pendingConnect.goal;
+    const origPage = pendingConnect.page || null;
     setPendingConnect(null);
     launching = true; sendBtn.disabled = true;
-    launchMission(g, null, pendingConnect && pendingConnect.page);
+    launchMission(g, null, origPage);
   }));
   // Validation in-feed : décision ici même, puis reprise du suivi du run.
   const apText = feed.querySelector("[data-aptext]");
@@ -294,7 +297,7 @@ function renderFeed(force) {
 function setPendingConnect(v) {
   pendingConnect = v;
   if (!v) { clearInterval(connectTimer); connectTimer = null; }
-  try { chrome.storage.session.set({ popup_pending_connect: v ? { goal: v.goal, missing: v.missing, startedAt: v.startedAt } : null }).catch(() => { /* */ }); } catch { /* storage indispo */ }
+  try { chrome.storage.session.set({ popup_pending_connect: v ? { goal: v.goal, missing: v.missing, startedAt: v.startedAt, page: v.page || null } : null }).catch(() => { /* */ }); } catch { /* storage indispo */ }
 }
 const CONNECT_POLL_MS = 5000;
 const CONNECT_MAX_MS = 10 * 60 * 1000;

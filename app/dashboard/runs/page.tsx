@@ -70,6 +70,7 @@ function RunsHistoryContent() {
   const [loading, setLoading] = useState(true);
   const [relancing, setRelancing] = useState<string | null>(null);
   const [launchingAgent, setLaunchingAgent] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(focusRunId);
   const [filter, setFilter] = useState<RunFilter>("all");
@@ -90,18 +91,34 @@ function RunsHistoryContent() {
   /** Relance un agent gardé depuis zéro (nouveau run, même chemin worker). */
   async function launchSavedAgent(agent: { id: string; versionId: string }) {
     setLaunchingAgent(agent.id);
+    setLaunchError(null);
     try {
+      // Réutilise les inputs du dernier run de cet agent : sans eux, les
+      // placeholders ({{page_active}}, inputs requis) partent vides et la
+      // mission tourne dégradée ou est refusée (configuration_incomplete).
+      const lastRun = runs.find((r) => r.listing_id === agent.id && r.inputs);
       const res = await fetch("/api/run/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: agent.id, versionId: agent.versionId, inputs: {}, async: true }),
+        body: JSON.stringify({
+          listingId: agent.id,
+          versionId: agent.versionId,
+          inputs: lastRun?.inputs ?? {},
+          async: true,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.runId) {
         setSelectedAgent(agent.id);
         setExpanded(data.runId);
+      } else if (!res.ok) {
+        setLaunchError(
+          data.message ?? data.error ?? `Relance impossible (${res.status}) — réessaie.`,
+        );
       }
       loadRuns();
+    } catch {
+      setLaunchError("Erreur réseau — vérifie ta connexion et réessaie.");
     } finally {
       setLaunchingAgent(null);
     }
@@ -133,7 +150,20 @@ function RunsHistoryContent() {
     if (!run.listing_id || !run.version_id) return;
     setRelancing(run.id);
     setExpanded(run.id);
+    setLaunchError(null);
+    // try/finally : un fetch rejeté ou un res.json() qui throw ne doit pas
+    // laisser le bouton « Réessayer » en spinner pour toujours.
+    try {
+      await handleRetryInner(run);
+    } catch {
+      setLaunchError("Erreur réseau — vérifie ta connexion et réessaie.");
+    } finally {
+      setRelancing(null);
+      loadRuns();
+    }
+  }
 
+  async function handleRetryInner(run: RunRow) {
     if (run.kind === "agent") {
       // async:true = même chemin que le lancement normal (worker). Le mode
       // sync bloquait la requête HTTP pendant tout le run (timeout proxy
@@ -150,13 +180,15 @@ function RunsHistoryContent() {
           async: true,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.runId) {
         // Le nouveau run apparaît en tête via loadRuns ; on ouvre sa console.
         setExpanded(data.runId);
+      } else if (!res.ok) {
+        setLaunchError(
+          data.message ?? data.error ?? `Relance impossible (${res.status}) — réessaie.`,
+        );
       }
-      setRelancing(null);
-      loadRuns();
       return;
     }
 
@@ -172,7 +204,10 @@ function RunsHistoryContent() {
     });
 
     if (!res.ok || !res.body) {
-      setRelancing(null);
+      const data = await res.json().catch(() => ({}));
+      setLaunchError(
+        data.message ?? data.error ?? `Relance impossible (${res.status}) — réessaie.`,
+      );
       return;
     }
 
@@ -195,9 +230,6 @@ function RunsHistoryContent() {
     }
 
     void streamedOutput;
-
-    setRelancing(null);
-    loadRuns();
   }
 
   if (loading) {
@@ -324,6 +356,9 @@ function RunsHistoryContent() {
                   </button>
                 </div>
               ))}
+              {launchError ? (
+                <p className="px-3 pt-1 text-xs text-destructive">{launchError}</p>
+              ) : null}
             </>
           )}
         </aside>
