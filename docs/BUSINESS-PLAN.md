@@ -7,12 +7,12 @@
 | Offre | Prix | Ce qu'elle contient | Rôle dans le funnel |
 |---|---|---|---|
 | **Découverte** | 0 € | 2 € de crédits offerts (sans carte), 1 agent gardé, tous les modèles, BYOK illimité | Fait entrer — coût max 1,25 €/signup |
-| **Illimité** ⭐ | 29 €/mois | **35 € de crédits IA/mois** (GPT, Claude, Gemini, Mistral), **agents gardés illimités**, rollover des crédits | L'offre par défaut de l'usage quotidien |
-| **Pro** | 99 €/mois | **120 € de crédits/mois**, **multi-desk 3 postes**, plafond de dépense 240 €, support prioritaire + accompagnement | Monétise l'intensité ; au-delà : sur devis |
+| **Illimité** ⭐ | 29 €/mois | **35 € de crédits IA/mois** (GPT, Claude, Gemini, Mistral), **agents gardés illimités** | L'offre par défaut de l'usage quotidien |
+| **Pro** | 99 €/mois | **120 € de crédits/mois**, **multi-desk 10 postes**, plafond anti-abus 240 €, support prioritaire + accompagnement | Monétise l'intensité ; au-delà : sur devis |
 
 Moteurs annexes : **recharges à la carte** (5/12/30/100 €, bonus jusqu'à +20 %) et **BYOK** (gratuit, zéro marge — mais zéro coût variable : c'est le moteur d'acquisition et de rétention des techniciens).
 
-**Le pitch pricing** : « 35 € de crédits pour 29 € » — les crédits inclus dépassent le prix de l'abonnement. C'est possible parce que les crédits sont valorisés au tarif catalogue (markup ×1,6 sur le coût API) : l'abonné perçoit un bonus de ~20 % vs la recharge à la carte, et la plateforme garde ≥ 20 % de marge nette au pire cas.
+**Le pitch pricing** : « 35 € de crédits pour 29 € » — les crédits inclus dépassent le prix de l'abonnement. Deux mécanismes le permettent, et aucun n'est un cadeau : (1) les crédits sont valorisés au **tarif catalogue**, qui porte déjà le markup ×1,6 — 35 € de crédits ne représentent que 21,88 € de coût API réel ; (2) ils sont **non reportables**, donc le non-consommé retourne à la marge. L'abonné perçoit ~20 % de valeur en plus qu'à la recharge, la plateforme garde ≥ 20 % de marge nette même s'il consomme tout.
 
 ## 2. Économie unitaire — l'invariant « com ≥ 20 % »
 
@@ -30,7 +30,7 @@ Marges **au pire cas** (crédits consommés à 100 %, frais Stripe EU 1,5 % + 0,
 - **Recharges à la carte** : ratio crédits/payé ≤ 1,2 sur tous les packs → marge ≥ 20 % garantie, ~24-37 % typique.
 - **Coût d'un signup freemium** : 2 € offerts = 1,25 € de coût API max, consommés par ~30 % des inscrits → coût moyen réel ≈ **0,40 €/signup**.
 - **Coûts fixes actuels** : Render (web + worker) ~15 €, Supabase Pro 24 €, Composio ~27 €, Resend/Sentry/Plausible free tiers → **≈ 70 €/mois**. Point mort structurel : **11 abonnés Illimité au pire cas, ~5 en consommation réelle**.
-- **Rollover sans risque** : chaque euro encaissé finance au plus 1,22 € de crédits (0,7625 € de coût API max), quel que soit le mois où ils sont consommés — l'invariant est par facture, pas par mois.
+- **Crédits inclus NON reportables** (décision 2026-07-24) : l'allocation est remplacée à chaque facture, pas additionnée. C'est ce qui autorise à inclure plus de crédits que le prix du plan — le non-consommé (30 à 60 % en moyenne) retourne à la marge au lieu de s'accumuler en dette latente. Les recharges achetées à la carte, elles, n'expirent jamais et ne sont entamées qu'après l'allocation du mois : le client ne perd jamais un crédit qu'il a payé à l'unité.
 
 ## 3. Funnel d'acquisition (hypothèses)
 
@@ -76,7 +76,7 @@ Mix payant supposé : **80 % Illimité / 20 % Pro → ARPU ≈ 43 €** (vs 39 �
 
 - Les abonnés existants **gardent leur prix Stripe** ; leur valeur `plan` en base est normalisée : `starter` → Illimité, `scale` → Pro, ancien `pro` → Pro (`normalizePlanId`).
 - Leur grant mensuel est **automatiquement borné à 1,22 × ce qu'ils paient** : un Starter legacy à 19 € reçoit 23,18 € de crédits/mois (pas 35 €), un Pro legacy à 49 € reçoit 59,78 € (pas 120 €) — chaque facture legacy reste à ≥ 20 % de marge sans action manuelle.
-- Multi-desk Pro : engagement commercial (3 postes sur un même compte) ; le verrouillage technique des sièges est en roadmap — v1 : fair-use.
+- Multi-desk Pro : engagement commercial (**10 postes** sur un même compte) ; le verrouillage technique des sièges est en roadmap — v1 : fair-use. Le risque de partage abusif est borné par le plafond de dépense mensuel (240 €) et par le fait que les postes partagent un solde unique.
 
 ## 7. Risques principaux & parades
 
@@ -86,4 +86,5 @@ Mix payant supposé : **80 % Illimité / 20 % Pro → ARPU ≈ 43 €** (vs 39 �
 | Un abonné brûle 100 % de ses crédits chaque mois | Cas couvert par construction : com ≥ 20 % au pire cas (invariant 1,22, testé) |
 | Dépendance Composio | Connecteurs natifs de secours déjà en place (Gmail/Sheets/Slack OAuth direct) |
 | Coût des runs freemium abusifs | Plafond 2 € one-shot + quota journalier + limites runtime + circuit-breaker plateforme |
-| Churn early-stage | Agents en production = intégration profonde ; rollover des crédits + notifications de validation = réengagement |
+| Churn early-stage | Agents en production = intégration profonde ; notifications de validation = réengagement |
+| Non-report perçu comme punitif | L'allocation dépasse le prix payé (35 € pour 29 €) et les recharges achetées, elles, n'expirent jamais — la règle est annoncée en clair dans la FAQ tarifs |

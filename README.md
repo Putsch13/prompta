@@ -18,9 +18,9 @@ Source de vérité : `lib/billing/plans.ts` (grille), `lib/billing/credits.ts` (
 | Crédits IA inclus / mois | — (2 € offerts à l'inscription) | **35 €** | **120 €** |
 | Agents gardés | 1 | **Illimités** | **Illimités** |
 | Modèles (GPT, Claude, Gemini, Mistral) | ✓ | ✓ | ✓ |
-| Multi-desk (postes sur un même compte) | 1 | 1 | **3** |
+| Multi-desk (postes sur un même compte) | 1 | 1 | **10** |
 | Plafond de dépense mensuel (anti-abus) | 50 € | 70 € | 240 € |
-| Crédits cumulables (rollover) | — | ✓ | ✓ |
+| Report des crédits inclus | — | non | non |
 | BYOK (tes clés = runs gratuits illimités) | ✓ | ✓ | ✓ |
 | Support | — | Email standard | **Prioritaire + accompagnement** |
 
@@ -41,9 +41,15 @@ Marges **au pire cas** (consommation 100 % des crédits, frais Stripe EU 1,5 % +
 | Illimité 29 € | 29,00 € | 21,88 € | 0,69 € | **6,44 € (22 %)** |
 | Pro 99 € | 99,00 € | 75,00 € | 1,74 € | **22,27 € (22 %)** |
 
-En pratique la consommation moyenne des crédits inclus est de 40-70 % → **marge réelle attendue 45-65 %**. Le rollover ne change rien à l'invariant : chaque euro encaissé finance au plus 1,22 € de crédits, quel que soit le mois où ils sont consommés.
+En pratique la consommation moyenne des crédits inclus est de 40-70 % → **marge réelle attendue 45-65 %**.
 
-Autres flux de revenus : **recharges à la carte** (5/12/30/100 € — bonus jusqu'à +20 %, toujours sous le ratio 1,22 → marge ≥ 20 % garantie, ~24-37 % typique) ; **freemium** coûte au plus 1,25 € de coût API par signup (2 € offerts ÷ 1,6), consommés par une minorité d'inscrits.
+**Crédits inclus non reportables** (décision 2026-07-24, migration `0052`) : deux compartiments dans `user_credits` — `plan_credits_cents` (allocation mensuelle, **remplacée** à chaque facture, périme avec le cycle) et `balance_cents` (recharges achetées + bienvenue, **permanentes**). La dépense consomme l'allocation d'abord : un client ne perd jamais un crédit qu'il a payé à l'unité. C'est ce qui permet d'inclure plus de crédits que le prix du plan — le non-consommé retourne à la marge au lieu de s'accumuler en dette.
+
+**Multi-desk** : `deskLimit` dans `plans.ts` (1 / 1 / 10). Engagement commercial en v1 — le verrou technique des postes n'est pas encore implémenté, c'est du fair-use.
+
+**Plafond de dépense mensuel** (`lib/billing/spending-limits.ts`) : garde-fou anti-abus, pas un quota commercial. Il vaut `max(50 €, 2 × crédits inclus)` — 50 € en Découverte, 70 € en Illimité, 240 € en Pro — et couvre l'ensemble de la dépense du mois (allocation + recharges). Il existe pour qu'un agent parti en boucle ou un compte compromis ne puisse pas vider un solde ni faire exploser la facture API ; un abonné normal ne le touche jamais.
+
+Autres flux de revenus : **recharges à la carte** (5/12/30/100 € — bonus jusqu'à +20 %, toujours sous le ratio 1,22 → marge ≥ 20 % garantie, ~24-37 % typique ; elles n'expirent jamais, c'est ce qui rend le non-report acceptable) ; **freemium** coûte au plus 1,25 € de coût API par signup (2 € offerts ÷ 1,6), consommés par une minorité d'inscrits.
 
 Cockpit temps réel : `/admin` (MRR par plan, marge réelle coût API vs facturé, comptes à perte, circuit-breaker plateforme).
 

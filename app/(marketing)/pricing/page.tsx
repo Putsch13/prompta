@@ -27,7 +27,11 @@ const FAQ = [
   },
   {
     q: "35 € de crédits pour 29 € — comment c'est possible ?",
-    a: "Les crédits sont valorisés au tarif catalogue des recharges. En t'abonnant, tu obtiens environ 20 % de crédits en plus qu'à la carte : c'est l'avantage de l'abonnement, et le solde non utilisé reste acquis.",
+    a: "Les crédits sont valorisés au tarif catalogue des recharges. En t'abonnant tu obtiens environ 20 % de crédits en plus qu'à la carte : c'est l'avantage de l'abonnement. En contrepartie, l'allocation mensuelle se renouvelle mais ne se cumule pas.",
+  },
+  {
+    q: "Mes crédits non utilisés sont-ils reportés au mois suivant ?",
+    a: "L'allocation incluse dans l'abonnement est remise à neuf chaque mois et ne se reporte pas : c'est ce qui permet de t'en donner plus que le prix du plan. Les recharges que tu achètes à la carte, elles, n'expirent jamais — et elles ne sont entamées qu'une fois l'allocation du mois épuisée.",
   },
   {
     q: "Puis-je utiliser mes propres clés API (BYOK) ?",
@@ -39,15 +43,15 @@ const FAQ = [
   },
   {
     q: "C'est quoi le multi-desk du plan Pro ?",
-    a: "Jusqu'à 3 postes (ordinateurs / profils Chrome) utilisent le même compte Prompta et partagent le même solde de crédits — pratique pour un indépendant multi-machines ou une petite équipe. Besoin de plus de postes, de volume ou d'un SLA ? Écris-nous pour une offre sur devis.",
+    a: "Jusqu'à 10 postes (ordinateurs / profils Chrome) utilisent le même compte Prompta et partagent le même solde de crédits — de quoi équiper une petite équipe entière. Besoin de plus de postes, de volume ou d'un SLA ? Écris-nous pour une offre sur devis.",
   },
   {
     q: "Que se passe-t-il si je dépasse mes crédits inclus ?",
-    a: "Tu peux recharger à la carte ou basculer en BYOK. Rien n'est coupé sans prévenir.",
+    a: "Tu peux recharger à la carte (ces crédits n'expirent pas) ou basculer en BYOK. Rien n'est coupé sans prévenir. Un plafond anti-abus limite la dépense mensuelle — 50 € en Découverte, 70 € en Illimité, 240 € en Pro — pour qu'un agent parti en boucle ne vide jamais ton compte à ton insu.",
   },
   {
     q: "Puis-je changer de plan ou annuler ?",
-    a: "Tu changes de plan en un clic — la différence est facturée au prorata immédiatement, sans double abonnement. Tu peux annuler à tout moment : l'annulation prend effet en fin de période et tu gardes l'accès (et tes crédits) jusque-là.",
+    a: "Tu changes de plan en un clic — la différence est facturée au prorata immédiatement, sans double abonnement. Tu peux annuler à tout moment : l'annulation prend effet en fin de période et tu gardes l'accès jusque-là. Tes recharges achetées à la carte restent utilisables après l'annulation.",
   },
   {
     q: "L'extension marche sur Safari / Firefox ?",

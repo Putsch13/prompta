@@ -2522,18 +2522,24 @@ export type Database = {
         Row: {
           balance_cents: number
           held_cents: number
+          plan_credits_cents: number
+          plan_credits_expire_at: string | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
           balance_cents?: number
           held_cents?: number
+          plan_credits_cents?: number
+          plan_credits_expire_at?: string | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
           balance_cents?: number
           held_cents?: number
+          plan_credits_cents?: number
+          plan_credits_expire_at?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -2726,6 +2732,21 @@ export type Database = {
           p_user_id: string
         }
         Returns: boolean
+      }
+      grant_plan_credits: {
+        Args: {
+          p_amount_cents: number
+          p_expire_at: string
+          p_user_id: string
+        }
+        Returns: number
+      }
+      spend_credits: {
+        Args: {
+          p_amount_cents: number
+          p_user_id: string
+        }
+        Returns: number
       }
       hold_credits_for_run: {
         Args: {

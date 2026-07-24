@@ -4,7 +4,11 @@
  * Modèle 3 offres (refonte 2026-07-24) :
  *  - Découverte (0 €)  : extension + 2 € offerts + BYOK — fait entrer.
  *  - Illimité (29 €)   : agents gardés illimités + 35 € de crédits IA / mois.
- *  - Pro (99 €)        : multi-desk + 120 € de crédits IA / mois. Au-delà : sur devis.
+ *  - Pro (99 €)        : 10 postes + 120 € de crédits IA / mois. Au-delà : sur devis.
+ *
+ * Les crédits inclus sont NON REPORTABLES (décision 2026-07-24) : l'allocation
+ * est remplacée à chaque facture, pas additionnée (migration 0052). Seules les
+ * recharges achetées à la carte sont permanentes.
  *
  * INVARIANT DE RENTABILITÉ (« com ≥ 20 % ») : même si l'abonné consomme 100 %
  * de ses crédits inclus, la marge nette reste ≥ 20 % du montant payé :
@@ -24,8 +28,10 @@ export interface PromptaPlan {
   priceCents: number;
   /** Agents « gardés » (réutilisables) simultanément. null = illimité. */
   publishedAgentLimit: number | null;
-  /** Crédits IA inclus chaque mois (centimes de crédit). */
+  /** Crédits IA inclus chaque mois (centimes de crédit). NON reportables. */
   monthlyCreditCents: number;
+  /** Postes (« desks ») autorisés sur le même compte. */
+  deskLimit: number;
   tagline: string;
   features: string[];
   highlight?: boolean;
@@ -53,6 +59,7 @@ export const PLANS: Record<PlanId, PromptaPlan> = {
     priceCents: 0,
     publishedAgentLimit: 1,
     monthlyCreditCents: 0,
+    deskLimit: 1,
     tagline: "Prompta partout + 2 € offerts — sans carte.",
     features: [
       "Extension Prompta partout (Chrome & Chromium)",
@@ -71,6 +78,7 @@ export const PLANS: Record<PlanId, PromptaPlan> = {
     priceCents: 2900,
     publishedAgentLimit: null,
     monthlyCreditCents: 3500,
+    deskLimit: 1,
     tagline: "L'usage quotidien : agents illimités, crédits compris.",
     highlight: true,
     features: [
@@ -78,8 +86,8 @@ export const PLANS: Record<PlanId, PromptaPlan> = {
       "35 € de crédits IA inclus chaque mois — plus que ton abonnement",
       "Agents gardés illimités",
       "Tous les modèles au choix : GPT, Claude, Gemini, Mistral",
-      "Crédits cumulables — le solde non utilisé reste acquis",
-      "Recharge de crédits à la carte",
+      "Allocation remise à neuf chaque mois (non reportable)",
+      "Recharge de crédits à la carte — celles-ci n'expirent jamais",
       "Support standard par email",
     ],
   },
@@ -89,12 +97,13 @@ export const PLANS: Record<PlanId, PromptaPlan> = {
     priceCents: 9900,
     publishedAgentLimit: null,
     monthlyCreditCents: 12000,
+    deskLimit: 10,
     tagline: "Usage intensif : multi-desk et gros volume de crédits.",
     features: [
       "Tout Illimité",
       "120 € de crédits IA inclus chaque mois",
-      "Multi-desk : jusqu'à 3 postes sur le même compte",
-      "Plafond de dépense mensuel relevé (240 €)",
+      "Multi-desk : jusqu'à 10 postes sur le même compte",
+      "Plafond anti-abus relevé à 240 € de dépense / mois",
       "Support prioritaire + accompagnement à la mise en place",
       "Au-delà (équipe, volume, SLA) : offre sur devis",
     ],

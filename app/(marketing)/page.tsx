@@ -35,7 +35,7 @@ const LANDING_FAQ = [
   },
   {
     q: "Combien ça coûte ?",
-    a: "Le compte est gratuit, avec 2 € de crédits IA offerts sans carte bancaire. Ensuite : Illimité à 29 €/mois (agents illimités + 35 € de crédits IA inclus), Pro à 99 €/mois (120 € inclus + multi-desk 3 postes). Avec tes propres clés API (BYOK), les exécutions sont illimitées et gratuites sur tous les plans.",
+    a: "Le compte est gratuit, avec 2 € de crédits IA offerts sans carte bancaire. Ensuite : Illimité à 29 €/mois (agents illimités + 35 € de crédits IA inclus), Pro à 99 €/mois (120 € inclus + multi-desk 10 postes). Avec tes propres clés API (BYOK), les exécutions sont illimitées et gratuites sur tous les plans.",
   },
   {
     q: "Quelles applications sont compatibles ?",

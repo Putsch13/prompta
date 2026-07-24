@@ -83,6 +83,27 @@ test("plans — payants : agents gardés illimités", () => {
   assert.equal(PLANS.pro.publishedAgentLimit, null);
 });
 
+test("plans — multi-desk : 1 poste sauf Pro (10)", () => {
+  assert.equal(PLANS.free.deskLimit, 1);
+  assert.equal(PLANS.illimite.deskLimit, 1);
+  assert.equal(PLANS.pro.deskLimit, 10);
+});
+
+test("plans — aucune promesse de report des crédits inclus", () => {
+  // Les crédits de plan sont use-it-or-lose-it (migration 0052) : le marketing
+  // ne doit plus promettre l'inverse, sinon on vend ce que le code ne fait pas.
+  for (const id of PLAN_ORDER) {
+    for (const feature of PLANS[id].features) {
+      // « non reportable » est la formulation ATTENDUE : seule la promesse
+      // positive (non précédée de « non ») est interdite.
+      assert.ok(
+        !/(?<!non\s)(cumulables?|reste acquis|report[ée]s?|reportables?)\b/i.test(feature),
+        `${id} : « ${feature} » promet un report que le code ne fait plus`,
+      );
+    }
+  }
+});
+
 test("canPublishOnPlan — quota respecté et illimité géré", () => {
   assert.equal(canPublishOnPlan(PLANS.free, 0).allowed, true);
   assert.equal(canPublishOnPlan(PLANS.free, 1).allowed, false);

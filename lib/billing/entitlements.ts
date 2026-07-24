@@ -157,5 +157,61 @@ export async function grantPlanMonthlyCredits(
       ? Math.min(plan.monthlyCreditCents, maxMonthlyGrantCents(amountPaidCents))
       : plan.monthlyCreditCents;
   if (granted <= 0) return;
-  await addCredits(userId, granted, "bonus", `Crédits IA inclus — plan ${plan.label}`, invoiceId);
+
+  const admin = createAdminClient();
+
+  // Idempotence : le ledger porte la clé de facture. Insertion EN PREMIER —
+  // un retry Stripe échoue sur l'index unique AVANT de toucher l'allocation
+  // (sinon un rejeu remettrait le compteur à plein en écrasant la conso).
+  const { error: ledgerErr } = await admin.from("credit_transactions").insert({
+    user_id: userId,
+    amount_cents: granted,
+    kind: "bonus",
+    description: `Crédits IA inclus — plan ${plan.label}`,
+    stripe_session_id: invoiceId,
+  });
+  if (ledgerErr) {
+    if (ledgerErr.code === "23505") return; // déjà accordé (retry/course)
+    const { data: existing } = await admin
+      .from("credit_transactions")
+      .select("id")
+      .eq("stripe_session_id", invoiceId)
+      .eq("kind", "bonus")
+      .maybeSingle();
+    if (existing) return;
+    throw new Error(`Ledger crédits inaccessible : ${ledgerErr.message}`);
+  }
+
+  // NON REPORTABLE : l'allocation est REMPLACÉE, pas additionnée. Le reliquat
+  // du cycle précédent est perdu (use-it-or-lose-it) et tracé au ledger pour
+  // que le solde reste explicable. 35 jours = cycle + marge de facturation.
+  const expiresAt = new Date(Date.now() + 35 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: expired, error: rpcErr } = await admin.rpc("grant_plan_credits", {
+    p_user_id: userId,
+    p_amount_cents: granted,
+    p_expire_at: expiresAt,
+  });
+
+  if (rpcErr) {
+    // Fallback pré-migration 0052 : wallet unique (le report subsiste alors,
+    // comportement de l'ancienne version — jamais de perte pour le client).
+    console.warn("[entitlements] grant_plan_credits indisponible, repli wallet:", rpcErr.message);
+    const { error: fallbackErr } = await admin.rpc("add_credits", {
+      p_user_id: userId,
+      p_amount_cents: granted,
+    });
+    if (fallbackErr) console.error("[entitlements] repli add_credits échoué:", fallbackErr.message);
+    return;
+  }
+
+  const expiredCents = Number(expired ?? 0);
+  if (expiredCents > 0) {
+    const { error: expiryErr } = await admin.from("credit_transactions").insert({
+      user_id: userId,
+      amount_cents: -expiredCents,
+      kind: "bonus",
+      description: "Crédits du mois précédent expirés (non reportables)",
+    });
+    if (expiryErr) console.warn("[entitlements] trace d'expiration non écrite:", expiryErr.message);
+  }
 }

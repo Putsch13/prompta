@@ -8,16 +8,39 @@ export { costToCredits, creditsToEur, CREDIT_VALUE_CENTS, MARKUP } from "@/lib/b
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
+/** Allocation de plan encore valide (0 si le cycle est expiré). */
+export function effectivePlanCredits(row: {
+  plan_credits_cents?: number | null;
+  plan_credits_expire_at?: string | null;
+} | null): number {
+  if (!row?.plan_credits_cents) return 0;
+  if (row.plan_credits_expire_at && new Date(row.plan_credits_expire_at) <= new Date()) return 0;
+  return Math.max(0, row.plan_credits_cents);
+}
+
+/**
+ * Solde dépensable = allocation de plan encore valide (NON reportable) +
+ * crédits achetés (permanents) − holds en cours.
+ * `select("*")` volontaire : les colonnes de plan n'existent pas avant la
+ * migration 0052, une projection explicite ferait échouer la requête.
+ */
 export async function getCreditBalance(userId: string): Promise<number> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data } = (await admin
     .from("user_credits")
-    .select("balance_cents, held_cents")
+    .select("*")
     .eq("user_id", userId)
-    .maybeSingle() as { data: { balance_cents: number; held_cents?: number } | null };
+    .maybeSingle()) as {
+    data: {
+      balance_cents: number;
+      held_cents?: number;
+      plan_credits_cents?: number | null;
+      plan_credits_expire_at?: string | null;
+    } | null;
+  };
   const balance = data?.balance_cents ?? 0;
-  const held = (data as { held_cents?: number } | null)?.held_cents ?? 0;
-  return balance - held;
+  const held = data?.held_cents ?? 0;
+  return balance + effectivePlanCredits(data) - held;
 }
 
 export async function getAvailableBalance(userId: string): Promise<number> {
@@ -301,6 +324,28 @@ export async function debitPlatformUsage(
     const creditsNeeded = costToCredits(actualCostCents) * CREDIT_VALUE_CENTS;
 
     const admin = createAdminClient();
+
+    // Débit atomique, allocation de plan (périssable) consommée en premier.
+    const { data: spent, error: spendErr } = await admin.rpc("spend_credits", {
+      p_user_id: userId,
+      p_amount_cents: creditsNeeded,
+    });
+    if (!spendErr) {
+      const debitedCents = Number(spent ?? 0);
+      if (debitedCents > 0) {
+        await admin.from("credit_transactions").insert({
+          user_id: userId,
+          amount_cents: -debitedCents,
+          kind: "run_debit",
+          description,
+          run_id: runId ?? null,
+        });
+      }
+      return;
+    }
+
+    // Fallback pré-migration 0052 : read-then-write sur le wallet unique.
+    console.warn("[credits] spend_credits RPC unavailable, using JS fallback:", spendErr.message);
     const { data } = await admin
       .from("user_credits")
       .select("balance_cents")
