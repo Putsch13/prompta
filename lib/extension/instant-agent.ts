@@ -15,11 +15,16 @@
  */
 
 import { AgentManifestSchema, type AgentManifest } from "@/lib/agent/schema";
+import { ensureApprovalGuards } from "@/lib/agent/approval-guards";
 import { callModel } from "@/lib/llm/gateway";
 import { parseLlmJson } from "@/lib/llm/json";
 import type { ResolvedModel } from "@/lib/llm/resolve-model";
 import { connectorsForSteps } from "@/lib/connectors/registry";
 import { canonicalConnectorKey } from "@/lib/connectors/resolve-id";
+
+// La logique de garde vit dans lib/agent/approval-guards (partagée avec la
+// route de run et le worker) ; réexport pour les consommateurs historiques.
+export { ensureApprovalGuards, isSensitiveWriteStep } from "@/lib/agent/approval-guards";
 
 export interface OpenTab {
   title?: string;
@@ -71,16 +76,6 @@ export type InstantAgentResult = InstantAgentPlan | InstantAgentClarify;
 const PAGE_CONTENT_CAP = 12000;
 const MAX_LINKS = 40;
 
-/**
- * Espaces personnels Google SANS envoi externe : écriture bénigne, pas
- * d'approval. Calendar en est EXCLU : un événement peut inviter des tiers
- * (envoi d'emails) → il doit passer par une validation humaine.
- */
-const SAFE_WRITE_CONNECTORS = new Set([
-  "google_sheets", "googlesheets", "google_docs", "googledocs",
-  "google_drive", "googledrive",
-]);
-
 // Paramètres d'URL porteurs de secrets — jamais transmis au LLM ni loggés.
 const SENSITIVE_PARAM_RE = /^(token|access[_-]?token|refresh[_-]?token|id[_-]?token|auth|authorization|key|api[_-]?key|secret|password|pwd|pass|session|sid|sig|signature|jwt|otp|code|credential|state|nonce|ticket|assertion|hash|reset|verify)/i;
 // Chemins d'authentification : on retire TOUTE la query (reset/magic links…).
@@ -128,73 +123,6 @@ export function neutralizeUntrusted(text: string): string {
   return text
     .replace(/[─—-]{4,}[^\n]*/g, " ")
     .replace(/^\s*(system|assistant|user|développeur|developer)\s*:/gim, "$1．");
-}
-
-/**
- * Verbes de LECTURE (deny-by-default : tout ce qui n'est pas clairement une
- * lecture est traité comme une écriture sensible). Plus sûr qu'une liste de
- * verbes d'écriture forcément incomplète (stripe.charge, x.mutation…).
- */
-const READ_VERB_RE = /^(get|list|read|search|find|fetch|lire|lis|rechercher|chercher|find|show|view|count|describe|export)/i;
-
-type Step = AgentManifest["steps"][number];
-
-/**
- * Une action est « sensible » (⇒ validation humaine) si elle sort des espaces
- * Google perso ET n'est pas manifestement une lecture. Deny-by-default.
- */
-export function isSensitiveWriteStep(step: Step): boolean {
-  if (step.type !== "action") return false;
-  if (SAFE_WRITE_CONNECTORS.has(step.connector)) return false;
-  const verbPart = (step.action.split(".").pop() ?? step.action).trim();
-  return !READ_VERB_RE.test(verbPart);
-}
-
-/** Vrai si une étape — ou une sous-étape à N'IMPORTE quelle profondeur — est sensible. */
-function stepTreeHasSensitiveWrite(step: Step): boolean {
-  if (isSensitiveWriteStep(step)) return true;
-  if (step.type === "parallel") {
-    return step.branches.some((b) => b.steps.some((s) => stepTreeHasSensitiveWrite(s as Step)));
-  }
-  return false;
-}
-
-/**
- * Insère une validation humaine avant CHAQUE écriture sensible (y compris
- * imbriquée dans une branche parallèle) non déjà couverte par une validation en
- * amont. Une validation « couvre » une seule écriture sensible : deux envois
- * distincts exigent deux validations. Déterministe, ne fait confiance ni au LLM
- * ni au contenu de page.
- */
-export function ensureApprovalGuards(manifest: AgentManifest): AgentManifest {
-  const steps = [...manifest.steps];
-  let pendingApproval = false; // une validation en amont, pas encore consommée
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    if (step.type === "approval") {
-      pendingApproval = true;
-      continue;
-    }
-    if (stepTreeHasSensitiveWrite(step)) {
-      if (pendingApproval) {
-        pendingApproval = false; // cette écriture consomme la validation existante
-        continue;
-      }
-      const prevKey = [...steps.slice(0, i)].reverse().find((s) => "outputKey" in s && s.outputKey)?.outputKey;
-      const label =
-        step.type === "action"
-          ? `${step.connector} → ${step.action}`
-          : "action externe (branche parallèle)";
-      steps.splice(i, 0, {
-        type: "approval",
-        label: `Valider avant : ${label}`,
-        payloadTemplate: prevKey ? `{{${prevKey}}}` : `L'agent s'apprête à exécuter « ${label} ». Confirmez.`,
-        outputKey: `validation_externe_${i}`,
-      } as Step);
-      i++; // sauter la validation insérée ; elle est consommée par cette écriture
-    }
-  }
-  return { ...manifest, steps };
 }
 
 /** Connecteurs requis par le manifeste mais absents des connexions utilisables. */

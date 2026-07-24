@@ -18,6 +18,7 @@ import {
   FREE_RUN_MAX_TOKENS,
 } from "@/lib/billing/credits";
 import { consumeFreeRunQuota } from "@/lib/billing/free-quota";
+import { decidePlatformRunBilling } from "@/lib/billing/free-tier";
 import { checkMonthlySpendCap } from "@/lib/billing/spending-limits";
 import { getCreditCircuitStatus } from "@/lib/billing/circuit-breaker";
 import { getCachedRun, runCacheKey, setCachedRun } from "@/lib/billing/run-cache";
@@ -111,8 +112,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const hasEntitlement = isOwner || isPro || hasPurchase || hasSubscription;
-
   // La version DOIT appartenir au listing contrôlé plus haut (sinon IDOR :
   // exécuter le prompt d'un autre listing via son versionId).
   const { data: version } = await admin
@@ -149,10 +148,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (!unrestricted) {
+      // Comme pour les agents (run/agent) : la propriété, le Pro plateforme,
+      // l'achat ou l'abonnement ne donnent que l'ACCÈS au listing — ils
+      // n'exonèrent jamais de payer l'exécution sur clé plateforme.
+      // BYOK (plus haut) = gratuit ; sinon crédits, sinon quota gratuit
+      // (listing gratuit, modèle bridé), sinon 402.
       const creditBalance = await getCreditBalance(user.id);
       const minCreditsCents = estimatedCredits * CREDIT_VALUE_CENTS;
+      const decision = decidePlatformRunBilling({
+        balanceCents: creditBalance,
+        minCreditsCents,
+        listingIsFree: isFree,
+      });
 
-      if (!hasEntitlement && creditBalance >= minCreditsCents) {
+      if (decision === "credits") {
         const circuit = await getCreditCircuitStatus();
         if (!circuit.allowed) {
           return new Response(
@@ -169,7 +178,7 @@ export async function POST(request: NextRequest) {
           );
         }
         usedCredits = true;
-      } else if (isFree && !hasEntitlement) {
+      } else if (decision === "free_quota") {
         const allowed = await consumeFreeRunQuota(user.id);
         if (!allowed) {
           return new Response(
@@ -186,7 +195,7 @@ export async function POST(request: NextRequest) {
         apiModel = resolved.apiModel;
         tokenParam = resolved.tokenParam;
         apiKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`] ?? apiKey;
-      } else if (!hasEntitlement) {
+      } else {
         return new Response(
           JSON.stringify({
             error: "insufficient_credits",

@@ -18,13 +18,33 @@ export async function reapStalePendingRuns(): Promise<number> {
   const db = admin;
   const pendingCutoff = new Date(Date.now() - STALE_PENDING_MS).toISOString();
 
-  const { data: stalePending } = await db
+  // Cutoff sur queued_at, PAS created_at : une reprise (post-approbation,
+  // replan, resume auto) remet en pending un run dont created_at peut avoir
+  // des heures — le juger là-dessus tuait la reprise (et libérait son hold)
+  // avant qu'un worker la prenne. queued_at est re-timestampé à chaque
+  // (re)mise en pending ; fallback created_at pour les lignes d'avant la
+  // migration 0051 (queued_at null).
+  const { data: staleQueued } = await db
     .from("listing_agent_runs")
     .select("id, user_id, used_credits, credit_hold_estimate_cents")
     .eq("status", "pending")
+    .not("queued_at", "is", null)
+    .lt("queued_at", pendingCutoff);
+
+  const { data: staleLegacy } = await db
+    .from("listing_agent_runs")
+    .select("id, user_id, used_credits, credit_hold_estimate_cents")
+    .eq("status", "pending")
+    .is("queued_at", null)
     .lt("created_at", pendingCutoff);
 
-  if (!stalePending?.length) return 0;
+  const reapedAuthorizing = await reapStaleAuthorizingRuns(pendingCutoff).catch((e) => {
+    console.error("[worker:reap] reap authorizing failed", e);
+    return 0;
+  });
+
+  const stalePending = [...(staleQueued ?? []), ...(staleLegacy ?? [])];
+  if (!stalePending.length) return reapedAuthorizing;
 
   for (const run of stalePending) {
     await db
@@ -48,7 +68,72 @@ export async function reapStalePendingRuns(): Promise<number> {
     console.warn("[worker:reap] stale pending run failed", { runId: run.id });
   }
 
-  return stalePending.length;
+  return stalePending.length + reapedAuthorizing;
+}
+
+/**
+ * Clôt les runs restés en `authorizing` : l'API est morte entre l'insert et le
+ * hold de crédits (ou entre le hold et la bascule en pending). Le worker ne
+ * claim jamais ce statut — sans ce passage, la ligne restait gelée à vie.
+ */
+async function reapStaleAuthorizingRuns(cutoffIso: string): Promise<number> {
+  const db = createAdminClient();
+
+  // Un run authorizing n'est jamais re-timestampé : created_at fait foi.
+  const { data: staleAuthorizing } = await db
+    .from("listing_agent_runs")
+    .select("id, user_id, used_credits, credit_hold_estimate_cents")
+    .eq("status", "authorizing")
+    .lt("created_at", cutoffIso);
+
+  if (!staleAuthorizing?.length) return 0;
+
+  for (const run of staleAuthorizing) {
+    const { data: updated } = await db
+      .from("listing_agent_runs")
+      .update({
+        status: "failed",
+        error_message:
+          "Interruption pendant l'autorisation des crédits — le run n'a jamais démarré. Relancez l'agent.",
+      })
+      .eq("id", run.id)
+      .eq("status", "authorizing")
+      .select("id");
+    if (!updated?.length) continue;
+
+    // On ne sait pas si l'API est morte AVANT ou APRÈS avoir posé le hold.
+    // release_credit_hold n'est pas gardé côté SQL (il décrémente held_cents
+    // aveuglément) : libérer un hold jamais posé — ou déjà libéré par l'API —
+    // fausserait la provision des autres runs de l'utilisateur. On ne libère
+    // que si le solde de transactions le prouve : hold posé (RPC →
+    // agent_run_id, fallback JS → run_id) ET pas encore libéré.
+    if (run.used_credits && run.credit_hold_estimate_cents != null) {
+      const { count: holdTxCount } = await db
+        .from("credit_transactions")
+        .select("*", { count: "exact", head: true })
+        .eq("kind", "hold")
+        .or(`agent_run_id.eq.${run.id},run_id.eq.${run.id}`);
+      const { count: releaseTxCount } = await db
+        .from("credit_transactions")
+        .select("*", { count: "exact", head: true })
+        .eq("kind", "hold_release")
+        .or(`agent_run_id.eq.${run.id},run_id.eq.${run.id}`);
+
+      if ((holdTxCount ?? 0) > (releaseTxCount ?? 0)) {
+        await releaseAgentRunCredits(
+          run.user_id,
+          run.id,
+          Number(run.credit_hold_estimate_cents),
+        ).catch((e) =>
+          console.error("[reap:authorizing] release credits failed", { runId: run.id, err: e }),
+        );
+      }
+    }
+
+    console.warn("[worker:reap] stale authorizing run failed", { runId: run.id });
+  }
+
+  return staleAuthorizing.length;
 }
 
 /**
@@ -222,6 +307,9 @@ export async function reapStaleRunningRuns(): Promise<number> {
         .from("listing_agent_runs")
         .update({
           status: "pending",
+          // Remise en file = nouvelle fenêtre de fraîcheur pour le reaper des
+          // pending (sinon il jugerait la reprise sur le created_at d'origine).
+          queued_at: new Date().toISOString(),
           resume_from_step: stepsCompleted,
           claimed_by: null,
           heartbeat_at: null,

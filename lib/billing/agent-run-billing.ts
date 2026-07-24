@@ -3,7 +3,8 @@ import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
 import { getUserKey, type KeyProvider } from "@/lib/keys";
 import { getCreditBalance, holdCreditsForRun, settleCreditsForRun, releaseCreditHold } from "@/lib/credits";
 import { checkMonthlySpendCap } from "@/lib/billing/spending-limits";
-import { costToCredits, CREDIT_VALUE_CENTS } from "@/lib/billing/credits";
+import { costToCredits, CREDIT_VALUE_CENTS, FREE_TIER_MODEL } from "@/lib/billing/credits";
+import { applyFreeTierLimits, decidePlatformRunBilling } from "@/lib/billing/free-tier";
 import { estimateMaxCostForManifest } from "@/lib/billing/estimate-manifest-cost";
 import { getCreditCircuitStatus } from "@/lib/billing/circuit-breaker";
 import { consumeFreeRunQuota } from "@/lib/billing/free-quota";
@@ -13,9 +14,21 @@ const PROVIDERS: KeyProvider[] = ["openai", "anthropic", "google", "mistral", "s
 
 export interface ResolvedRunKeys {
   apiKeys: Record<string, string>;
+  /**
+   * Fournisseurs de `apiKeys` servis par une clé PLATEFORME (les autres sont
+   * BYOK). À passer à l'orchestrateur : seuls les steps exécutés sur ces
+   * fournisseurs sont facturables en crédits au settle.
+   */
+  platformProviders: string[];
   usedCredits: boolean;
   usedFreeQuota: boolean;
   estimatedMax: number;
+  /**
+   * Manifeste EFFECTIF à exécuter : bridé free-tier (modèle imposé) quand le
+   * run passe sur quota gratuit, identique au manifeste fourni sinon. Les
+   * appelants doivent exécuter CE manifeste, pas celui d'origine.
+   */
+  manifest: AgentManifest;
 }
 
 /** Charge les clés BYOK ou plateforme ; indique si le run consommera des crédits. */
@@ -28,6 +41,7 @@ export async function resolveAgentRunKeys(
 ): Promise<ResolvedRunKeys> {
   if (await isUnrestrictedUser(userId)) {
     const apiKeys: Record<string, string> = {};
+    const platformProviders: string[] = [];
     for (const p of PROVIDERS) {
       const key = await getUserKey(userId, p);
       if (key) apiKeys[p] = key;
@@ -37,7 +51,10 @@ export async function resolveAgentRunKeys(
       const { provider } = resolveModelOrDefault(step.model);
       if (!apiKeys[provider]) {
         const platformKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`];
-        if (platformKey) apiKeys[provider] = platformKey;
+        if (platformKey) {
+          apiKeys[provider] = platformKey;
+          platformProviders.push(provider);
+        }
       }
     }
     if (
@@ -46,12 +63,14 @@ export async function resolveAgentRunKeys(
       process.env.PLATFORM_SERPER_KEY
     ) {
       apiKeys.serper = process.env.PLATFORM_SERPER_KEY;
+      platformProviders.push("serper");
     }
-    return { apiKeys, usedCredits: false, usedFreeQuota: false, estimatedMax: 0 };
+    return { apiKeys, platformProviders, usedCredits: false, usedFreeQuota: false, estimatedMax: 0, manifest };
   }
 
   const consumeQuota = options?.consumeFreeQuota !== false;
   const apiKeys: Record<string, string> = {};
+  const platformProviders: string[] = [];
   let usedCredits = false;
   let usedFreeQuota = false;
   let needsPlatformKeys = false;
@@ -70,6 +89,7 @@ export async function resolveAgentRunKeys(
     if (!platformKey) continue;
 
     apiKeys[provider] = platformKey;
+    platformProviders.push(provider);
     needsPlatformKeys = true;
   }
 
@@ -80,6 +100,7 @@ export async function resolveAgentRunKeys(
     const serper = process.env.PLATFORM_SERPER_KEY;
     if (serper) {
       apiKeys.serper = serper;
+      platformProviders.push("serper");
       needsPlatformKeys = true;
     }
   }
@@ -88,11 +109,15 @@ export async function resolveAgentRunKeys(
 
   if (needsPlatformKeys && !hasEntitlement) {
     const balance = await getCreditBalance(userId);
-    const minNeeded = costToCredits(estimatedMax) * CREDIT_VALUE_CENTS;
+    const decision = decidePlatformRunBilling({
+      balanceCents: balance,
+      minCreditsCents: costToCredits(estimatedMax) * CREDIT_VALUE_CENTS,
+      listingIsFree: isFree,
+    });
 
-    if (balance >= minNeeded) {
+    if (decision === "credits") {
       usedCredits = true;
-    } else if (isFree) {
+    } else if (decision === "free_quota") {
       if (consumeQuota) {
         const allowed = await consumeFreeRunQuota(userId);
         if (!allowed) {
@@ -125,7 +150,24 @@ export async function resolveAgentRunKeys(
     }
   }
 
-  return { apiKeys, usedCredits, usedFreeQuota, estimatedMax };
+  // Quota gratuit = modèle bridé : tous les appels LLM du manifeste basculent
+  // sur FREE_TIER_MODEL (le plafond de tokens PAR APPEL est appliqué par
+  // l'orchestrateur via llmMaxTokensCap). On garantit la clé plateforme du
+  // provider free-tier, absente si le manifeste d'origine ne l'utilisait pas.
+  let effectiveManifest = manifest;
+  if (usedFreeQuota) {
+    effectiveManifest = applyFreeTierLimits(manifest);
+    const freeProvider = resolveModelOrDefault(FREE_TIER_MODEL).provider;
+    if (!apiKeys[freeProvider]) {
+      const platformKey = process.env[`PLATFORM_${freeProvider.toUpperCase()}_KEY`];
+      if (platformKey) {
+        apiKeys[freeProvider] = platformKey;
+        platformProviders.push(freeProvider);
+      }
+    }
+  }
+
+  return { apiKeys, platformProviders, usedCredits, usedFreeQuota, estimatedMax, manifest: effectiveManifest };
 }
 
 export async function holdAgentRunCredits(

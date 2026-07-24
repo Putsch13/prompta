@@ -5,11 +5,20 @@ export interface RunUsage {
   steps: StepUsage[];
 }
 
-/** Coût réel d'un run en cents USD (approximation EUR 1:1 pour simplicité V1). */
+/**
+ * Coût réel d'un run en cents USD (approximation EUR 1:1 pour simplicité V1).
+ *
+ * Ne compte QUE ce que la plateforme a payé : un step `platformBilled: false`
+ * (clé BYOK — l'utilisateur paie déjà ses tokens chez le fournisseur) est
+ * exclu, sinon un run mixte BYOK + plateforme facturerait TOUS les tokens en
+ * crédits (double facturation). `undefined` = origine inconnue (chemins
+ * legacy, ex. run prompt) : facturé, comme avant.
+ */
 export function computeRunCost(usage: RunUsage): number {
   let total = COMPUTE_FLAT_CENTS;
 
   for (const step of usage.steps) {
+    if (step.platformBilled === false) continue;
     if (step.model) {
       const pricing = getModelPricing(step.model);
       total +=

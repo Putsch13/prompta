@@ -108,6 +108,12 @@ async function approvalStepOutputKey(
   stepIndex: number,
   runInputs?: Record<string, unknown> | null,
 ): Promise<string | undefined> {
+  // Run tamponné __guarded : il a exécuté le manifeste GARDÉ — stepIndex est
+  // en coordonnées gardées. Il faut re-garder le manifeste relu avant
+  // d'indexer, sinon on résout l'outputKey d'une AUTRE étape (garde
+  // déterministe : même résultat qu'à l'exécution).
+  const { hasApprovalGuardStamp, ensureApprovalGuards } = await import("@/lib/agent/approval-guards");
+  const stamped = hasApprovalGuardStamp(runInputs);
   // Run de test (pas de version publiée) : le manifeste voyage dans le run.
   // Sans ce fallback, l'outputKey validé restait absent et l'étape aval
   // échouait en « Paramètre non renseigné » après reprise.
@@ -115,7 +121,16 @@ async function approvalStepOutputKey(
     try {
       const embedded = runInputs?.__manifest;
       if (typeof embedded === "string") {
-        const manifest = JSON.parse(embedded) as { steps?: Array<Record<string, unknown>> };
+        let manifest = JSON.parse(embedded) as { steps?: Array<Record<string, unknown>> };
+        if (stamped) {
+          const { AgentManifestSchema } = await import("@/lib/agent/schema");
+          const reparsed = AgentManifestSchema.safeParse(manifest);
+          if (reparsed.success) {
+            manifest = ensureApprovalGuards(reparsed.data) as unknown as {
+              steps?: Array<Record<string, unknown>>;
+            };
+          }
+        }
         const step = manifest.steps?.[stepIndex];
         const key = step?.outputKey;
         return typeof key === "string" && key.trim() ? key : undefined;
@@ -133,7 +148,9 @@ async function approvalStepOutputKey(
       .single();
     const { parseListingEnv } = await import("@/lib/agent/env");
     const parsed = parseListingEnv(version?.env, version?.prompt_body);
-    const step = parsed?.manifest.steps?.[stepIndex];
+    if (!parsed) return undefined;
+    const manifest = stamped ? ensureApprovalGuards(parsed.manifest) : parsed.manifest;
+    const step = manifest.steps?.[stepIndex];
     return step && "outputKey" in step ? (step.outputKey as string | undefined) : undefined;
   } catch {
     return undefined;
@@ -251,6 +268,11 @@ export async function decideApproval(
     .from("listing_agent_runs")
     .update({
       status: "pending",
+      // Remise en file = fenêtre de fraîcheur RE-timestampée : le reaper des
+      // pending juge sur queued_at — sur created_at, une approbation tranchée
+      // après > 10 min voyait sa reprise tuée (et le hold libéré) avant qu'un
+      // worker la prenne.
+      queued_at: new Date().toISOString(),
       resume_from_step: stepIndex + 1,
       steps_completed: stepIndex + 1,
       output: mergedOutput as Json,

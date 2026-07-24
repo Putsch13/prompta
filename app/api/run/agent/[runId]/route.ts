@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { plannedStepLabels } from "@/lib/agent/step-label";
 import { parseListingEnv } from "@/lib/agent/env";
+import { AgentManifestSchema } from "@/lib/agent/schema";
+import { ensureApprovalGuards, hasApprovalGuardStamp } from "@/lib/agent/approval-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -36,8 +38,12 @@ export async function GET(request: NextRequest, props: Params) {
 
   // Étapes prévues (libellés lisibles pour la console live, avant les logs) —
   // depuis la version publiée, ou le manifeste embarqué d'un run de test.
+  // Run tamponné __guarded : l'exécution utilise le manifeste GARDÉ — on
+  // re-garde le manifeste relu (déterministe) pour que la liste affichée
+  // corresponde aux index réellement exécutés (approbations insérées incluses).
   let planned_steps: string[] = [];
   try {
+    const stamped = hasApprovalGuardStamp(run.inputs);
     if (run.version_id) {
       const admin = createAdminClient();
       const { data: version } = await admin
@@ -46,11 +52,19 @@ export async function GET(request: NextRequest, props: Params) {
         .eq("id", run.version_id)
         .single();
       const parsed = parseListingEnv(version?.env, version?.prompt_body);
-      if (parsed?.manifest?.steps) planned_steps = plannedStepLabels(parsed.manifest.steps);
+      if (parsed?.manifest?.steps) {
+        const manifest = stamped ? ensureApprovalGuards(parsed.manifest) : parsed.manifest;
+        planned_steps = plannedStepLabels(manifest.steps);
+      }
     } else if (typeof run.inputs?.__manifest === "string") {
       const manifest = JSON.parse(run.inputs.__manifest) as { steps?: unknown[] };
-      if (Array.isArray(manifest.steps)) {
-        planned_steps = plannedStepLabels(manifest.steps as Parameters<typeof plannedStepLabels>[0]);
+      let steps = manifest.steps;
+      if (stamped) {
+        const reparsed = AgentManifestSchema.safeParse(manifest);
+        if (reparsed.success) steps = ensureApprovalGuards(reparsed.data).steps;
+      }
+      if (Array.isArray(steps)) {
+        planned_steps = plannedStepLabels(steps as Parameters<typeof plannedStepLabels>[0]);
       }
     }
   } catch {

@@ -232,7 +232,10 @@ export async function POST(request: NextRequest) {
   // Détaché de la requête : l'abort du proxy ne doit pas tuer le run.
   after(async () => {
     const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
-    await processPendingAgentRuns(1, { runId: run.id }).catch((err) =>
+    // 540 s = maxDuration (600) − marge : la borne historique de
+    // l'orchestrateur pour un pilotage browser, désormais explicite par
+    // point d'entrée.
+    await processPendingAgentRuns(1, { runId: run.id, maxRuntimeMs: (maxDuration - 60) * 1000 }).catch((err) =>
       console.error("[extension/execute] queue failed:", err instanceof Error ? err.message : err),
     );
   });

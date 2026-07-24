@@ -6,6 +6,8 @@ import { recordPlatformRunEconomics } from "@/lib/billing/circuit-breaker";
 export { CREDIT_PACKS } from "@/lib/credit-packs";
 export { costToCredits, creditsToEur, CREDIT_VALUE_CENTS, MARKUP } from "@/lib/billing/credits";
 
+type AdminClient = ReturnType<typeof createAdminClient>;
+
 export async function getCreditBalance(userId: string): Promise<number> {
   const admin = createAdminClient();
   const { data } = await admin
@@ -27,9 +29,10 @@ export async function addCredits(
   amountCents: number,
   kind: "purchase" | "bonus" | "refund",
   description: string,
-  stripeSessionId?: string
+  stripeSessionId?: string,
+  adminOverride?: AdminClient
 ): Promise<void> {
-  const admin = createAdminClient();
+  const admin = adminOverride ?? createAdminClient();
 
   // Idempotence : Stripe rejoue les webhooks (timeout/5xx) — un même checkout
   // ne doit créditer qu'une seule fois. La ligne de ledger est insérée EN
@@ -64,6 +67,17 @@ export async function addCredits(
       stripe_session_id: null,
     });
   }
+
+  // Incrément atomique du solde : deux grants concurrents (achat pack +
+  // invoice.paid) ne se perdent plus mutuellement.
+  const { error: rpcError } = await admin.rpc("add_credits", {
+    p_user_id: userId,
+    p_amount_cents: amountCents,
+  });
+  if (!rpcError) return;
+
+  // Fallback pré-migration 0050 : read-then-upsert (racy).
+  console.warn("[credits] add_credits RPC unavailable, using JS fallback:", rpcError.message);
 
   const { data } = await admin
     .from("user_credits")
@@ -268,40 +282,6 @@ export async function settleCreditsForRun(
   await recordPlatformRunEconomics({
     userId, runId, runType, actualCostCents, billedCents, marginCents,
   }).catch((err) => console.warn("[settleCreditsForRun] economics", err));
-}
-
-/** Débit simple (legacy / petits runs). */
-export async function debitCreditsForRun(
-  userId: string,
-  runId: string,
-  actualCostCents: number
-): Promise<boolean> {
-  const creditsNeeded = costToCredits(actualCostCents) * CREDIT_VALUE_CENTS;
-  const balance = await getAvailableBalance(userId);
-  if (balance < creditsNeeded) return false;
-
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("user_credits")
-    .select("balance_cents")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  await admin.from("user_credits").upsert({
-    user_id: userId,
-    balance_cents: (data?.balance_cents ?? 0) - creditsNeeded,
-    updated_at: new Date().toISOString(),
-  });
-
-  await admin.from("credit_transactions").insert({
-    user_id: userId,
-    amount_cents: -creditsNeeded,
-    kind: "run_debit",
-    description: "Exécution prompt",
-    run_id: runId,
-  });
-
-  return true;
 }
 
 /**

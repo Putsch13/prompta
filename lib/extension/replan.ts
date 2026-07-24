@@ -19,7 +19,7 @@ import { parseLlmJson } from "@/lib/llm/json";
 import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
 import { canonicalConnectorKey } from "@/lib/connectors/resolve-id";
 import { connectorsForSteps } from "@/lib/connectors/registry";
-import { ensureApprovalGuards } from "./instant-agent";
+import { ensureApprovalGuards } from "@/lib/agent/approval-guards";
 
 export const MAX_REPAIRS_PER_RUN = 2;
 

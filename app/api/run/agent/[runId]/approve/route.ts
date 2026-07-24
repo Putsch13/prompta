@@ -4,6 +4,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decideApproval } from "@/lib/agent/approvals";
 
 export const dynamic = "force-dynamic";
+// La reprise post-approbation s'exécute DANS cette fonction (after) : sans
+// maxDuration explicite, le défaut plateforme pouvait tuer la reprise d'un
+// run browser bien avant son timeout orchestrateur.
+export const maxDuration = 300;
+const RUN_BUDGET_MS = (maxDuration - 20) * 1000;
 
 export async function POST(request: NextRequest, props: { params: Promise<{ runId: string }> }) {
   const params = await props.params;
@@ -64,7 +69,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     const resumedRunId = result.runId;
     after(async () => {
       const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
-      await processPendingAgentRuns(1, { runId: resumedRunId }).catch((e) =>
+      await processPendingAgentRuns(1, { runId: resumedRunId, maxRuntimeMs: RUN_BUDGET_MS }).catch((e) =>
         console.error("[approve] worker kick failed", e)
       );
     });

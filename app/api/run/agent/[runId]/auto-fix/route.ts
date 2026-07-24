@@ -251,7 +251,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
             .single();
           if (newRun?.id) {
             const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
-            void processPendingAgentRuns(1, { runId: newRun.id }).catch(() => undefined);
+            // Budget borné par le maxDuration (120 s) de CETTE route : le run
+            // relancé s'exécute dans cette fonction-ci.
+            void processPendingAgentRuns(1, { runId: newRun.id, maxRuntimeMs: (maxDuration - 20) * 1000 }).catch(() => undefined);
             applied = true;
             relaunchedRunId = newRun.id;
           }

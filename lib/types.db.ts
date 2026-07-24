@@ -1112,6 +1112,7 @@ export type Database = {
           max_steps: number | null
           output: Json | null
           paused_at_step: number | null
+          queued_at: string | null
           resume_from_step: number | null
           started_at: string | null
           status: string
@@ -1135,6 +1136,7 @@ export type Database = {
           max_steps?: number | null
           output?: Json | null
           paused_at_step?: number | null
+          queued_at?: string | null
           resume_from_step?: number | null
           started_at?: string | null
           status?: string
@@ -1158,6 +1160,7 @@ export type Database = {
           max_steps?: number | null
           output?: Json | null
           paused_at_step?: number | null
+          queued_at?: string | null
           resume_from_step?: number | null
           started_at?: string | null
           status?: string
@@ -2710,6 +2713,20 @@ export type Database = {
       }
     }
     Functions: {
+      add_credits: {
+        Args: {
+          p_amount_cents: number
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      consume_free_run_quota: {
+        Args: {
+          p_limit: number
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       hold_credits_for_run: {
         Args: {
           p_amount_cents: number
@@ -2721,6 +2738,14 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       purge_sandbox: { Args: never; Returns: undefined }
+      record_platform_daily_cost: {
+        Args: {
+          p_cap_cents: number
+          p_cost_cents: number
+          p_margin_cents: number
+        }
+        Returns: undefined
+      }
       release_credit_hold: {
         Args: {
           p_held_cents: number

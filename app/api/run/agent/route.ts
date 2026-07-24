@@ -2,6 +2,11 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AgentManifestSchema } from "@/lib/agent/schema";
+import {
+  ensureApprovalGuards,
+  APPROVAL_GUARD_STAMP_KEY,
+  APPROVAL_GUARD_STAMP_VALUE,
+} from "@/lib/agent/approval-guards";
 import { parseListingEnv } from "@/lib/agent/env";
 import {
   resolveAgentRunKeys,
@@ -10,10 +15,16 @@ import {
   releaseAgentRunCredits,
 } from "@/lib/billing/agent-run-billing";
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import { FREE_RUN_MAX_TOKENS } from "@/lib/billing/credits";
 import { isUnrestrictedUser } from "@/lib/auth/privileges";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+// Budget temps transmis à l'orchestrateur : STRICTEMENT sous maxDuration,
+// sinon la plateforme tue la fonction avant le Promise.race du timeout et le
+// run reste coincé en `running` jusqu'au reaper (marge : claim + billing +
+// écriture finale).
+const RUN_BUDGET_MS = (maxDuration - 20) * 1000;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -76,14 +87,18 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Manifeste preview invalide" }, { status: 400 });
     }
-    const { apiKeys } = await resolveAgentRunKeys(user.id, parsed.data, true, true);
+    // Garde-fous d'approbation dès que le manifeste est figé : le run de test
+    // s'exécute (et est persisté) avec ses validations humaines devant chaque
+    // écriture sensible — idempotent si le builder les avait déjà posées.
+    const guardedPreview = ensureApprovalGuards(parsed.data);
+    const { apiKeys, platformProviders } = await resolveAgentRunKeys(user.id, guardedPreview, true, true);
     // dry-run = aperçu opt-in : on respecte le body (défaut false).
     // fullDemo conserve sa sémantique « persister le run en base ».
     const previewDryRun = dryRun === true;
     if (!previewDryRun) {
       const resourceIssues = [
-        ...validateRunResourcesForExecution(parsed.data, inputs),
-        ...validateRequiredInputs(parsed.data, inputs),
+        ...validateRunResourcesForExecution(guardedPreview, inputs),
+        ...validateRequiredInputs(guardedPreview, inputs),
       ];
       if (resourceIssues.length > 0) {
         return NextResponse.json(
@@ -96,7 +111,7 @@ export async function POST(request: NextRequest) {
         );
       }
     }
-    const { inputs: previewInputs, resources: previewResources } = prepareRunContext(parsed.data, inputs);
+    const { inputs: previewInputs, resources: previewResources } = prepareRunContext(guardedPreview, inputs);
 
     // Exécution RÉELLE depuis le builder : le run est persisté avec son
     // manifeste embarqué et traité par le worker comme n'importe quel run
@@ -113,7 +128,11 @@ export async function POST(request: NextRequest) {
           inputs: {
             ...previewInputs,
             ...previewResources,
-            __manifest: JSON.stringify(parsed.data),
+            // Manifeste GARDÉ figé avant premier claim + tampon : les index
+            // d'étapes du run naissent en coordonnées gardées (le worker
+            // re-garde à l'identique — idempotent).
+            __manifest: JSON.stringify(guardedPreview),
+            [APPROVAL_GUARD_STAMP_KEY]: APPROVAL_GUARD_STAMP_VALUE,
           },
           status: "pending",
           dry_run: false,
@@ -131,7 +150,7 @@ export async function POST(request: NextRequest) {
       // after() : détaché de la requête (sinon l'abort du proxy tue le run).
       after(async () => {
         const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
-        await processPendingAgentRuns(1, { runId: previewRun.id }).catch((err) =>
+        await processPendingAgentRuns(1, { runId: previewRun.id, maxRuntimeMs: RUN_BUDGET_MS }).catch((err) =>
           console.error("[run/agent] preview queue failed:", err instanceof Error ? err.message : err),
         );
       });
@@ -145,12 +164,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Aperçu simulé (dry-run) : rapide et sans effet de bord → synchrone.
-    const result = await runAgent(parsed.data, {
+    const result = await runAgent(guardedPreview, {
       userId: user.id,
       listingId: listingId ?? "preview",
       inputs: previewInputs,
       resources: previewResources,
       apiKeys,
+      platformProviders,
+      maxRuntimeMs: RUN_BUDGET_MS,
       dryRun: previewDryRun,
       demoMode: previewDryRun,
       // Compat : reprise live legacy (plus utilisée par le builder).
@@ -238,11 +259,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Manifeste agent manquant" }, { status: 400 });
   }
 
+  // Garde-fous d'approbation (parité avec le flux extension) : toute écriture
+  // sensible du manifeste publié est précédée d'une validation humaine,
+  // insérée d'office si le créateur l'a omise — idempotent si déjà présente.
+  // Appliqué AVANT facturation et création du run : le manifeste effectif
+  // (billing.manifest, éventuellement bridé free-tier — bridage par étape,
+  // sans ajout ni retrait) en hérite, et tous les index d'étapes du run
+  // naissent en coordonnées gardées (tampon __guarded dans les inputs).
+  const guardedManifest = ensureApprovalGuards(parsedEnv.manifest);
+
   let billing: Awaited<ReturnType<typeof resolveAgentRunKeys>>;
   try {
     billing = await resolveAgentRunKeys(
       user.id,
-      parsedEnv.manifest,
+      guardedManifest,
       false, // la propriété n'exonère pas : BYOK ou crédits
       isFree
     );
@@ -253,8 +283,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // billing.manifest = manifeste EFFECTIF (bridé free-tier si quota gratuit) :
+  // c'est lui qu'on vérifie et qu'on exécute.
   const { validateAgentPreflight } = await import("@/lib/agent/preflight");
-  const preflightIssues = await validateAgentPreflight(parsedEnv.manifest, billing.apiKeys);
+  const preflightIssues = await validateAgentPreflight(billing.manifest, billing.apiKeys);
   if (preflightIssues.length > 0) {
     console.warn("[run/agent] preflight blocked", {
       userId: user.id,
@@ -276,7 +308,7 @@ export async function POST(request: NextRequest) {
       "@/lib/connectors/connection-health"
     );
     const { runnerRequiredConnectors } = await import("@/lib/agent/run-connectors");
-    const requiredConnectors = runnerRequiredConnectors(parsedEnv.manifest, {
+    const requiredConnectors = runnerRequiredConnectors(guardedManifest, {
       userId: user.id,
       creatorId: listing.creator_id,
     });
@@ -307,8 +339,8 @@ export async function POST(request: NextRequest) {
 
   if (!dryRun) {
     const resourceIssues = [
-      ...validateRunResourcesForExecution(parsedEnv.manifest, inputs),
-      ...validateRequiredInputs(parsedEnv.manifest, inputs),
+      ...validateRunResourcesForExecution(guardedManifest, inputs),
+      ...validateRequiredInputs(guardedManifest, inputs),
     ];
     if (resourceIssues.length > 0) {
       return NextResponse.json(
@@ -322,13 +354,28 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { inputs: runInputs, resources: runResources } = prepareRunContext(parsedEnv.manifest, inputs);
-  const storedInputs = { ...runInputs, ...runResources };
+  const { inputs: runInputs, resources: runResources } = prepareRunContext(guardedManifest, inputs);
+  // Marqueur quota gratuit : le worker relit la version PUBLIÉE (non bridée) —
+  // ce flag lui impose de re-brider le manifeste, y compris à la reprise
+  // (approbation, crash). Filtré des entrées d'agent comme tout préfixe __.
+  // Tampon __guarded : ce run s'exécute sur le manifeste GARDÉ — ses index
+  // d'étapes (paused_at_step, resume_from_step) sont en coordonnées gardées.
+  const storedInputs = {
+    ...runInputs,
+    ...runResources,
+    ...(billing.usedFreeQuota ? { __free_quota: "1" } : {}),
+    [APPROVAL_GUARD_STAMP_KEY]: APPROVAL_GUARD_STAMP_VALUE,
+  };
 
   const runAsync =
     dryRun ? false : runAsyncParam !== undefined ? Boolean(runAsyncParam) : true;
 
   if (runAsync) {
+    // Un run facturé en crédits naît en `authorizing` (NON-claimable) : le
+    // hold ne peut pas précéder l'insert (FK credit_transactions.agent_run_id
+    // → listing_agent_runs), et un insert direct en pending laissait le worker
+    // (poll 3 s) claim le run PENDANT que le hold échouait — exécution sans
+    // provision, puis l'update « failed » ci-dessous écrasait un run en cours.
     const { data: agentRun, error: insertError } = await admin
       .from("listing_agent_runs")
       .insert({
@@ -336,7 +383,7 @@ export async function POST(request: NextRequest) {
         listing_id: listingId,
         version_id: versionId,
         inputs: storedInputs,
-        status: "pending",
+        status: billing.usedCredits ? "authorizing" : "pending",
         dry_run: dryRun,
         used_credits: billing.usedCredits,
         credit_hold_estimate_cents: billing.usedCredits ? billing.estimatedMax : null,
@@ -354,8 +401,38 @@ export async function POST(request: NextRequest) {
     if (billing.usedCredits) {
       const held = await holdAgentRunCredits(user.id, agentRun.id, billing.estimatedMax);
       if (!held) {
-        await admin.from("listing_agent_runs").update({ status: "failed" }).eq("id", agentRun.id);
+        // Garde status=authorizing : ne peut par construction écraser qu'un
+        // run jamais démarré (le worker ne claim pas ce statut).
+        await admin
+          .from("listing_agent_runs")
+          .update({ status: "failed", error_message: "Crédits insuffisants" })
+          .eq("id", agentRun.id)
+          .eq("status", "authorizing");
         return NextResponse.json({ error: "Crédits insuffisants" }, { status: 402 });
+      }
+
+      // Hold posé → le run devient claimable, avec sa fenêtre de fraîcheur.
+      const { error: promoteError } = await admin
+        .from("listing_agent_runs")
+        .update({ status: "pending", queued_at: new Date().toISOString() })
+        .eq("id", agentRun.id)
+        .eq("status", "authorizing");
+      if (promoteError) {
+        // On ne libère le hold QUE si l'on gagne la transition authorizing →
+        // failed : si cet update échoue aussi, le run reste en authorizing et
+        // c'est le reaper qui clôturera + libérera (une seule fois).
+        const { data: cancelled } = await admin
+          .from("listing_agent_runs")
+          .update({ status: "failed", error_message: "Erreur interne à la mise en file du run" })
+          .eq("id", agentRun.id)
+          .eq("status", "authorizing")
+          .select("id");
+        if (cancelled?.length) {
+          await releaseAgentRunCredits(user.id, agentRun.id, billing.estimatedMax).catch((e) =>
+            console.error("[run/agent] release hold failed (promote error)", { runId: agentRun.id, err: e }),
+          );
+        }
+        return NextResponse.json({ error: "Impossible de mettre le run en file" }, { status: 500 });
       }
     }
 
@@ -363,7 +440,7 @@ export async function POST(request: NextRequest) {
     // (web dyno Render si worker dédié absent).
     after(async () => {
       const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
-      await processPendingAgentRuns(1, { runId: agentRun.id }).catch((err) =>
+      await processPendingAgentRuns(1, { runId: agentRun.id, maxRuntimeMs: RUN_BUDGET_MS }).catch((err) =>
         console.error("[run/agent] process queue failed:", err instanceof Error ? err.message : err),
       );
     });
@@ -410,15 +487,18 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const result = await runAgent(parsedEnv.manifest, {
+  const result = await runAgent(billing.manifest, {
     userId: user.id,
     listingId,
     creatorId: listing.creator_id,
     inputs: runInputs,
     resources: runResources,
     apiKeys: billing.apiKeys,
+    platformProviders: billing.platformProviders,
     runId: agentRun?.id,
     dryRun,
+    maxRuntimeMs: RUN_BUDGET_MS,
+    ...(billing.usedFreeQuota ? { llmMaxTokensCap: FREE_RUN_MAX_TOKENS } : {}),
     onProgress: async (stepsCompleted) => {
       if (agentRun?.id) {
         await admin

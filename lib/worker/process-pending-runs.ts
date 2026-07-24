@@ -3,10 +3,20 @@ import { runAgent } from "@/lib/agent/orchestrator";
 import { parseListingEnv } from "@/lib/agent/env";
 import { AgentManifestSchema } from "@/lib/agent/schema";
 import {
+  ensureApprovalGuards,
+  hasApprovalGuardStamp,
+  shouldApplyApprovalGuards,
+  APPROVAL_GUARD_STAMP_KEY,
+  APPROVAL_GUARD_STAMP_VALUE,
+} from "@/lib/agent/approval-guards";
+import type { Json } from "@/lib/types.db";
+import {
   resolveAgentRunKeys,
   settleAgentRunCredits,
   releaseAgentRunCredits,
 } from "@/lib/billing/agent-run-billing";
+import { applyFreeTierLimits } from "@/lib/billing/free-tier";
+import { FREE_RUN_MAX_TOKENS } from "@/lib/billing/credits";
 import { randomUUID } from "crypto";
 import { checkConnectorHealth, blockingHealthIssues } from "@/lib/connectors/connection-health";
 import { runnerRequiredConnectors } from "@/lib/agent/run-connectors";
@@ -30,7 +40,15 @@ function parseResumeOutputs(raw: unknown): Record<string, string> {
 
 export async function processPendingAgentRuns(
   limit = 3,
-  opts?: { runId?: string },
+  opts?: {
+    runId?: string;
+    /**
+     * Budget temps du point d'entrée serverless appelant (STRICTEMENT sous son
+     * maxDuration) — transmis à l'orchestrateur pour borner le timeout global
+     * du run. Absent = worker dédié (worker/run-worker.ts), pas de borne.
+     */
+    maxRuntimeMs?: number;
+  },
 ): Promise<number> {
   const admin = createAdminClient();
   const wid = workerId();
@@ -132,7 +150,34 @@ export async function processPendingAgentRuns(
 
       const manifestParsed = AgentManifestSchema.safeParse(manifestRaw);
       if (!manifestParsed.success) throw new Error("Manifeste agent invalide");
-      const manifest = manifestParsed.data;
+
+      // Garde-fous d'approbation (parité avec le flux extension) : toute
+      // écriture sensible est précédée d'une validation humaine, quel que soit
+      // le chemin qui a créé le run (API, planifié, webhook, test builder).
+      // Idempotent pour un manifeste déjà gardé (extension, replan) — jamais
+      // deux approbations pour la même action. Reprise d'un run legacy NON
+      // tamponné __guarded : on reste sur le manifeste brut, re-garder
+      // décalerait resume_from_step et ferait rejouer des actions déjà faites.
+      const preGuardInputs = (claimed.inputs as Record<string, unknown> | null) ?? {};
+      const guardStamped = hasApprovalGuardStamp(preGuardInputs);
+      let manifest = manifestParsed.data;
+      if (shouldApplyApprovalGuards(resumeFromStep, guardStamped)) {
+        manifest = ensureApprovalGuards(manifest);
+        if (!guardStamped) {
+          // Tampon persisté AVANT exécution : les index d'étapes de ce run
+          // sont en coordonnées gardées — reprises et relectures du manifeste
+          // (approvalStepOutputKey, planned_steps) re-gardent avant d'indexer.
+          const stampedInputs = {
+            ...preGuardInputs,
+            [APPROVAL_GUARD_STAMP_KEY]: APPROVAL_GUARD_STAMP_VALUE,
+          };
+          await admin
+            .from("listing_agent_runs")
+            .update({ inputs: stampedInputs as Json })
+            .eq("id", claimed.id);
+          claimed.inputs = stampedInputs as Json;
+        }
+      }
 
       // Source de vérité unique : mêmes connecteurs requis que la route de run
       // (exclut les étapes sharedEnv du créateur pour un run d'abonné).
@@ -163,11 +208,16 @@ export async function processPendingAgentRuns(
       //   résout que les clés, aucune re-facturation.
       // used_credits === true  → hold déjà posé par l'API : settle en sortie.
       const alreadyAuthorized = claimed.used_credits !== null && claimed.used_credits !== undefined;
+      const jobInputs = (claimed.inputs as Record<string, string> | null) ?? {};
+      // Run autorisé par l'API sur QUOTA GRATUIT : le marqueur __free_quota
+      // (posé par run/agent, ou ci-dessous) impose de re-brider le manifeste —
+      // le worker relit la version publiée, pas le manifeste bridé du run initial.
+      const authorizedFreeQuota = alreadyAuthorized && jobInputs.__free_quota === "1";
       let billing: Awaited<ReturnType<typeof resolveAgentRunKeys>>;
       try {
         billing = await resolveAgentRunKeys(
           claimed.user_id,
-          manifest,
+          authorizedFreeQuota ? applyFreeTierLimits(manifest) : manifest,
           alreadyAuthorized, // true = clés seulement, pas de contrôle crédits
           true,
           { consumeFreeQuota: !alreadyAuthorized }
@@ -203,9 +253,20 @@ export async function processPendingAgentRuns(
           claimed.credit_hold_estimate_cents = billing.estimatedMax;
         } else {
           // Autorisé sans crédits (BYOK complet, quota gratuit ou admin).
+          // Le quota gratuit est marqué dans les inputs : une reprise
+          // (approbation, crash) devra re-brider le manifeste comme ce run.
+          // `claimed.inputs` est synchronisé aussi : le replan (extension)
+          // réécrit inputs depuis cette copie mémoire — sans elle, le flag
+          // sauterait et la reprise repartirait sans bridage.
+          if (billing.usedFreeQuota) {
+            claimed.inputs = { ...jobInputs, __free_quota: "1" };
+          }
           await admin
             .from("listing_agent_runs")
-            .update({ used_credits: false })
+            .update({
+              used_credits: false,
+              ...(billing.usedFreeQuota ? { inputs: claimed.inputs } : {}),
+            })
             .eq("id", claimed.id);
           claimed.used_credits = false;
         }
@@ -232,20 +293,26 @@ export async function processPendingAgentRuns(
         }
       }, HEARTBEAT_INTERVAL_MS);
 
+      // Manifeste EFFECTIF : bridé free-tier si le run passe (ou est passé)
+      // sur quota gratuit — modèle imposé + plafond de tokens par appel.
+      const freeQuotaRun = authorizedFreeQuota || billing.usedFreeQuota;
       let result;
       try {
-        result = await runAgent(manifest, {
+        result = await runAgent(billing.manifest, {
           userId: claimed.user_id,
           listingId: claimed.listing_id ?? "",
           creatorId: listing?.creator_id,
           inputs: cleanInputs,
           resources,
           apiKeys: billing.apiKeys,
+          platformProviders: billing.platformProviders,
           runId: claimed.id,
           dryRun: claimed.dry_run ?? false,
           resumeFromStep,
           resumeOutputs,
+          ...(freeQuotaRun ? { llmMaxTokensCap: FREE_RUN_MAX_TOKENS } : {}),
           ...(frozenContract ? { contract: frozenContract } : {}),
+          ...(opts?.maxRuntimeMs ? { maxRuntimeMs: opts.maxRuntimeMs } : {}),
           onProgress: async (stepsCompleted, partialOutput) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await admin
@@ -341,6 +408,8 @@ export async function processPendingAgentRuns(
                   .from("listing_agent_runs")
                   .update({
                     status: "pending",
+                    // Nouvelle fenêtre de fraîcheur pour le reaper des pending.
+                    queued_at: new Date().toISOString(),
                     resume_from_step: result.stepsCompleted,
                     steps_completed: result.stepsCompleted,
                     output: result.output,
@@ -359,7 +428,12 @@ export async function processPendingAgentRuns(
                   repair: repairsDone + 1,
                 });
                 // Reprise immédiate ciblée (profondeur bornée par __repairs).
-                await processPendingAgentRuns(1, { runId: claimed.id });
+                await processPendingAgentRuns(1, {
+                  runId: claimed.id,
+                  // La reprise s'exécute dans la MÊME fonction serverless :
+                  // même budget temps que l'appel d'origine.
+                  ...(opts?.maxRuntimeMs ? { maxRuntimeMs: opts.maxRuntimeMs } : {}),
+                });
                 processed++;
                 continue;
               }

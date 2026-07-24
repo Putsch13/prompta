@@ -43,6 +43,14 @@ export interface StepUsage {
   model?: string;
   tool?: string;
   connectorAction?: string;
+  /**
+   * false = la clé du fournisseur est BYOK : l'utilisateur paie déjà ses
+   * tokens chez le fournisseur, le settle ne doit PAS les re-facturer en
+   * crédits (sinon double facturation sur un run mixte BYOK + plateforme).
+   * true = clé plateforme (facturable). undefined = origine inconnue
+   * (chemins legacy, ex. run prompt) : facturé, comme avant.
+   */
+  platformBilled?: boolean;
 }
 
 export interface StepTraceEntry {
@@ -67,6 +75,12 @@ export interface OrchestratorContext {
   /** Valeurs choisies pour {{resource:…}} — clés « stepIndex:paramKey » */
   resources?: Record<string, string>;
   apiKeys: Record<string, string>;
+  /**
+   * Fournisseurs dont la clé de `apiKeys` vient de la PLATEFORME (renvoyé par
+   * resolveAgentRunKeys). Sert à flaguer chaque StepUsage : seuls ces steps
+   * sont facturables en crédits. Absent = origine inconnue (legacy).
+   */
+  platformProviders?: string[];
   runId?: string;
   dryRun?: boolean;
   /** Builder / test : auto-approuve les étapes validation humaine */
@@ -87,6 +101,22 @@ export interface OrchestratorContext {
    * fusionné dans le usageLog final pour être settlé comme le reste.
    */
   sideUsage?: StepUsage[];
+  /**
+   * Bride free-tier (run sur quota gratuit) : plafond de tokens PAR APPEL LLM.
+   * Appliqué sous le plancher runtime — le plancher ne relève que les plafonds
+   * CUMULÉS d'anciens manifestes, il ne doit pas rouvrir le budget d'un run
+   * gratuit (FREE_RUN_MAX_TOKENS, cf. lib/billing/free-tier.ts).
+   */
+  llmMaxTokensCap?: number;
+  /**
+   * Budget temps du point d'entrée serverless effectif (STRICTEMENT sous son
+   * maxDuration) : borne absolue du timeout global du run. Sans elle, un run
+   * browser passé par /api/run/agent ou /api/cron/tick (maxDuration 300 s)
+   * gardait la borne 540 s calibrée pour /api/extension/execute — la
+   * plateforme tuait la fonction avant le Promise.race et le run restait
+   * coincé en `running` jusqu'au reaper. Absent = worker dédié, pas de borne.
+   */
+  maxRuntimeMs?: number;
 }
 
 export interface OrchestratorResult {
@@ -192,6 +222,15 @@ export function sanitizeAiFillValue(raw: string): string {
     .replace(/\*\*/g, "")
     .replace(/^["'«\s]+|["'»\s]+$/g, "")
     .trim();
+}
+
+/**
+ * La clé utilisée pour ce fournisseur est-elle payée par la plateforme ?
+ * undefined quand le contexte n'a pas l'info (appelant legacy) — le settle
+ * facture alors comme avant (compat).
+ */
+function platformBilledFor(ctx: OrchestratorContext, provider: string): boolean | undefined {
+  return ctx.platformProviders ? ctx.platformProviders.includes(provider) : undefined;
 }
 
 const RETRYABLE_CODES = new Set(["rate_limit", "timeout", "provider_error"]);
@@ -301,7 +340,7 @@ async function executeStep(
         }
         return {
           content: preview,
-          usage: { inputTokens: 0, outputTokens: 0, model: apiModel },
+          usage: { inputTokens: 0, outputTokens: 0, model: apiModel, platformBilled: platformBilledFor(ctx, provider) },
         };
       }
 
@@ -340,6 +379,9 @@ async function executeStep(
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         model: apiModel,
+        // BYOK : l'utilisateur paie déjà ses tokens chez le fournisseur —
+        // le settle ne doit compter que les steps payés par la plateforme.
+        platformBilled: platformBilledFor(ctx, provider),
       };
 
       if (runId && stepDbId) {
@@ -365,7 +407,16 @@ async function executeStep(
         if (runId && stepDbId) {
           await logStepSuccess(stepDbId, preview.slice(0, 500), undefined, stepStartedAt).catch(() => undefined);
         }
-        return { content: preview, usage: { inputTokens: 0, outputTokens: 0, tool: step.tool } };
+        return {
+          content: preview,
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            tool: step.tool,
+            // web_search est payé avec la clé Serper — BYOK possible.
+            platformBilled: step.tool === "web_search" ? platformBilledFor(ctx, "serper") : undefined,
+          },
+        };
       }
 
       let content: string;
@@ -406,7 +457,16 @@ async function executeStep(
         await logStepSuccess(stepDbId, content.slice(0, 4000), undefined, stepStartedAt).catch(() => undefined);
       }
 
-      return { content, usage: { inputTokens: 0, outputTokens: 0, tool: step.tool } };
+      return {
+        content,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          tool: step.tool,
+          // web_search est payé avec la clé Serper — BYOK possible.
+          platformBilled: step.tool === "web_search" ? platformBilledFor(ctx, "serper") : undefined,
+        },
+      };
     }
 
     if (step.type === "action") {
@@ -503,6 +563,7 @@ async function executeStep(
             inputTokens: filled.inputTokens ?? Math.ceil(fillPrompt.length / 4),
             outputTokens: filled.outputTokens ?? Math.ceil(filled.content.length / 4),
             model: fillModel.apiModel,
+            platformBilled: platformBilledFor(ctx, fillModel.provider),
           });
           await logRunActivity({
             userId: ctx.userId,
@@ -766,7 +827,14 @@ async function executeStep(
       }
       return {
         content,
-        usage: { inputTokens: pilot.inputTokens, outputTokens: pilot.outputTokens, model: pilot.model, tool: "browser" },
+        usage: {
+          inputTokens: pilot.inputTokens,
+          outputTokens: pilot.outputTokens,
+          model: pilot.model,
+          tool: "browser",
+          // Même résolution de clé que runBrowserPilot (défaut gpt-5.4-mini).
+          platformBilled: platformBilledFor(ctx, resolveModelOrDefault(step.model).provider),
+        },
       };
     }
 
@@ -1030,18 +1098,32 @@ export async function runAgent(
     ...manifest.limits,
     max_steps: Math.max(manifest.limits.max_steps, manifest.steps.length + 2),
     max_tokens: Math.max(manifest.limits.max_tokens, 16_000),
-    // Le timeout orchestrateur doit rester STRICTEMENT sous le maxDuration de
-    // la fonction (`/api/extension/execute` = 600 s) : sinon la plateforme tue
-    // la fonction avant que le Promise.race ne marque le run `failed`, et il
-    // reste coincé en `running` jusqu'au reaper. 540 s pour un pilotage browser.
+    // Plancher calibré sur le point d'entrée le plus généreux
+    // (`/api/extension/execute`, maxDuration 600 s → 540 s pour un pilotage
+    // browser). La borne RÉELLE du point d'entrée effectif est appliquée juste
+    // dessous via context.maxRuntimeMs.
     timeout_ms: Math.max(manifest.limits.timeout_ms ?? 60_000, hasBrowserStep ? 540_000 : 120_000),
     max_tool_calls: Math.max(manifest.limits.max_tool_calls ?? 5, 10),
     max_output_bytes: Math.max(manifest.limits.max_output_bytes ?? 51_200, 512_000),
   };
-  const effectiveLimits = privileges.unrestricted
+  const uncappedLimits = privileges.unrestricted
     ? { ...flooredLimits, ...UNRESTRICTED_LIMITS }
     : flooredLimits;
+  // Borne ABSOLUE : le timeout global doit rester STRICTEMENT sous le
+  // maxDuration du point d'entrée effectif, sinon la plateforme tue la
+  // fonction avant que le Promise.race ne marque le run `failed` et il reste
+  // coincé en `running` jusqu'au reaper. S'applique aussi aux limites
+  // unrestricted (600 s) : un admin passe par les mêmes points d'entrée.
+  const effectiveLimits = context.maxRuntimeMs
+    ? {
+        ...uncappedLimits,
+        timeout_ms: Math.min(uncappedLimits.timeout_ms ?? context.maxRuntimeMs, context.maxRuntimeMs),
+      }
+    : uncappedLimits;
   const manifestWithLimits = { ...manifest, limits: effectiveLimits };
+  const perCallMaxTokens = context.llmMaxTokensCap
+    ? Math.min(manifestWithLimits.limits.max_tokens, context.llmMaxTokensCap)
+    : manifestWithLimits.limits.max_tokens;
 
   let runInputs = { ...context.inputs };
   const resources: Record<string, string> = { ...(context.resources ?? {}) };
@@ -1187,7 +1269,7 @@ export async function runAgent(
                   subStep,
                   branchVars,
                   ctxWithMemory,
-                  manifestWithLimits.limits.max_tokens,
+                  perCallMaxTokens,
                   subIndex
                 );
                 branchOutputs.push(content);
@@ -1305,7 +1387,7 @@ export async function runAgent(
           step,
           vars,
           ctxWithMemory,
-          manifestWithLimits.limits.max_tokens,
+          perCallMaxTokens,
           i
         );
 

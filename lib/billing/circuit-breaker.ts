@@ -18,8 +18,9 @@ export interface CircuitStatus {
   reason?: string;
 }
 
-async function ensureGuardRow() {
-  const admin = createAdminClient();
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+async function ensureGuardRow(admin: AdminClient) {
   const today = new Date().toISOString().split("T")[0];
 
   const { data } = await admin.from("platform_credit_guard").select("*").eq("id", 1).maybeSingle();
@@ -50,8 +51,8 @@ async function ensureGuardRow() {
 }
 
 export async function getCreditCircuitStatus(): Promise<CircuitStatus> {
-  await ensureGuardRow();
   const admin = createAdminClient();
+  await ensureGuardRow(admin);
 
   const { data } = await admin.from("platform_credit_guard").select("*").eq("id", 1).single();
 
@@ -91,16 +92,18 @@ export async function getCreditCircuitStatus(): Promise<CircuitStatus> {
   };
 }
 
-export async function recordPlatformRunEconomics(params: {
-  userId: string;
-  runId: string;
-  runType: "prompt" | "agent";
-  actualCostCents: number;
-  billedCents: number;
-  marginCents: number;
-}): Promise<void> {
-  const admin = createAdminClient();
-  await ensureGuardRow();
+export async function recordPlatformRunEconomics(
+  params: {
+    userId: string;
+    runId: string;
+    runType: "prompt" | "agent";
+    actualCostCents: number;
+    billedCents: number;
+    marginCents: number;
+  },
+  adminOverride?: AdminClient
+): Promise<void> {
+  const admin = adminOverride ?? createAdminClient();
 
   await admin.from("platform_run_economics").insert({
     user_id: params.userId,
@@ -110,6 +113,19 @@ export async function recordPlatformRunEconomics(params: {
     billed_cents: params.billedCents,
     margin_cents: params.marginCents,
   });
+
+  // Incrément atomique (création de ligne + reset de jour inclus) : des
+  // settles concurrents ne perdent plus d'incréments du compteur journalier.
+  const { error: rpcError } = await admin.rpc("record_platform_daily_cost", {
+    p_cost_cents: params.actualCostCents,
+    p_margin_cents: params.marginCents,
+    p_cap_cents: PLATFORM_DAILY_COST_CAP_CENTS,
+  });
+  if (!rpcError) return;
+
+  // Fallback pré-migration 0050 : read-then-write (racy).
+  console.warn("[circuit-breaker] daily cost RPC unavailable, using JS fallback:", rpcError.message);
+  await ensureGuardRow(admin);
 
   const { data: guard } = await admin.from("platform_credit_guard").select("*").eq("id", 1).single();
 
@@ -129,13 +145,13 @@ export async function recordPlatformRunEconomics(params: {
 
 export async function pauseCreditMode(reason = "Pause manuelle"): Promise<void> {
   const admin = createAdminClient();
-  await ensureGuardRow();
+  await ensureGuardRow(admin);
   await admin.from("platform_credit_guard").update({ is_paused: true, updated_at: new Date().toISOString() }).eq("id", 1);
   console.warn("[circuit-breaker]", reason);
 }
 
 export async function resumeCreditMode(): Promise<void> {
   const admin = createAdminClient();
-  await ensureGuardRow();
+  await ensureGuardRow(admin);
   await admin.from("platform_credit_guard").update({ is_paused: false, updated_at: new Date().toISOString() }).eq("id", 1);
 }

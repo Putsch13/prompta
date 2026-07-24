@@ -16,6 +16,10 @@ import type { AgentSlug } from "@/lib/agents/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 min max
+// Budget temps transmis à l'orchestrateur : STRICTEMENT sous maxDuration,
+// sinon la plateforme tue la fonction avant le Promise.race du timeout et le
+// run reste coincé en `running` jusqu'au reaper.
+const RUN_BUDGET_MS = (maxDuration - 20) * 1000;
 
 export async function GET(req: NextRequest) {
   // ── Sécurité : vérifie le secret cron ──
@@ -77,7 +81,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { processPendingAgentRuns } = await import("@/lib/worker/process-pending-runs");
-    await processPendingAgentRuns(5).catch((e) =>
+    await processPendingAgentRuns(5, { maxRuntimeMs: RUN_BUDGET_MS }).catch((e) =>
       console.error("[cron:tick] pending runs failed:", e),
     );
     const { reapStalePendingRuns, reapStaleRunningRuns } = await import("@/lib/worker/reap-stale-runs");
