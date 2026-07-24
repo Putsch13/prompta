@@ -4,7 +4,48 @@
 
 Prompta vit dans une extension (« Prompta partout ») : un panneau glisse à droite de n'importe quelle page. Il lit ce que tu vois — y compris tes onglets connectés (CRM, mails, dashboards) — répond au tac au tac, et bascule tout seul en **agent complet** pour les vraies missions : plan, exécution sur 1 000+ apps (Composio), pilotage du navigateur sous tes yeux, questions en cours de route, validation humaine sur chaque action sensible.
 
-Monétisation : freemium (2 € de crédits IA offerts) + plans Starter 19 € / Pro 49 € / Scale 149 € (crédits IA inclus, markup ×1,6 sur le coût API) + BYOK gratuit illimité. Source de vérité : `lib/billing/plans.ts`.
+---
+
+## Offres & rentabilité
+
+Source de vérité : `lib/billing/plans.ts` (grille), `lib/billing/credits.ts` (markup), `lib/credit-packs.ts` (recharges). Détail complet : `docs/BUSINESS-PLAN.md`.
+
+### La grille (3 offres — refonte 2026-07-24)
+
+| | **Découverte** | **Illimité** ⭐ | **Pro** |
+|---|---|---|---|
+| Prix | **0 €** | **29 €/mois** | **99 €/mois** |
+| Crédits IA inclus / mois | — (2 € offerts à l'inscription) | **35 €** | **120 €** |
+| Agents gardés | 1 | **Illimités** | **Illimités** |
+| Modèles (GPT, Claude, Gemini, Mistral) | ✓ | ✓ | ✓ |
+| Multi-desk (postes sur un même compte) | 1 | 1 | **3** |
+| Plafond de dépense mensuel (anti-abus) | 50 € | 70 € | 240 € |
+| Crédits cumulables (rollover) | — | ✓ | ✓ |
+| BYOK (tes clés = runs gratuits illimités) | ✓ | ✓ | ✓ |
+| Support | — | Email standard | **Prioritaire + accompagnement** |
+
+Au-delà de Pro (équipe, volume, SLA) : **sur devis** — pas de 4ᵉ carte publique.
+
+**Positionnement** : Découverte fait entrer (extension + 2 € sans carte), Illimité est l'offre par défaut de l'usage quotidien (« plus de crédits que ton abonnement, agents illimités »), Pro monétise l'intensité (volume + multi-postes). Le BYOK reste gratuit sur tous les plans : c'est le moteur d'acquisition des techniciens, à coût variable nul.
+
+### La rentabilité (invariant « com ≥ 20 % », codé et testé)
+
+Les crédits sont débités avec un **markup ×1,6** sur le coût API réel (`MARKUP`, appliqué sur tous les chemins : missions, tac au tac, planification, replan, aiFills). Donc 1 € de crédits consommé = **0,625 € de coût API au maximum**.
+
+**L'invariant** : même si un abonné consomme 100 % de ses crédits inclus, la marge nette reste ≥ 20 % du montant payé. Il est garanti par un plafond structurel — `MAX_CREDIT_GRANT_RATIO = 1,22` : **on n'accorde jamais plus de 1,22 € de crédits par euro réellement payé**. Le webhook Stripe borne chaque grant mensuel par `1,22 × invoice.amount_paid`, ce qui couvre aussi les factures legacy (anciens prix Starter/Scale), les prorata de changement de plan et les coupons. Vérifié par `tests/unit/plans.test.ts`.
+
+Marges **au pire cas** (consommation 100 % des crédits, frais Stripe EU 1,5 % + 0,25 €) :
+
+| Plan | Payé | Coût API max (crédits ÷ 1,6) | Frais Stripe | **Marge nette pire cas** |
+|---|---|---|---|---|
+| Illimité 29 € | 29,00 € | 21,88 € | 0,69 € | **6,44 € (22 %)** |
+| Pro 99 € | 99,00 € | 75,00 € | 1,74 € | **22,27 € (22 %)** |
+
+En pratique la consommation moyenne des crédits inclus est de 40-70 % → **marge réelle attendue 45-65 %**. Le rollover ne change rien à l'invariant : chaque euro encaissé finance au plus 1,22 € de crédits, quel que soit le mois où ils sont consommés.
+
+Autres flux de revenus : **recharges à la carte** (5/12/30/100 € — bonus jusqu'à +20 %, toujours sous le ratio 1,22 → marge ≥ 20 % garantie, ~24-37 % typique) ; **freemium** coûte au plus 1,25 € de coût API par signup (2 € offerts ÷ 1,6), consommés par une minorité d'inscrits.
+
+Cockpit temps réel : `/admin` (MRR par plan, marge réelle coût API vs facturé, comptes à perte, circuit-breaker plateforme).
 
 ---
 
@@ -37,7 +78,7 @@ Monétisation : freemium (2 € de crédits IA offerts) + plans Starter 19 € /
 
 **Garde-fous** : validation humaine avant toute écriture sensible (in-panel), connecteur manquant → 409 + boutons « Connecter » + **reprise automatique post-OAuth**, contenu de page traité comme donnée non fiable, plans invalides auto-réparés, replan borné après échec, idempotence des actions externes, reaper de runs bloqués.
 
-**Billing étanche** : tout appel LLM sur clé plateforme est débité (markup ×1,6) — tac au tac, planification, replan, aiFills, missions (hold/settle). Plafond mensuel par plan, circuit-breaker plateforme, marges pire cas ≥ 55 % par plan. Cockpit rentabilité : `/admin` (`lib/admin/kpis.ts`).
+**Billing étanche** : tout appel LLM sur clé plateforme est débité (markup ×1,6) — tac au tac, planification, replan, aiFills, missions (hold/settle). Plafond mensuel par plan, circuit-breaker plateforme, com ≥ 20 % garantie au pire cas (plafond structurel : ≤ 1,22 € de crédits accordés par € payé — voir « Offres & rentabilité »). Cockpit rentabilité : `/admin` (`lib/admin/kpis.ts`).
 
 ---
 

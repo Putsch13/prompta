@@ -9,7 +9,7 @@ export const MONTHLY_SPEND_CAP_CENTS = 5000; // 50 €
  * Plafond mensuel effectif : anti-abus, jamais un frein pour un abonné.
  * Un plan qui inclut X € de crédits/mois peut en dépenser au moins 2×X
  * (crédits inclus + recharges), avec un plancher à 50 €.
- * Scale : 100 € inclus → 200 € de plafond ; Free/Starter : 50 €.
+ * Illimité : 35 € inclus → 70 € ; Pro : 120 € inclus → 240 € ; Découverte : 50 €.
  */
 export async function getMonthlySpendCapCents(userId: string): Promise<number> {
   try {

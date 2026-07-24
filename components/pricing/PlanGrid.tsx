@@ -47,14 +47,14 @@ export function PlanGrid({ plans }: { plans: PlanCardData[] }) {
   }
 
   return (
-    <div className="grid items-stretch gap-6 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3">
       {plans.map((plan, i) => (
         <div
           key={plan.id}
           style={{ animationDelay: `${i * 90}ms` }}
           className={`hud-card relative flex animate-fade-up flex-col p-6 ${
             plan.highlight
-              ? "hud-corners border-accent/60 shadow-glow xl:scale-[1.03]"
+              ? "hud-corners border-accent/60 shadow-glow lg:scale-[1.03]"
               : ""
           }`}
         >

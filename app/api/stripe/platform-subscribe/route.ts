@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getStripe } from "@/lib/stripe";
-import { PLANS, type PlanId } from "@/lib/billing/plans";
+import { PLANS, normalizePlanId } from "@/lib/billing/plans";
 
 export const dynamic = "force-dynamic";
 
-/** Démarre l'abonnement à un plan Prompta (Starter / Pro / Scale). */
+/** Démarre l'abonnement à un plan Prompta (Illimité / Pro). */
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const {
@@ -17,8 +17,8 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as { plan?: string };
-  // Compat : l'ancien bouton « Prompta Pro » sans body → starter.
-  const planId = (body.plan ?? "starter") as PlanId;
+  // normalizePlanId absorbe les ids legacy (starter/scale) d'un front en cache.
+  const planId = normalizePlanId(body.plan ?? "illimite");
   const plan = PLANS[planId];
   if (!plan || plan.priceCents <= 0) {
     return NextResponse.json({ error: "Plan invalide" }, { status: 400 });

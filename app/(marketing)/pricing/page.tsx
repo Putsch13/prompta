@@ -7,12 +7,12 @@ import { PlanGrid, type PlanCardData } from "@/components/pricing/PlanGrid";
 export const metadata: Metadata = {
   title: "Tarifs — Prompta partout | crédits IA & missions",
   description:
-    "Prompta partout gratuit avec 2 € de crédits offerts. Plans dès 19 €/mois : missions d'agent, validations humaines, BYOK illimité.",
+    "Prompta partout gratuit avec 2 € de crédits offerts. Illimité 29 €/mois : agents illimités + 35 € de crédits IA inclus. Pro 99 €/mois : multi-desk + 120 € inclus.",
   alternates: { canonical: "/pricing" },
   openGraph: {
     title: "Tarifs Prompta — Prompta partout dès 0 €",
     description:
-      "2 € de crédits IA offerts. Starter 19 €, Pro 49 €, Scale 149 € — crédits inclus chaque mois. BYOK sur tous les plans.",
+      "2 € de crédits IA offerts. Illimité 29 € (35 € de crédits inclus), Pro 99 € (120 € inclus + multi-desk). BYOK sur tous les plans.",
   },
 };
 
@@ -23,7 +23,11 @@ const FAQ = [
   },
   {
     q: "Que paient les crédits IA ?",
-    a: "Les appels aux modèles (GPT, Claude, Gemini, Mistral) quand tu tournes sur nos clés. Chaque plan payant recharge ton solde chaque mois (10 € / 30 € / 100 €).",
+    a: "Les appels aux modèles (GPT, Claude, Gemini, Mistral) quand tu tournes sur nos clés. Chaque plan payant recharge ton solde chaque mois : 35 € en Illimité, 120 € en Pro.",
+  },
+  {
+    q: "35 € de crédits pour 29 € — comment c'est possible ?",
+    a: "Les crédits sont valorisés au tarif catalogue des recharges. En t'abonnant, tu obtiens environ 20 % de crédits en plus qu'à la carte : c'est l'avantage de l'abonnement, et le solde non utilisé reste acquis.",
   },
   {
     q: "Puis-je utiliser mes propres clés API (BYOK) ?",
@@ -31,7 +35,11 @@ const FAQ = [
   },
   {
     q: "C'est quoi un « agent gardé » ?",
-    a: "Un agent actif dans ta bibliothèque, prêt à être relancé — créé depuis l'extension ou le builder. Le quota d'agents actifs dépend du plan (1 / 5 / 20 / illimité).",
+    a: "Un agent actif dans ta bibliothèque, prêt à être relancé — créé depuis l'extension ou le builder. En Découverte tu en gardes 1 ; sur les plans payants ils sont illimités.",
+  },
+  {
+    q: "C'est quoi le multi-desk du plan Pro ?",
+    a: "Jusqu'à 3 postes (ordinateurs / profils Chrome) utilisent le même compte Prompta et partagent le même solde de crédits — pratique pour un indépendant multi-machines ou une petite équipe. Besoin de plus de postes, de volume ou d'un SLA ? Écris-nous pour une offre sur devis.",
   },
   {
     q: "Que se passe-t-il si je dépasse mes crédits inclus ?",
@@ -39,7 +47,7 @@ const FAQ = [
   },
   {
     q: "Puis-je changer de plan ou annuler ?",
-    a: "Tu peux annuler à tout moment — l'annulation prend effet en fin de période et tu gardes l'accès jusque-là. Pour changer de formule, annule ton plan actuel puis souscris le nouveau.",
+    a: "Tu changes de plan en un clic — la différence est facturée au prorata immédiatement, sans double abonnement. Tu peux annuler à tout moment : l'annulation prend effet en fin de période et tu gardes l'accès (et tes crédits) jusque-là.",
   },
   {
     q: "L'extension marche sur Safari / Firefox ?",

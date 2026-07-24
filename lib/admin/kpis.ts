@@ -184,7 +184,7 @@ export async function getAdminKpis(): Promise<AdminKpis> {
   };
 
   /* ── Revenus : MRR + plans ── */
-  const subsByPlan = { free: 0, starter: 0, pro: 0, scale: 0 } as Record<PlanId, number>;
+  const subsByPlan: Record<PlanId, number> = { free: 0, illimite: 0, pro: 0 };
   const planByUser = new Map<string, PlanId>();
   for (const s of subs ?? []) {
     const plan = normalizePlanId(s.plan);

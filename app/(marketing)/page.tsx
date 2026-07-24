@@ -35,7 +35,7 @@ const LANDING_FAQ = [
   },
   {
     q: "Combien ça coûte ?",
-    a: "Le compte est gratuit, avec 2 € de crédits IA offerts sans carte bancaire. Ensuite : Starter à 19 €/mois (10 € de crédits inclus), Pro à 49 €/mois (30 € inclus), Scale à 149 €/mois (100 € inclus). Avec tes propres clés API (BYOK), les exécutions sont illimitées et gratuites sur tous les plans.",
+    a: "Le compte est gratuit, avec 2 € de crédits IA offerts sans carte bancaire. Ensuite : Illimité à 29 €/mois (agents illimités + 35 € de crédits IA inclus), Pro à 99 €/mois (120 € inclus + multi-desk 3 postes). Avec tes propres clés API (BYOK), les exécutions sont illimitées et gratuites sur tous les plans.",
   },
   {
     q: "Quelles applications sont compatibles ?",
@@ -118,8 +118,8 @@ export default async function HomePage() {
         "@type": "AggregateOffer",
         priceCurrency: "EUR",
         lowPrice: "0",
-        highPrice: (PLANS.scale.priceCents / 100).toFixed(0),
-        offerCount: 4,
+        highPrice: (PLANS.pro.priceCents / 100).toFixed(0),
+        offerCount: 3,
       },
     },
     {

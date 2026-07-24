@@ -10,6 +10,7 @@ import {
   planFor,
   normalizePlanId,
   canPublishOnPlan,
+  maxMonthlyGrantCents,
   WELCOME_CREDIT_CENTS,
   type PlanId,
   type PromptaPlan,
@@ -40,7 +41,7 @@ export async function getUserPlan(userId: string): Promise<UserPlanInfo> {
   ]);
 
   const unrestricted = profile?.unrestricted_usage === true;
-  const planId: PlanId = unrestricted ? "scale" : sub ? normalizePlanId(sub.plan) : "free";
+  const planId: PlanId = unrestricted ? "pro" : sub ? normalizePlanId(sub.plan) : "free";
 
   return {
     plan: planFor(planId),
@@ -137,19 +138,24 @@ export async function grantWelcomeCredits(userId: string): Promise<boolean> {
 /**
  * Crédits mensuels inclus dans le plan — idempotent par facture Stripe
  * (invoiceId) : un retry de webhook ne crédite jamais deux fois.
+ *
+ * Garantie « com ≥ 20 % » : le grant est borné à 1,22 × le montant réellement
+ * payé sur la facture (amountPaidCents). Une facture legacy (ancien prix), un
+ * prorata de changement de plan ou un coupon ne peuvent donc jamais accorder
+ * plus de crédits que ce que la marge supporte.
  */
 export async function grantPlanMonthlyCredits(
   userId: string,
   planIdRaw: string | null | undefined,
   invoiceId: string,
+  amountPaidCents?: number | null,
 ): Promise<void> {
   const plan = PLANS[normalizePlanId(planIdRaw)];
   if (plan.monthlyCreditCents <= 0) return;
-  await addCredits(
-    userId,
-    plan.monthlyCreditCents,
-    "bonus",
-    `Crédits IA inclus — plan ${plan.label}`,
-    invoiceId,
-  );
+  const granted =
+    amountPaidCents != null
+      ? Math.min(plan.monthlyCreditCents, maxMonthlyGrantCents(amountPaidCents))
+      : plan.monthlyCreditCents;
+  if (granted <= 0) return;
+  await addCredits(userId, granted, "bonus", `Crédits IA inclus — plan ${plan.label}`, invoiceId);
 }
