@@ -117,6 +117,34 @@ export async function addCredits(
 }
 
 /**
+ * Ligne de grand livre best-effort des fallbacks JS, tolérante au drift.
+ * Écrit la colonne polymorphe (0027 : agent_run_id / prompt_run_id — la FK de
+ * run_id y est droppée) ; si la base n'a pas 0027, retombe sur run_id legacy —
+ * mais run_id porte alors encore sa FK → runs (table des prompts) : on ne la
+ * renseigne que pour un run PROMPT, sinon l'insert violait la FK en silence
+ * et la ligne de ledger était perdue pour les runs agent.
+ */
+async function insertLedgerRow(
+  admin: ReturnType<typeof createAdminClient>,
+  base: { user_id: string; amount_cents: number; kind: string; description: string },
+  runId: string,
+  runType: "prompt" | "agent",
+): Promise<void> {
+  const { error } = await admin.from("credit_transactions").insert({
+    ...base,
+    run_type: runType,
+    run_id: runId,
+    ...(runType === "agent" ? { agent_run_id: runId } : { prompt_run_id: runId }),
+  });
+  if (!error) return;
+  await admin.from("credit_transactions").insert({
+    ...base,
+    run_type: runType,
+    run_id: runType === "prompt" ? runId : null,
+  });
+}
+
+/**
  * Pré-autorisation : bloque des crédits avant un run.
  * Tente d'abord la RPC atomique (FOR UPDATE), fallback JS si pas migrée.
  */
@@ -163,14 +191,12 @@ export async function holdCreditsForRun(
     updated_at: new Date().toISOString(),
   });
 
-  await admin.from("credit_transactions").insert({
-    user_id: userId,
-    amount_cents: -creditsNeeded,
-    kind: "hold",
-    description: "Pré-autorisation run",
-    run_id: runId,
-    run_type: runType,
-  });
+  await insertLedgerRow(
+    admin,
+    { user_id: userId, amount_cents: -creditsNeeded, kind: "hold", description: "Pré-autorisation run" },
+    runId,
+    runType,
+  );
 
   return true;
 }
@@ -216,14 +242,12 @@ export async function releaseCreditHold(
   });
 
   if (heldCredits > 0) {
-    await admin.from("credit_transactions").insert({
-      user_id: userId,
-      amount_cents: heldCredits,
-      kind: "hold_release",
-      description: "Annulation pré-autorisation (run échoué)",
-      run_id: runId,
-      run_type: runType,
-    });
+    await insertLedgerRow(
+      admin,
+      { user_id: userId, amount_cents: heldCredits, kind: "hold_release", description: "Annulation pré-autorisation (run échoué)" },
+      runId,
+      runType,
+    );
   }
 }
 
@@ -281,24 +305,20 @@ export async function settleCreditsForRun(
   });
 
   if (heldCredits > actualCredits) {
-    await admin.from("credit_transactions").insert({
-      user_id: userId,
-      amount_cents: heldCredits - actualCredits,
-      kind: "hold_release",
-      description: "Libération pré-autorisation",
-      run_id: runId,
-      run_type: runType,
-    });
+    await insertLedgerRow(
+      admin,
+      { user_id: userId, amount_cents: heldCredits - actualCredits, kind: "hold_release", description: "Libération pré-autorisation" },
+      runId,
+      runType,
+    );
   }
 
-  await admin.from("credit_transactions").insert({
-    user_id: userId,
-    amount_cents: -actualCredits,
-    kind: "run_debit",
-    description: "Exécution (coût réel)",
-    run_id: runId,
-    run_type: runType,
-  });
+  await insertLedgerRow(
+    admin,
+    { user_id: userId, amount_cents: -actualCredits, kind: "run_debit", description: "Exécution (coût réel)" },
+    runId,
+    runType,
+  );
 
   const billedCents = billedCentsFromCost(actualCostCents);
   const marginCents = marginCentsFromCost(actualCostCents);

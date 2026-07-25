@@ -241,7 +241,7 @@ async function executeStepWithRetry(
   ctx: OrchestratorContext,
   maxTokens: number,
   stepIndex: number,
-  maxAttempts = 2
+  maxAttempts = 3
 ): Promise<{ content: string; usage?: StepUsage; awaitingApproval?: string }> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -256,7 +256,10 @@ async function executeStepWithRetry(
       // Jamais de retry sur un pilotage navigateur : les actions déjà
       // exécutées dans l'onglet (clics, envois) ne sont pas idempotentes.
       if (step.type === "browser" || attempt >= maxAttempts || !RETRYABLE_CODES.has(code)) throw err;
-      await new Promise((r) => setTimeout(r, 1000 * attempt));
+      // Un rate-limit se mesure en dizaines de secondes : 1-2 s de backoff ne
+      // servaient à rien et le run entier échouait sur un 429 passager.
+      const delayMs = code === "rate_limit" ? 5_000 * attempt : 1_000 * attempt;
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
   throw lastErr;
@@ -434,7 +437,17 @@ async function executeStep(
           // tolère que l'URL soit passée en « url » ou en « query », mais une
           // valeur vide ne doit PAS masquer l'autre (|| et non ??).
           const rawUrl = (step.params.url || step.params.query || "").trim();
-          content = await httpFetch(interpolate(rawUrl, vars));
+          const url = interpolate(rawUrl, vars);
+          // Variable non résolue (étape amont échouée, clé hallucinée par un
+          // replan…) : diagnostic net plutôt qu'un « Invalid URL » cryptique
+          // de safeFetch sur le littéral « {{clé}} ».
+          const unresolved = url.match(/\{\{([\w.:]+)\}\}/);
+          if (unresolved) {
+            throw new Error(
+              `Paramètre non renseigné pour web_fetch : la variable {{${unresolved[1]}}} n'a pas de valeur (l'étape qui devait la produire a échoué ou n'existe pas).`,
+            );
+          }
+          content = await httpFetch(url);
           break;
         }
         case "file_read":
@@ -1101,8 +1114,11 @@ export async function runAgent(
     // Plancher calibré sur le point d'entrée le plus généreux
     // (`/api/extension/execute`, maxDuration 600 s → 540 s pour un pilotage
     // browser). La borne RÉELLE du point d'entrée effectif est appliquée juste
-    // dessous via context.maxRuntimeMs.
-    timeout_ms: Math.max(manifest.limits.timeout_ms ?? 60_000, hasBrowserStep ? 540_000 : 120_000),
+    // dessous via context.maxRuntimeMs. Non-browser : 300 s — l'ancien plancher
+    // de 120 s tuait des runs multi-étapes LLM parfaitement légitimes (3-4
+    // appels modèle suffisent à dépasser 2 min), y compris dans le worker
+    // dédié qui n'a pourtant aucune contrainte de plateforme.
+    timeout_ms: Math.max(manifest.limits.timeout_ms ?? 60_000, hasBrowserStep ? 540_000 : 300_000),
     max_tool_calls: Math.max(manifest.limits.max_tool_calls ?? 5, 10),
     max_output_bytes: Math.max(manifest.limits.max_output_bytes ?? 51_200, 512_000),
   };

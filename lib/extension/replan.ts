@@ -65,9 +65,32 @@ export interface ReplanAbort {
 export async function replanAfterFailure(params: ReplanParams): Promise<ReplanResult | ReplanAbort | null> {
   const { goal, manifest, failedStepIndex, errorMessage, outputs, modelId, apiKeys, usableConnectors } = params;
 
-  const resolved = resolveModelOrDefault(modelId);
-  const apiKey = apiKeys[resolved.provider];
-  if (!apiKey) return null;
+  // Modèle de réparation : __model (le défaut de la mission) peut viser un
+  // provider ABSENT des clés du run — mission multi-modèle où toutes les
+  // étapes LLM tournent ailleurs (billing.apiKeys ne contient que les
+  // providers réellement utilisés). Avant : `return null` muet → « le
+  // réparateur ne répare pas » sans aucune trace. On retombe sur n'importe
+  // quel provider dont la clé est garantie présente.
+  const REPAIR_FALLBACK_MODEL: Record<string, string> = {
+    openai: "gpt-5.4-mini",
+    anthropic: "claude-haiku-4-5",
+    google: "gemini-3.5-flash",
+    mistral: "mistral-small",
+  };
+  let resolved = resolveModelOrDefault(modelId);
+  let apiKey = apiKeys[resolved.provider];
+  if (!apiKey) {
+    const fallbackProvider = Object.keys(REPAIR_FALLBACK_MODEL).find((p) => apiKeys[p]);
+    if (!fallbackProvider) {
+      console.warn("[replan] aucune clé LLM utilisable pour réparer", {
+        wanted: resolved.provider,
+        available: Object.keys(apiKeys),
+      });
+      return null;
+    }
+    resolved = resolveModelOrDefault(REPAIR_FALLBACK_MODEL[fallbackProvider]);
+    apiKey = apiKeys[fallbackProvider];
+  }
 
   const failIndex = Math.min(Math.max(failedStepIndex, 0), Math.max(manifest.steps.length - 1, 0));
   const doneSteps = manifest.steps.slice(0, failIndex);

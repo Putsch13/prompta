@@ -376,20 +376,37 @@ export async function POST(request: NextRequest) {
     // → listing_agent_runs), et un insert direct en pending laissait le worker
     // (poll 3 s) claim le run PENDANT que le hold échouait — exécution sans
     // provision, puis l'update « failed » ci-dessous écrasait un run en cours.
-    const { data: agentRun, error: insertError } = await admin
+    const baseRunRow = {
+      user_id: user.id,
+      listing_id: listingId,
+      version_id: versionId,
+      inputs: storedInputs,
+      dry_run: dryRun,
+      used_credits: billing.usedCredits,
+      credit_hold_estimate_cents: billing.usedCredits ? billing.estimatedMax : null,
+    };
+    let { data: agentRun, error: insertError } = await admin
       .from("listing_agent_runs")
-      .insert({
-        user_id: user.id,
-        listing_id: listingId,
-        version_id: versionId,
-        inputs: storedInputs,
-        status: billing.usedCredits ? "authorizing" : "pending",
-        dry_run: dryRun,
-        used_credits: billing.usedCredits,
-        credit_hold_estimate_cents: billing.usedCredits ? billing.estimatedMax : null,
-      })
+      .insert({ ...baseRunRow, status: billing.usedCredits ? "authorizing" : "pending" })
       .select("id")
       .single();
+
+    // FILET ANTI-DRIFT (même politique que le worker) : si la contrainte de
+    // statut de la prod ne connaît pas `authorizing` (migration 0051 pas
+    // encore appliquée), TOUT run facturé en crédits mourait ici en 500
+    // « Impossible de créer le run ». On retombe sur l'insert `pending`
+    // historique — la fenêtre de course hold/claim redevient celle d'avant
+    // 0051, ce qui reste infiniment mieux qu'aucun run.
+    let authorizingSupported = true;
+    if (insertError && billing.usedCredits) {
+      console.error("[run/agent] insert authorizing refusé (appliquer 0051), fallback pending:", insertError.message);
+      authorizingSupported = false;
+      ({ data: agentRun, error: insertError } = await admin
+        .from("listing_agent_runs")
+        .insert({ ...baseRunRow, status: "pending" })
+        .select("id")
+        .single());
+    }
 
     if (insertError || !agentRun?.id) {
       return NextResponse.json(
@@ -401,38 +418,52 @@ export async function POST(request: NextRequest) {
     if (billing.usedCredits) {
       const held = await holdAgentRunCredits(user.id, agentRun.id, billing.estimatedMax);
       if (!held) {
-        // Garde status=authorizing : ne peut par construction écraser qu'un
-        // run jamais démarré (le worker ne claim pas ce statut).
+        // Garde status authorizing/pending : ne clôt qu'un run jamais démarré
+        // (en mode drift-fallback le worker peut déjà l'avoir claim → on ne
+        // l'écrase pas, le settle/release du worker fera foi).
         await admin
           .from("listing_agent_runs")
           .update({ status: "failed", error_message: "Crédits insuffisants" })
           .eq("id", agentRun.id)
-          .eq("status", "authorizing");
+          .in("status", ["authorizing", "pending"]);
         return NextResponse.json({ error: "Crédits insuffisants" }, { status: 402 });
       }
 
       // Hold posé → le run devient claimable, avec sa fenêtre de fraîcheur.
-      const { error: promoteError } = await admin
-        .from("listing_agent_runs")
-        .update({ status: "pending", queued_at: new Date().toISOString() })
-        .eq("id", agentRun.id)
-        .eq("status", "authorizing");
-      if (promoteError) {
-        // On ne libère le hold QUE si l'on gagne la transition authorizing →
-        // failed : si cet update échoue aussi, le run reste en authorizing et
-        // c'est le reaper qui clôturera + libérera (une seule fois).
-        const { data: cancelled } = await admin
+      // (En mode drift-fallback il est déjà `pending` : rien à promouvoir.)
+      if (authorizingSupported) {
+        let { error: promoteError } = await admin
           .from("listing_agent_runs")
-          .update({ status: "failed", error_message: "Erreur interne à la mise en file du run" })
+          .update({ status: "pending", queued_at: new Date().toISOString() })
           .eq("id", agentRun.id)
-          .eq("status", "authorizing")
-          .select("id");
-        if (cancelled?.length) {
-          await releaseAgentRunCredits(user.id, agentRun.id, billing.estimatedMax).catch((e) =>
-            console.error("[run/agent] release hold failed (promote error)", { runId: agentRun.id, err: e }),
-          );
+          .eq("status", "authorizing");
+        if (promoteError) {
+          // Drift 0051 partiel (statut connu mais colonne queued_at absente) :
+          // on promeut sans la fenêtre de fraîcheur plutôt que d'échouer.
+          console.error("[run/agent] promote avec queued_at refusé (appliquer 0051), retry sans:", promoteError.message);
+          ({ error: promoteError } = await admin
+            .from("listing_agent_runs")
+            .update({ status: "pending" })
+            .eq("id", agentRun.id)
+            .eq("status", "authorizing"));
         }
-        return NextResponse.json({ error: "Impossible de mettre le run en file" }, { status: 500 });
+        if (promoteError) {
+          // On ne libère le hold QUE si l'on gagne la transition authorizing →
+          // failed : si cet update échoue aussi, le run reste en authorizing et
+          // c'est le reaper qui clôturera + libérera (une seule fois).
+          const { data: cancelled } = await admin
+            .from("listing_agent_runs")
+            .update({ status: "failed", error_message: "Erreur interne à la mise en file du run" })
+            .eq("id", agentRun.id)
+            .eq("status", "authorizing")
+            .select("id");
+          if (cancelled?.length) {
+            await releaseAgentRunCredits(user.id, agentRun.id, billing.estimatedMax).catch((e) =>
+              console.error("[run/agent] release hold failed (promote error)", { runId: agentRun.id, err: e }),
+            );
+          }
+          return NextResponse.json({ error: "Impossible de mettre le run en file" }, { status: 500 });
+        }
       }
     }
 

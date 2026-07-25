@@ -60,7 +60,15 @@ export async function POST(request: NextRequest) {
     modelId?: string;
     /** Derniers échanges (continuité conversationnelle), plus récent en dernier. */
     history?: { role: "user" | "assistant"; content: string }[];
+    /**
+     * Identité de l'appelant : "quick" = page web /quick (AUCUN exécuteur de
+     * pilotage navigateur — une étape browser partirait en timeout 60 s).
+     * Absent = extension (compat versions déployées) → pilotage disponible.
+     */
+    client?: string;
   } | null;
+
+  const browserAvailable = body?.client !== "quick";
 
   const history = (body?.history ?? [])
     .filter(
@@ -148,6 +156,7 @@ export async function POST(request: NextRequest) {
       usableConnectors: usable,
       usableModels,
       history,
+      browserAvailable,
     });
   } catch (err) {
     return NextResponse.json(

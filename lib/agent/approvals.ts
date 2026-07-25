@@ -264,21 +264,31 @@ export async function decideApproval(
     })
     .eq("id", approvalId);
 
-  await db()
+  const resumeRow = {
+    status: "pending",
+    resume_from_step: stepIndex + 1,
+    steps_completed: stepIndex + 1,
+    output: mergedOutput as Json,
+    error_message: null,
+  };
+  const { error: resumeErr } = await db()
     .from("listing_agent_runs")
     .update({
-      status: "pending",
+      ...resumeRow,
       // Remise en file = fenêtre de fraîcheur RE-timestampée : le reaper des
       // pending juge sur queued_at — sur created_at, une approbation tranchée
       // après > 10 min voyait sa reprise tuée (et le hold libéré) avant qu'un
       // worker la prenne.
       queued_at: new Date().toISOString(),
-      resume_from_step: stepIndex + 1,
-      steps_completed: stepIndex + 1,
-      output: mergedOutput as Json,
-      error_message: null,
     })
     .eq("id", approval.run_id);
+  if (resumeErr) {
+    // Drift 0051 (colonne queued_at absente) : sans ce repli, l'update entier
+    // était rejeté et le run restait GELÉ en awaiting_approval après que
+    // l'utilisateur a validé — le pire des symptômes « ça plante ».
+    console.error("[approvals] reprise avec queued_at refusée (appliquer 0051), retry sans:", resumeErr.message);
+    await db().from("listing_agent_runs").update(resumeRow).eq("id", approval.run_id);
+  }
 
   return { runId: approval.run_id, stepIndex };
 }

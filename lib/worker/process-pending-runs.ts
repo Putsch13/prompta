@@ -9,7 +9,33 @@ import {
   APPROVAL_GUARD_STAMP_KEY,
   APPROVAL_GUARD_STAMP_VALUE,
 } from "@/lib/agent/approval-guards";
-import type { Json } from "@/lib/types.db";
+import type { Database, Json } from "@/lib/types.db";
+
+type AgentRunUpdate = Database["public"]["Tables"]["listing_agent_runs"]["Update"];
+
+/**
+ * Remise en file (status pending + fenêtre de fraîcheur) tolérante au drift
+ * 0051 : si la colonne queued_at n'existe pas encore en prod, l'update entier
+ * était rejeté SANS être vérifié — le run restait « running » fantôme jusqu'au
+ * reaper au lieu de repartir.
+ */
+async function requeueRunTolerant(
+  admin: ReturnType<typeof createAdminClient>,
+  runId: string,
+  row: AgentRunUpdate,
+): Promise<void> {
+  const { error } = await admin
+    .from("listing_agent_runs")
+    .update({ ...row, status: "pending", queued_at: new Date().toISOString() })
+    .eq("id", runId);
+  if (error) {
+    console.error("[worker] requeue avec queued_at refusé (appliquer 0051), retry sans:", error.message);
+    await admin
+      .from("listing_agent_runs")
+      .update({ ...row, status: "pending" })
+      .eq("id", runId);
+  }
+}
 import {
   resolveAgentRunKeys,
   settleAgentRunCredits,
@@ -329,6 +355,54 @@ export async function processPendingAgentRuns(
         clearInterval(heartbeatTimer);
       }
 
+      // ── Reprise après timeout de BUDGET (point d'entrée web borné) ──────
+      // maxRuntimeMs protège le point d'entrée serverless (after() du dyno
+      // web), pas la mission : plutôt que d'échouer, on remet le run en
+      // pending pour que le worker dédié (sans borne) le reprenne où il en
+      // était. Sûreté : l'étape interrompue ne doit pas avoir d'effet de bord
+      // possible (action/browser — y compris dans un parallel — risquent le
+      // rejeu : l'appel orphelin du Promise.race peut encore aboutir), et 2
+      // reprises max (un run qui ne finit jamais une étape en 280 s ne
+      // progressera pas plus à la 3ᵉ).
+      if (
+        result.status === "failed" &&
+        opts?.maxRuntimeMs &&
+        !claimed.dry_run &&
+        /Timeout agent dépassé/i.test(result.error ?? "")
+      ) {
+        const rawInputs = (claimed.inputs as Record<string, string>) ?? {};
+        const budgetRequeues = Number(rawInputs.__budget_requeues ?? 0);
+        const interrupted = manifest.steps[result.stepsCompleted];
+        const interruptedSafe =
+          !interrupted ||
+          (interrupted.type !== "action" &&
+            interrupted.type !== "browser" &&
+            !(
+              interrupted.type === "parallel" &&
+              interrupted.branches.some((b) =>
+                b.steps.some((s) => s.type === "action" || s.type === "browser"),
+              )
+            ));
+        if (budgetRequeues < 2 && interruptedSafe) {
+          await requeueRunTolerant(admin, claimed.id, {
+            resume_from_step: result.stepsCompleted,
+            steps_completed: result.stepsCompleted,
+            output: result.output as Json,
+            error_message: null,
+            inputs: { ...rawInputs, __budget_requeues: String(budgetRequeues + 1) } as Json,
+            heartbeat_at: new Date().toISOString(),
+          });
+          console.info("[worker] budget timeout — requeued pour le worker dédié", {
+            runId: claimed.id,
+            fromStep: result.stepsCompleted,
+            requeue: budgetRequeues + 1,
+          });
+          // Hold conservé : settle/release au dénouement final, comme replan.
+          processed++;
+          continue;
+        }
+      }
+
       // ── Re-planification (Prompta partout) ─────────────────────────────
       // Une étape a échoué sur un run de l'extension : avant d'abandonner, le
       // réparateur propose une nouvelle suite de plan (2 tentatives max). En
@@ -338,13 +412,20 @@ export async function processPendingAgentRuns(
         const rawInputs = (claimed.inputs as Record<string, string>) ?? {};
         const repairsDone = Number(rawInputs.__repairs ?? 0);
         // Deux cas où l'on NE répare PAS : décision humaine (refus/annulation),
-        // et étape de pilotage navigateur échouée — des actions non idempotentes
-        // (clics, saisies) ont pu être exécutées dans l'onglet, un replan
-        // repartirait de cette étape et les rejouerait.
+        // et étape échouée à effet de bord possible — pilotage navigateur, ou
+        // bloc PARALLEL contenant des branches action/browser : allSettled a
+        // pu exécuter des écritures dans d'autres branches avant l'échec, un
+        // replan repartirait de cette étape et les rejouerait (double envoi).
         const userIntentFailure =
           /annulée par l'utilisateur|Pilotage interrompu/i.test(result.error ?? "");
-        const failedStepIsBrowser = manifest.steps[result.stepsCompleted]?.type === "browser";
-        if (rawInputs.__source === "extension" && repairsDone < 2 && result.error && !userIntentFailure && !failedStepIsBrowser) {
+        const failedStep = manifest.steps[result.stepsCompleted];
+        const failedStepHasSideEffects =
+          failedStep?.type === "browser" ||
+          (failedStep?.type === "parallel" &&
+            failedStep.branches.some((b) =>
+              b.steps.some((s) => s.type === "action" || s.type === "browser"),
+            ));
+        if (rawInputs.__source === "extension" && repairsDone < 2 && result.error && !userIntentFailure && !failedStepHasSideEffects) {
           try {
             const { replanAfterFailure, MAX_REPAIRS_PER_RUN } = await import("@/lib/extension/replan");
             if (repairsDone < MAX_REPAIRS_PER_RUN) {
@@ -356,7 +437,12 @@ export async function processPendingAgentRuns(
                 manifest,
                 failedStepIndex: result.stepsCompleted,
                 errorMessage: result.error,
-                outputs: result.output,
+                // Le réparateur doit voir TOUTES les variables résolubles au
+                // runtime : les sorties d'étapes ET les entrées injectées
+                // (page_active, tab_N, file_content…) — sans elles il
+                // « réparait » une mission écran-dépendante sans savoir que
+                // l'écran est disponible, et proposait une suite qui re-merde.
+                outputs: { ...cleanInputs, ...result.output },
                 modelId: rawInputs.__model ?? "gpt-5.4-mini",
                 apiKeys: billing.apiKeys,
                 usableConnectors: usable,
@@ -404,36 +490,46 @@ export async function processPendingAgentRuns(
                     console.warn("[worker] hold top-up after replan failed:", e);
                   }
                 }
-                await admin
-                  .from("listing_agent_runs")
-                  .update({
-                    status: "pending",
-                    // Nouvelle fenêtre de fraîcheur pour le reaper des pending.
-                    queued_at: new Date().toISOString(),
-                    resume_from_step: result.stepsCompleted,
-                    steps_completed: result.stepsCompleted,
-                    output: result.output,
-                    error_message: null,
-                    inputs: {
-                      ...rawInputs,
-                      __manifest: JSON.stringify(replan.manifest),
-                      __repairs: String(repairsDone + 1),
-                    },
-                    heartbeat_at: new Date().toISOString(),
-                  })
-                  .eq("id", claimed.id);
+                await requeueRunTolerant(admin, claimed.id, {
+                  resume_from_step: result.stepsCompleted,
+                  steps_completed: result.stepsCompleted,
+                  output: result.output as Json,
+                  error_message: null,
+                  inputs: {
+                    ...rawInputs,
+                    __manifest: JSON.stringify(replan.manifest),
+                    __repairs: String(repairsDone + 1),
+                  } as Json,
+                  heartbeat_at: new Date().toISOString(),
+                });
                 console.info("[worker] run repaired, resuming", {
                   runId: claimed.id,
                   fromStep: result.stepsCompleted,
                   repair: repairsDone + 1,
                 });
                 // Reprise immédiate ciblée (profondeur bornée par __repairs).
-                await processPendingAgentRuns(1, {
-                  runId: claimed.id,
-                  // La reprise s'exécute dans la MÊME fonction serverless :
-                  // même budget temps que l'appel d'origine.
-                  ...(opts?.maxRuntimeMs ? { maxRuntimeMs: opts.maxRuntimeMs } : {}),
-                });
+                // Le budget temps du point d'entrée est DÉCRÉMENTÉ du temps
+                // déjà consommé (run initial + appel de réparation) : repartir
+                // avec le budget intact faisait croire à l'orchestrateur qu'il
+                // avait p. ex. 540 s alors que la plateforme tuait la fonction
+                // bien avant — le run réparé restait coincé « running ».
+                const elapsedMs = Date.now() - startMs;
+                const remainingMs = opts?.maxRuntimeMs
+                  ? opts.maxRuntimeMs - elapsedMs - 10_000
+                  : undefined;
+                if (remainingMs !== undefined && remainingMs < 30_000) {
+                  // Plus assez de fenêtre : le run est déjà pending re-timestampé,
+                  // le worker dédié ou le prochain tick le reprendra proprement.
+                  console.info("[worker] fenêtre serverless épuisée — reprise laissée au worker dédié", {
+                    runId: claimed.id,
+                    elapsedMs,
+                  });
+                } else {
+                  await processPendingAgentRuns(1, {
+                    runId: claimed.id,
+                    ...(remainingMs !== undefined ? { maxRuntimeMs: remainingMs } : {}),
+                  });
+                }
                 processed++;
                 continue;
               }

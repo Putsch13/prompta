@@ -228,7 +228,9 @@ export default function QuickPage() {
       res = await fetch("/api/extension/execute", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined, history: buildConvoHistory() }),
+        // client:"quick" = pas d'exécuteur de pilotage navigateur ici : le
+        // serveur interdit les étapes browser (sinon timeout 60 s garanti).
+        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined, history: buildConvoHistory(), client: "quick" }),
       });
     } catch {
       busyRef.current = false; setBusy(false); setLive(null);

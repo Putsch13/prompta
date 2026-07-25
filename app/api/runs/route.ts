@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -30,7 +30,10 @@ type AgentRun = {
   listing: { title: string; slug: string } | null;
 };
 
-export async function GET() {
+/** Taille de page de l'historique (par source ET après fusion). */
+const PAGE_SIZE = 50;
+
+export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -40,35 +43,45 @@ export async function GET() {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
+  // Pagination par curseur : ?before=<created_at ISO> charge la page PLUS
+  // ANCIENNE que ce timestamp. Sans curseur = première page (la plus récente).
+  const beforeRaw = request.nextUrl.searchParams.get("before");
+  const before = beforeRaw && !Number.isNaN(Date.parse(beforeRaw)) ? beforeRaw : null;
+
   const admin = createAdminClient();
 
+  let promptQuery = supabase
+    .from("runs")
+    .select(
+      "id, status, model, output, error_message, cost_estimate, created_at, listing_id, version_id, listing:listings(title, slug)"
+    )
+    .eq("user_id", user.id);
+  let agentQuery = admin
+    .from("listing_agent_runs")
+    .select(
+      "id, status, steps_completed, output, error_message, created_at, listing_id, version_id, inputs, listing:listings(title, slug)"
+    )
+    .eq("user_id", user.id);
+  if (before) {
+    promptQuery = promptQuery.lt("created_at", before);
+    agentQuery = agentQuery.lt("created_at", before);
+  }
+
   const [{ data: promptRuns }, { data: agentRuns }, { data: savedListings }] = await Promise.all([
-    supabase
-      .from("runs")
-      .select(
-        "id, status, model, output, error_message, cost_estimate, created_at, listing_id, version_id, listing:listings(title, slug)"
-      )
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(50),
-    admin
-      .from("listing_agent_runs")
-      .select(
-        "id, status, steps_completed, output, error_message, created_at, listing_id, version_id, inputs, listing:listings(title, slug)"
-      )
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(50),
+    promptQuery.order("created_at", { ascending: false }).limit(PAGE_SIZE),
+    agentQuery.order("created_at", { ascending: false }).limit(PAGE_SIZE),
     // Agents GARDÉS (bibliothèque) : listings créés par l'utilisateur depuis
-    // l'extension — relançables même sans run récent.
-    admin
-      .from("listings")
-      .select("id, title, current_version_id, created_at")
-      .eq("creator_id", user.id)
-      .eq("type", "agent")
-      .neq("status", "deleted")
-      .order("created_at", { ascending: false })
-      .limit(50),
+    // l'extension — relançables même sans run récent. Première page seulement.
+    before
+      ? Promise.resolve({ data: null })
+      : admin
+          .from("listings")
+          .select("id, title, current_version_id, created_at")
+          .eq("creator_id", user.id)
+          .eq("type", "agent")
+          .neq("status", "deleted")
+          .order("created_at", { ascending: false })
+          .limit(50),
   ]);
 
   const savedAgents = (savedListings ?? [])
@@ -124,5 +137,15 @@ export async function GET() {
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
-  return NextResponse.json({ runs: merged.slice(0, 50), savedAgents });
+  const page = merged.slice(0, PAGE_SIZE);
+  // Il reste de l'historique si la fusion déborde la page, ou si une source a
+  // rempli sa propre limite (elle peut avoir des lignes plus anciennes même si
+  // la fusion tient dans la page).
+  const hasMore =
+    merged.length > PAGE_SIZE ||
+    (promptRuns?.length ?? 0) === PAGE_SIZE ||
+    (agentRuns?.length ?? 0) === PAGE_SIZE;
+  const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].created_at : null;
+
+  return NextResponse.json({ runs: page, savedAgents, hasMore, nextCursor });
 }

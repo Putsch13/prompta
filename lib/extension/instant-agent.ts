@@ -368,8 +368,15 @@ export async function buildInstantAgent(params: {
   usableModels?: string[];
   /** Derniers échanges (ordres, réponses, résultats de missions) — plus récent en dernier. */
   history?: ConversationTurn[];
+  /**
+   * false = l'appelant n'a AUCUN exécuteur de pilotage navigateur (page web
+   * /quick, mobile) : les étapes browser sont interdites — sinon la mission
+   * partait en timeout 60 s « le navigateur ne répond pas ». Défaut true
+   * (extension).
+   */
+  browserAvailable?: boolean;
 }): Promise<InstantAgentResult> {
-  const { goal, page, userEmail, apiKey, resolved, usableConnectors, usableModels, history } = params;
+  const { goal, page, userEmail, apiKey, resolved, usableConnectors, usableModels, history, browserAvailable = true } = params;
 
   // L'utilisateur nomme-t-il des modèles dans son ordre (« avec claude tu fais…,
   // gpt-5.5 tu fais… ») ? Si oui, on laisse le planificateur ASSIGNER le modèle
@@ -411,9 +418,16 @@ export async function buildInstantAgent(params: {
     ? `MODÈLES PAR ÉTAPE — L'utilisateur a désigné des modèles précis dans son ordre. Assigne le champ "model" de CHAQUE étape llm/browser au modèle demandé, en utilisant EXACTEMENT un de ces IDs disponibles : ${usableModels!.join(", ")}. Mappe les noms courants : « claude » → claude-sonnet-4-6 (ou l'opus/haiku si précisé), « gpt-5.5 » → gpt-5.5, « gpt-5.4 » → gpt-5.4, « gemini » → un gemini-*, « mistral » → un mistral-*. Pour une étape dont le modèle n'est pas précisé, utilise ${resolved.catalogId}. N'invente JAMAIS un ID hors de la liste.`
     : "";
 
+  // L'appelant ne peut pas exécuter de pilotage navigateur : contrainte dure
+  // au planificateur + garde-fou CODE après parsing (jamais délégué au LLM).
+  const noBrowserConstraint = !browserAvailable
+    ? `⚠️ PILOTAGE NAVIGATEUR INDISPONIBLE — L'utilisateur ne passe PAS par l'extension : le type d'étape "browser" est STRICTEMENT INTERDIT pour cette mission. Accomplis l'objectif avec les connecteurs, web_fetch/web_search et les étapes llm. Si l'ordre EXIGE d'interagir avec l'interface d'une page (cliquer, remplir un formulaire, dérouler des résultats), réponds au format B (questions) en expliquant que cette mission doit être lancée depuis l'extension « Prompta partout ».`
+    : "";
+
   const userPrompt = [
     `ORDRE DE L'UTILISATEUR : ${goal}`,
     "",
+    ...(noBrowserConstraint ? [noBrowserConstraint, ""] : []),
     ...(screenConstraint ? [screenConstraint, ""] : []),
     ...(modelDirective ? [modelDirective, ""] : []),
     ...historyBlock,
@@ -518,6 +532,19 @@ export async function buildInstantAgent(params: {
       while (steps.length > 1 && steps[steps.length - 1].type === "approval") steps.pop();
       if (steps.length > 0) data = { ...data, steps };
     }
+  }
+
+  // Garde-fou CODE : sans exécuteur navigateur, une étape browser résiduelle
+  // (le LLM a ignoré la contrainte) partirait en timeout 60 s « le navigateur
+  // ne répond pas » → on explique à l'utilisateur AVANT de lancer quoi que
+  // ce soit, via le canal clarify existant.
+  if (!browserAvailable && data.steps.some((st) => st.type === "browser")) {
+    return {
+      kind: "clarify",
+      questions: [
+        "Cette mission exige de piloter ton navigateur (cliquer, remplir un formulaire sur une page). Lance-la depuis l'extension « Prompta partout » avec l'onglet concerné ouvert — ou reformule pour que je passe uniquement par tes apps connectées et la lecture web.",
+      ],
+    };
   }
 
   const manifest = ensureApprovalGuards(data);

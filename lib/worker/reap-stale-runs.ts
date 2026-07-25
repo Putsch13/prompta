@@ -24,26 +24,46 @@ export async function reapStalePendingRuns(): Promise<number> {
   // avant qu'un worker la prenne. queued_at est re-timestampé à chaque
   // (re)mise en pending ; fallback created_at pour les lignes d'avant la
   // migration 0051 (queued_at null).
-  const { data: staleQueued } = await db
+  const { data: staleQueued, error: queuedErr } = await db
     .from("listing_agent_runs")
     .select("id, user_id, used_credits, credit_hold_estimate_cents")
     .eq("status", "pending")
     .not("queued_at", "is", null)
     .lt("queued_at", pendingCutoff);
 
-  const { data: staleLegacy } = await db
+  const { data: staleLegacy, error: legacyErr } = await db
     .from("listing_agent_runs")
     .select("id, user_id, used_credits, credit_hold_estimate_cents")
     .eq("status", "pending")
     .is("queued_at", null)
     .lt("created_at", pendingCutoff);
 
-  const reapedAuthorizing = await reapStaleAuthorizingRuns(pendingCutoff).catch((e) => {
+  let stalePending = [...(staleQueued ?? []), ...(staleLegacy ?? [])];
+  if (queuedErr || legacyErr) {
+    // Drift 0051 (colonne queued_at absente) : les deux requêtes ci-dessus
+    // échouaient EN SILENCE → plus aucun pending moissonné, les runs jamais
+    // pris restaient « En attente » à vie. Repli : jugement sur created_at
+    // seul (comportement pré-0051).
+    console.error(
+      "[worker:reap] filtres queued_at refusés (appliquer 0051), repli created_at:",
+      (queuedErr ?? legacyErr)?.message,
+    );
+    const { data: fallbackRows } = await db
+      .from("listing_agent_runs")
+      .select("id, user_id, used_credits, credit_hold_estimate_cents")
+      .eq("status", "pending")
+      .lt("created_at", pendingCutoff);
+    stalePending = fallbackRows ?? [];
+  }
+
+  // Un run `authorizing` ne vit que quelques SECONDES entre l'insert et le
+  // hold+promotion : attendre le cutoff pending (10 min) pour le clore
+  // laissait l'utilisateur regarder un run gelé. 2 min = très large.
+  const authorizingCutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const reapedAuthorizing = await reapStaleAuthorizingRuns(authorizingCutoff).catch((e) => {
     console.error("[worker:reap] reap authorizing failed", e);
     return 0;
   });
-
-  const stalePending = [...(staleQueued ?? []), ...(staleLegacy ?? [])];
   if (!stalePending.length) return reapedAuthorizing;
 
   for (const run of stalePending) {

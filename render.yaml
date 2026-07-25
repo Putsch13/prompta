@@ -65,6 +65,29 @@ services:
       - key: PLATFORM_DAILY_COST_CAP_CENTS
         sync: false
 
+  # Filet de sécurité INDÉPENDANT du dyno web et du worker : matérialise les
+  # runs planifiés, traite la file pending et fait tourner le reaper (reprise
+  # ou clôture des runs interrompus par un deploy/restart). Sans ce cron —
+  # avant : à configurer À LA MAIN dans le dashboard, donc souvent absent —
+  # un run interrompu restait « En cours » pour toujours si le worker dédié
+  # était down.
+  - type: cron
+    name: prompta-cron-tick
+    runtime: node
+    plan: starter
+    schedule: "*/5 * * * *"
+    buildCommand: echo "cron curl — rien à builder"
+    startCommand: curl -fsS -m 120 -H "Authorization: Bearer $CRON_SECRET" "$NEXT_PUBLIC_APP_URL/api/cron/tick"
+    envVars:
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: CRON_SECRET
+      - fromService:
+          type: web
+          name: prompta
+          envVarKey: NEXT_PUBLIC_APP_URL
+
   - type: worker
     name: prompta-worker
     runtime: node

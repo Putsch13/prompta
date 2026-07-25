@@ -59,11 +59,15 @@ Optionnel (tu peux ajouter plus tard) :
 
 ## 4. Cron Jobs
 
-Render → **Cron Jobs** → **New Cron Job** (lié au Web Service ou en standalone curl)
+**Le tick est désormais déclaré dans `render.yaml`** (service `prompta-cron-tick`,
+toutes les 5 min) : il part automatiquement avec le blueprint — ne PAS le
+recréer à la main. Il matérialise les runs planifiés, traite la file pending
+et fait tourner le reaper même si le worker dédié est down.
+
+Les crons restants se créent à la main : Render → **Cron Jobs** → **New Cron Job**
 
 | Nom | Schedule | Commande |
 |-----|----------|----------|
-| Agents admin | `0 * * * *` | `curl -sS -H "Authorization: Bearer $CRON_SECRET" https://TON-DOMAINE/api/cron/tick` |
 | Badges | `0 3 * * *` | `curl -sS -H "x-cron-secret: $CRON_SECRET" -X POST https://TON-DOMAINE/api/cron/badges` |
 | Scheduled runs | `*/15 * * * *` | `curl -sS -H "x-cron-secret: $CRON_SECRET" -X POST https://TON-DOMAINE/api/cron/scheduled-runs` |
 | Revshare Pro | `0 4 1 * *` | `curl -sS -H "x-cron-secret: $CRON_SECRET" -X POST https://TON-DOMAINE/api/cron/revshare` |

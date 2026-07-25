@@ -23,6 +23,7 @@ interface RunRow {
 }
 
 const STATUS_LABELS: Record<string, string> = {
+  authorizing: "Autorisation…",
   pending: "En attente",
   queued: "En file",
   running: "En cours",
@@ -34,6 +35,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
+  authorizing: "text-warning",
   pending: "text-warning",
   queued: "text-warning",
   running: "text-accent",
@@ -64,6 +66,11 @@ function RunsHistoryContent() {
   const searchParams = useSearchParams();
   const focusRunId = searchParams.get("id");
   const [runs, setRuns] = useState<RunRow[]>([]);
+  // Pages d'historique plus anciennes (bouton « Charger plus ») — jamais
+  // écrasées par le rafraîchissement auto de la première page.
+  const [olderRuns, setOlderRuns] = useState<RunRow[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [savedAgents, setSavedAgents] = useState<
     { id: string; title: string; versionId: string; createdAt: string }[]
   >([]);
@@ -78,14 +85,38 @@ function RunsHistoryContent() {
     searchParams.get("agent")
   );
 
-  function loadRuns() {
+  function loadRuns(opts?: { initial?: boolean }) {
     fetch("/api/runs")
       .then((r) => r.json())
       .then((d) => {
         setRuns(d.runs ?? []);
         setSavedAgents(d.savedAgents ?? []);
+        // Le rafraîchissement périodique ne pilote pas le bouton « Charger
+        // plus » : seul le chargement initial (et loadMore) fixent hasMore,
+        // sinon un historique entièrement déroulé refait apparaître le bouton.
+        if (opts?.initial) setHasMore(Boolean(d.hasMore));
       })
       .finally(() => setLoading(false));
+  }
+
+  /** Charge la page d'historique PLUS ANCIENNE que le plus vieux run affiché. */
+  async function loadMore() {
+    const all = [...runs, ...olderRuns];
+    const oldest = all[all.length - 1]?.created_at;
+    if (!oldest || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/runs?before=${encodeURIComponent(oldest)}`);
+      const d = await res.json();
+      const seen = new Set(all.map((r) => r.id));
+      const fresh = ((d.runs ?? []) as RunRow[]).filter((r) => !seen.has(r.id));
+      setOlderRuns((prev) => [...prev, ...fresh]);
+      setHasMore(Boolean(d.hasMore) && fresh.length > 0);
+    } catch {
+      /* best-effort — le bouton reste cliquable */
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   /** Relance un agent gardé depuis zéro (nouveau run, même chemin worker). */
@@ -96,7 +127,7 @@ function RunsHistoryContent() {
       // Réutilise les inputs du dernier run de cet agent : sans eux, les
       // placeholders ({{page_active}}, inputs requis) partent vides et la
       // mission tourne dégradée ou est refusée (configuration_incomplete).
-      const lastRun = runs.find((r) => r.listing_id === agent.id && r.inputs);
+      const lastRun = [...runs, ...olderRuns].find((r) => r.listing_id === agent.id && r.inputs);
       const res = await fetch("/api/run/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -125,9 +156,10 @@ function RunsHistoryContent() {
   }
 
   useEffect(() => {
-    loadRuns();
-    const t = setInterval(loadRuns, 10_000);
+    loadRuns({ initial: true });
+    const t = setInterval(() => loadRuns(), 10_000);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -240,6 +272,13 @@ function RunsHistoryContent() {
     );
   }
 
+  // Historique affiché = première page (rafraîchie) + pages anciennes
+  // chargées à la demande (dédupliquées, triées par date décroissante).
+  const firstPageIds = new Set(runs.map((r) => r.id));
+  const allRuns = [...runs, ...olderRuns.filter((r) => !firstPageIds.has(r.id))].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+
   // Regroupe les runs par agent (listing) pour une vue type Render : on
   // sélectionne un agent à gauche, on voit ses runs + logs + erreurs à droite.
   const agents = (() => {
@@ -247,7 +286,7 @@ function RunsHistoryContent() {
       string,
       { id: string; title: string; slug: string | null; count: number; lastStatus: string }
     >();
-    for (const run of runs) {
+    for (const run of allRuns) {
       const id = run.listing_id ?? "__sans_agent__";
       const title = run.listing?.title ?? "Run isolé";
       const existing = map.get(id);
@@ -267,13 +306,18 @@ function RunsHistoryContent() {
   })();
 
   const agentRuns = selectedAgent
-    ? runs.filter((r) => (r.listing_id ?? "__sans_agent__") === selectedAgent)
-    : runs;
+    ? allRuns.filter((r) => (r.listing_id ?? "__sans_agent__") === selectedAgent)
+    : allRuns;
 
   const filtered = agentRuns.filter((run) => {
     if (filter === "all") return true;
     if (filter === "active") {
-      return run.status === "pending" || run.status === "queued" || run.status === "running";
+      return (
+        run.status === "authorizing" ||
+        run.status === "pending" ||
+        run.status === "queued" ||
+        run.status === "running"
+      );
     }
     if (filter === "approval") return run.status === "awaiting_approval";
     return ["completed", "failed", "suspended"].includes(run.status);
@@ -300,7 +344,7 @@ function RunsHistoryContent() {
             }`}
           >
             <span className="font-medium">Tous les runs</span>
-            <span className="rounded-full bg-line px-1.5 py-0.5 text-[10px]">{runs.length}</span>
+            <span className="rounded-full bg-line px-1.5 py-0.5 text-[10px]">{allRuns.length}{hasMore ? "+" : ""}</span>
           </button>
           {agents.map((a) => (
             <button
@@ -515,6 +559,19 @@ function RunsHistoryContent() {
               )}
             </div>
           ))}
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="flex items-center gap-2 rounded-lg border border-line px-4 py-2 text-xs font-medium text-ink-soft hover:bg-card2 disabled:opacity-50"
+              >
+                {loadingMore ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                Charger plus d&apos;historique
+              </button>
+            </div>
+          )}
         </div>
       )}
         </div>
