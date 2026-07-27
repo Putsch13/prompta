@@ -15,6 +15,9 @@ import {
   ensureApprovalGuards,
   hasApprovalGuardStamp,
   shouldApplyApprovalGuards,
+  isSensitiveWriteStep,
+  isWriteActionStep,
+  flattenPausingParallels,
   APPROVAL_GUARD_STAMP_KEY,
   APPROVAL_GUARD_STAMP_VALUE,
 } from "../../lib/agent/approval-guards";
@@ -170,4 +173,101 @@ test("coordonnées gardées : l'index d'une approbation insérée pointe bien la
     // Et l'étape suivante (celle que l'approbation protège) est identique.
     assert.deepEqual(reGuarded.steps[idx + 1], guarded.steps[idx + 1]);
   }
+});
+
+// ── isWriteActionStep : garde anti-rejeu du retry orchestrateur ─────────────
+// Distincte de isSensitiveWriteStep : elle ne fait PAS d'exception pour les
+// espaces Google perso (un append_row rejoué duplique la ligne, même s'il
+// n'exige pas de validation humaine).
+
+test("isWriteActionStep — une écriture externe n'est pas rejouable", () => {
+  assert.equal(isWriteActionStep({ type: "action", connector: "gmail", action: "gmail.send", params: {} } as never), true);
+  assert.equal(isWriteActionStep({ type: "action", connector: "stripe", action: "stripe.charge", params: {} } as never), true);
+  assert.equal(isWriteActionStep({ type: "action", connector: "notion", action: "notion.create_page", params: {} } as never), true);
+});
+
+test("isWriteActionStep — les espaces Google perso restent des écritures (≠ isSensitiveWriteStep)", () => {
+  const appendRow = { type: "action", connector: "google_sheets", action: "google_sheets.append_row", params: {} } as never;
+  // Pas de validation humaine…
+  assert.equal(isSensitiveWriteStep(appendRow), false);
+  // …mais surtout pas rejouable : un retry duplique la ligne.
+  assert.equal(isWriteActionStep(appendRow), true);
+});
+
+test("isWriteActionStep — une lecture reste rejouable", () => {
+  assert.equal(isWriteActionStep({ type: "action", connector: "gmail", action: "gmail.list_messages", params: {} } as never), false);
+  assert.equal(isWriteActionStep({ type: "action", connector: "hubspot", action: "hubspot.search_contacts", params: {} } as never), false);
+  assert.equal(isWriteActionStep({ type: "action", connector: "drive", action: "drive.get_file", params: {} } as never), false);
+});
+
+test("isWriteActionStep — seules les étapes action sont concernées", () => {
+  assert.equal(isWriteActionStep({ type: "llm", model: "gpt-5.4-mini", prompt: "p" } as never), false);
+  assert.equal(isWriteActionStep({ type: "tool", tool: "web_search", params: {} } as never), false);
+});
+
+// ── flattenPausingParallels : correction d'indexation, pas cosmétique ───────
+// Une pause dans une branche produit un step_index composite (i*100+b*10+s)
+// persisté en base ; resume_from_step devient alors hors bornes et le run est
+// clos « completed » à vide, écritures des branches sœurs perdues.
+
+test("flattenPausingParallels — un parallel porteur d'une approbation est aplati", () => {
+  const m = manifest([
+    llm("a"),
+    {
+      type: "parallel",
+      branches: [
+        { steps: [llm("b1"), { type: "approval", label: "v", payloadTemplate: "{{b1}}", outputKey: "ok" }] },
+        { steps: [llm("b2")] },
+      ],
+      outputKey: "tout",
+    },
+  ]);
+  const flat = flattenPausingParallels(m);
+  assert.ok(!flat.steps.some((s) => s.type === "parallel"));
+  // Ordre préservé : branche 1 puis branche 2.
+  assert.deepEqual(flat.steps.map((s) => s.type), ["llm", "llm", "approval", "llm"]);
+});
+
+test("flattenPausingParallels — un parallel SANS pause est laissé intact", () => {
+  const m = manifest([
+    llm("a"),
+    { type: "parallel", branches: [{ steps: [llm("b1")] }, { steps: [llm("b2")] }], outputKey: "tout" },
+  ]);
+  const flat = flattenPausingParallels(m);
+  assert.equal(flat.steps[1].type, "parallel");
+  // Référence identique : aucune copie inutile quand rien ne change.
+  assert.equal(flat, m);
+});
+
+test("flattenPausingParallels — idempotent (point fixe)", () => {
+  const m = manifest([
+    { type: "parallel", branches: [{ steps: [{ type: "ask", question: "q", outputKey: "r" }] }], outputKey: "t" },
+  ]);
+  const once = flattenPausingParallels(m);
+  const twice = flattenPausingParallels(once);
+  assert.deepEqual(twice.steps, once.steps);
+});
+
+test("ensureApprovalGuards aplatit AVANT de poser les approbations", () => {
+  // gmail.send dans une branche + un ask ailleurs dans le même parallel :
+  // après garde, aucun parallel ne subsiste et l'envoi est immédiatement
+  // précédé de sa validation — index cohérents pour la reprise.
+  const guarded = ensureApprovalGuards(
+    manifest([
+      {
+        type: "parallel",
+        branches: [
+          { steps: [{ type: "ask", question: "quel objet ?", outputKey: "obj" }] },
+          { steps: [gmailSend("corps")] },
+        ],
+        outputKey: "tout",
+      },
+    ]),
+  );
+  assert.ok(!guarded.steps.some((s) => s.type === "parallel"));
+  const sendIdx = guarded.steps.findIndex((s) => s.type === "action");
+  assert.ok(sendIdx > 0);
+  assert.equal(guarded.steps[sendIdx - 1].type, "approval");
+  // Et le résultat reste un point fixe de la garde.
+  assert.deepEqual(ensureApprovalGuards(guarded).steps, guarded.steps);
 });

@@ -57,3 +57,43 @@ test("schema — les défauts de limites ne tuent plus un agent moyen", () => {
   assert.ok(parsed.limits.max_tokens >= 16_000);
   assert.ok(parsed.limits.max_output_bytes >= 512_000);
 });
+
+// ── Régression : le chemin conversationnel doit dimensionner ses plafonds ───
+// Les défauts Zod sont calibrés pour un plan MOYEN. Une mission tapée dans
+// l'extension produisait un manifeste sans `limits` → défauts appliqués quelle
+// que soit la taille du plan → « Plafond atteint » à mi-parcours sur un plan
+// pourtant valide, puis 2 réparations gâchées sur le même plan (le replan
+// conserve ...manifest). buildInstantAgent appelle désormais
+// computeManifestLimits ; ce test verrouille l'écart qui le rend nécessaire.
+
+test("les défauts Zod sont INSUFFISANTS pour un gros plan — d'où le calcul explicite", () => {
+  const defaults = AgentManifestSchema.parse({ kind: "agent", steps: [llmStep(0)] }).limits;
+
+  // Plan réaliste « grosse mission » : 6 actions + 6 étapes LLM de croisement.
+  const big: AgentStep[] = [
+    ...Array.from({ length: 6 }, (_, i) => actionStep(i)),
+    ...Array.from({ length: 6 }, (_, i) => llmStep(i)),
+  ];
+  const sized = computeManifestLimits(big);
+
+  assert.ok(
+    sized.max_tool_calls > defaults.max_tool_calls,
+    `attendu > ${defaults.max_tool_calls}, reçu ${sized.max_tool_calls}`,
+  );
+  assert.ok(
+    sized.max_tokens > defaults.max_tokens,
+    `attendu > ${defaults.max_tokens}, reçu ${sized.max_tokens}`,
+  );
+  assert.ok(sized.max_steps >= big.length);
+});
+
+test("un plan avec pilotage navigateur obtient un budget tokens et un timeout élargis", () => {
+  const withBrowser: AgentStep[] = [
+    { type: "browser", goal: "cliquer sur Afficher le numéro", model: "gpt-5.4" } as AgentStep,
+    llmStep(0),
+  ];
+  const sized = computeManifestLimits(withBrowser);
+  const sizedWithout = computeManifestLimits([llmStep(0), llmStep(1)]);
+  assert.ok(sized.max_tokens > sizedWithout.max_tokens);
+  assert.ok(sized.timeout_ms > sizedWithout.timeout_ms);
+});

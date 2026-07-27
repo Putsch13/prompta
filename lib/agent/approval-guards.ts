@@ -46,6 +46,19 @@ export function isSensitiveWriteStep(step: Step): boolean {
   return !READ_VERB_RE.test(verbPart);
 }
 
+/**
+ * Vrai si l'étape écrit quelque part — donc NON IDEMPOTENTE, donc jamais
+ * rejouable à l'aveugle. Distinct de `isSensitiveWriteStep` : les espaces
+ * Google perso n'exigent pas de validation humaine, mais un `append_row`
+ * rejoué duplique quand même la ligne. Deny-by-default, comme au-dessus :
+ * seul un verbe manifestement de lecture est considéré rejouable.
+ */
+export function isWriteActionStep(step: Step): boolean {
+  if (step.type !== "action") return false;
+  const verbPart = (step.action.split(".").pop() ?? step.action).trim();
+  return !READ_VERB_RE.test(verbPart);
+}
+
 /** Vrai si une étape — ou une sous-étape à N'IMPORTE quelle profondeur — est sensible. */
 function stepTreeHasSensitiveWrite(step: Step): boolean {
   if (isSensitiveWriteStep(step)) return true;
@@ -55,15 +68,54 @@ function stepTreeHasSensitiveWrite(step: Step): boolean {
   return false;
 }
 
+/** Types d'étapes qui METTENT LE RUN EN PAUSE (état persisté + reprise). */
+const PAUSING_STEP_TYPES = new Set(["ask", "approval", "browser"]);
+
+/**
+ * Aplatit tout `parallel` contenant une étape de PAUSE : ses branches
+ * deviennent des étapes séquentielles au même niveau, dans l'ordre.
+ *
+ * Pourquoi c'est une question de correction, pas de style : dans une branche,
+ * l'orchestrateur indexe l'étape par un composite `i*100 + branche*10 + s`, et
+ * c'est CE nombre qui part en base comme `agent_approvals.step_index`. À la
+ * décision, `resume_from_step = stepIndex + 1` vaut alors ~202 sur un manifeste
+ * de 6 étapes : la boucle de reprise ne s'exécute pas, le run est marqué
+ * `completed` avec une sortie vide, et les écritures des branches sœurs sont
+ * perdues. Le planificateur aplatissait déjà avant parsing, mais ni le replan,
+ * ni l'auto-fix, ni les manifestes du builder ne le faisaient — d'où ce filet
+ * au point de passage commun.
+ *
+ * Idempotent : après un passage, plus aucun parallel ne contient de pause.
+ */
+export function flattenPausingParallels(manifest: AgentManifest): AgentManifest {
+  let changed = false;
+  const steps: Step[] = [];
+  for (const step of manifest.steps) {
+    if (
+      step.type === "parallel" &&
+      step.branches.some((b) => b.steps.some((s) => PAUSING_STEP_TYPES.has(s.type)))
+    ) {
+      for (const b of step.branches) steps.push(...(b.steps as Step[]));
+      changed = true;
+      continue;
+    }
+    steps.push(step);
+  }
+  return changed ? { ...manifest, steps } : manifest;
+}
+
 /**
  * Insère une validation humaine avant CHAQUE écriture sensible (y compris
  * imbriquée dans une branche parallèle) non déjà couverte par une validation en
  * amont. Une validation « couvre » une seule écriture sensible : deux envois
  * distincts exigent deux validations. Déterministe, ne fait confiance ni au LLM
  * ni au contenu de page.
+ *
+ * Aplatit d'abord les parallels porteurs d'une pause (voir ci-dessus) : l'ordre
+ * importe, les approbations doivent être posées sur les index définitifs.
  */
 export function ensureApprovalGuards(manifest: AgentManifest): AgentManifest {
-  const steps = [...manifest.steps];
+  const steps = [...flattenPausingParallels(manifest).steps];
   let pendingApproval = false; // une validation en amont, pas encore consommée
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];

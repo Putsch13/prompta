@@ -19,7 +19,7 @@
     "test:e2e:ui": "playwright test --ui",
     "secrets:scan": "bash scripts/secrets-scan.sh",
     "composio:smoke": "tsx scripts/composio-smoke.ts",
-    "qa": "npx tsc --noEmit && npm run lint && npm run test:unit && npm run secrets:scan",
+    "qa": "npx tsc --noEmit && npm run lint && npm run test:unit && npm run test:integration && npm run validate:complex-agents && npm run secrets:scan",
     "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:integration": "tsx --test tests/integration/*.test.ts",
     "smoke:local": "tsx scripts/smoke-local.ts"

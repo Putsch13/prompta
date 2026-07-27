@@ -131,7 +131,15 @@ export async function checkConnectorHealth(
     }
 
     const isComposio = connected.provider === "composio";
-    if (!isComposio && !connected.access_token_enc && !connected.composio_account_id) {
+    // Une ligne Composio SANS composio_account_id est inexploitable :
+    // resolveConnectionRow renvoie null et l'étape échoue. Le court-circuit
+    // `!isComposio` la laissait passer pour saine — atteignable après une
+    // reconnexion native par-dessus une ligne Composio (l'upsert ne réécrit
+    // pas `provider`).
+    const noToken = isComposio
+      ? !connected.composio_account_id
+      : !connected.access_token_enc && !connected.composio_account_id;
+    if (noToken) {
       issues.push({
         connectorId,
         code: "no_token",

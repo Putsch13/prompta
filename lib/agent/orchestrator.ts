@@ -19,6 +19,7 @@ import { logRunActivity } from "./activity-log";
 import { runCodeInSandbox } from "./sandbox";
 import { evaluateCondition } from "./condition";
 import { createPendingApproval } from "./approvals";
+import { isWriteActionStep } from "./approval-guards";
 import { getRelevantMemories, saveRunMemory } from "./memory";
 import { retrieveFromSource } from "@/lib/data-sources/retrieve";
 import { getUserPrivileges, UNRESTRICTED_LIMITS } from "@/lib/auth/privileges";
@@ -256,6 +257,13 @@ async function executeStepWithRetry(
       // Jamais de retry sur un pilotage navigateur : les actions déjà
       // exécutées dans l'onglet (clics, envois) ne sont pas idempotentes.
       if (step.type === "browser" || attempt >= maxAttempts || !RETRYABLE_CODES.has(code)) throw err;
+      // Ni sur une ÉCRITURE dont l'appel a expiré : un timeout ne dit pas si le
+      // service a traité la requête, seulement qu'il n'a pas répondu à temps.
+      // La garde d'idempotence ne protège pas ici (failExecution repasse la
+      // ligne en `failed`, puis beginExecution la relance) → gmail.send rejoué
+      // = mail envoyé deux fois. Un rate_limit, lui, garantit le non-traitement
+      // et reste rejouable.
+      if (code === "timeout" && isWriteActionStep(step)) throw err;
       // Un rate-limit se mesure en dizaines de secondes : 1-2 s de backoff ne
       // servaient à rien et le run entier échouait sur un 429 passager.
       const delayMs = code === "rate_limit" ? 5_000 * attempt : 1_000 * attempt;
@@ -776,6 +784,18 @@ async function executeStep(
     if (step.type === "condition") {
       const expr = interpolate(step.expression, vars);
       const result = evaluateCondition(expr, vars);
+      // ATTENTION — cette étape N'EFFECTUE AUCUN BRANCHEMENT : elle évalue et
+      // publie son résultat comme variable, puis l'exécution continue
+      // linéairement. Les champs ifTrueStepIds/ifFalseStepIds du schéma ne sont
+      // lus nulle part. Les prompts (planificateur, réparateur, replan) ne
+      // proposent donc plus ce type ; seuls des manifestes anciens ou construits
+      // à la main peuvent encore en contenir, et ils croient brancher.
+      console.warn("[orchestrator] étape `condition` sans effet de branchement", {
+        runId,
+        stepIndex,
+        expression: expr.slice(0, 200),
+        result,
+      });
       const content = JSON.stringify({ result, expression: expr });
       if (runId && stepDbId) {
         await logStepSuccess(stepDbId, content, undefined, stepStartedAt).catch(() => undefined);
@@ -1366,18 +1386,32 @@ export async function runAgent(
             outputs[parallelStep.outputKey] = combinedContent;
           }
 
-          const parallelStatus = errors.length > 0 && errors.length === branchResults.length ? "failed" : "success";
+          // Une branche en échec fait échouer l'ÉTAPE, comme n'importe quelle
+          // étape séquentielle. Auparavant seul un échec de TOUTES les branches
+          // était fatal : une seule branche en erreur laissait passer un
+          // `[ERREUR] …` dans les données combinées, l'étape était tracée
+          // « success », l'étape suivante rédigeait le livrable sur des données
+          // partielles et le run finissait `completed`. L'utilisateur recevait
+          // un rapport amputé sans le moindre signal.
+          // Les variables des branches réussies sont déjà publiées ci-dessus :
+          // le replan (borné à 2) peut repartir de ce qui a marché.
+          const parallelFailed = errors.length > 0;
           stepTrace.push({
             stepIndex: i,
             stepType: "parallel",
             label: describeStep(step, i),
-            status: parallelStatus === "failed" ? "failed" : "success",
+            status: parallelFailed ? "failed" : "success",
             outputPreview: combinedContent.slice(0, 800),
             durationMs: Date.now() - stepStartedAt,
           });
 
-          if (parallelStatus === "failed") {
-            throw new Error(`Toutes les branches parallèles ont échoué: ${errors.join("; ")}`);
+          if (parallelFailed) {
+            const ok = branchResults.length - errors.length;
+            throw new Error(
+              errors.length === branchResults.length
+                ? `Toutes les branches parallèles ont échoué: ${errors.join("; ")}`
+                : `${errors.length}/${branchResults.length} branches parallèles ont échoué (${ok} réussie${ok > 1 ? "s" : ""}) : ${errors.join("; ")}`,
+            );
           }
 
           stepsCompleted++;

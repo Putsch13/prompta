@@ -20,6 +20,7 @@ import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
 import { canonicalConnectorKey } from "@/lib/connectors/resolve-id";
 import { connectorsForSteps } from "@/lib/connectors/registry";
 import { ensureApprovalGuards } from "@/lib/agent/approval-guards";
+import { computeManifestLimits } from "@/lib/builder/manifest";
 
 export const MAX_REPAIRS_PER_RUN = 2;
 
@@ -35,7 +36,7 @@ ou, si l'objectif est réellement inatteignable (information manquante côté ut
 RÈGLES DURES :
 1. NE REFAIS JAMAIS ce qui a déjà été fait : les étapes AVANT l'index échoué sont terminées, leurs variables {{…}} sont disponibles — utilise-les.
 2. Ne réinvente pas la même étape à l'identique : si elle a échoué, change d'approche (autre action, autre paramètre, étape intermédiaire de recherche/extraction d'identifiant, web_search pour trouver l'info manquante…).
-3. N'utilise QUE les types d'étapes du plan reçu (llm, tool web_fetch/web_search, action, approval, condition, parallel, browser) et n'invente ni URL ni identifiant. Le type browser (pilotage de l'onglet de l'utilisateur, {"type":"browser","goal":"…","outputKey":"…"}) est un DERNIER recours : uniquement si connecteurs et web_fetch ont échoué et que l'interaction avec la page affichée peut débloquer.
+3. N'utilise QUE les types d'étapes du plan reçu (llm, tool web_fetch/web_search, action, approval, ask, parallel, browser) et n'invente ni URL ni identifiant. Il n'existe AUCUN type de branchement : n'émets pas de "condition", toutes les étapes proposées s'exécuteront. Un « si » se traite DANS une étape llm, ou par une étape approval/ask qui laisse l'utilisateur trancher. Le type browser (pilotage de l'onglet de l'utilisateur, {"type":"browser","goal":"…","outputKey":"…"}) est un DERNIER recours : uniquement si connecteurs et web_fetch ont échoué et que l'interaction avec la page affichée peut débloquer.
 4. Toute écriture sensible (email, publication, CRM, e-commerce, message) reste précédée d'une étape approval.
 5. La dernière étape produit la réponse/le livrable pour l'utilisateur (outputKey "reponse" pour une réponse texte).
 6. 8 étapes maximum dans le remplacement.`;
@@ -152,9 +153,14 @@ export async function replanAfterFailure(params: ReplanParams): Promise<ReplanRe
     ...candidate.data,
     steps: candidate.data.steps.slice(failIndex),
   });
+  const repairedSteps = [...candidate.data.steps.slice(0, failIndex), ...tailGuarded.steps];
   const repaired: AgentManifest = {
     ...candidate.data,
-    steps: [...candidate.data.steps.slice(0, failIndex), ...tailGuarded.steps],
+    steps: repairedSteps,
+    // Re-dimensionner : un plan réparé plus long que l'original hériterait
+    // sinon des plafonds de l'original et rejouerait le même « Plafond
+    // atteint » — en consommant une des 2 réparations autorisées.
+    limits: computeManifestLimits(repairedSteps),
   };
 
   // Un plan de réparation qui exige un connecteur non connecté échouerait

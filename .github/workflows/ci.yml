@@ -35,5 +35,16 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      # Seul test d'EXÉCUTION de l'orchestrateur du dépôt (parallel, reprise,
+      # variables imbriquées) — il tournait déjà sans clé ni serveur, mais
+      # n'était lancé par personne.
+      - name: Integration tests
+        run: npm run test:integration
+
+      # Le catalogue des 100 agents contre le schéma runtime + le validateur
+      # builder : détecte une régression de schéma avant le déploiement.
+      - name: Complex agent catalog
+        run: npm run validate:complex-agents
+
       - name: Production build
         run: npm run build

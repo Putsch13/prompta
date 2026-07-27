@@ -69,9 +69,11 @@ export async function processPendingAgentRuns(
   opts?: {
     runId?: string;
     /**
-     * Budget temps du point d'entrée serverless appelant (STRICTEMENT sous son
-     * maxDuration) — transmis à l'orchestrateur pour borner le timeout global
-     * du run. Absent = worker dédié (worker/run-worker.ts), pas de borne.
+     * Budget temps de la PASSE appelante (pour une route serverless :
+     * STRICTEMENT sous son maxDuration) — transmis à l'orchestrateur pour
+     * borner le timeout global du run, et surtout condition d'activation de la
+     * reprise après timeout (plus bas). Le worker dédié en pose une, large :
+     * sans elle un run trop long échouait définitivement au lieu d'être repris.
      */
     maxRuntimeMs?: number;
   },
@@ -355,11 +357,10 @@ export async function processPendingAgentRuns(
         clearInterval(heartbeatTimer);
       }
 
-      // ── Reprise après timeout de BUDGET (point d'entrée web borné) ──────
-      // maxRuntimeMs protège le point d'entrée serverless (after() du dyno
-      // web), pas la mission : plutôt que d'échouer, on remet le run en
-      // pending pour que le worker dédié (sans borne) le reprenne où il en
-      // était. Sûreté : l'étape interrompue ne doit pas avoir d'effet de bord
+      // ── Reprise après timeout de BUDGET ────────────────────────────────
+      // maxRuntimeMs borne la PASSE, pas la mission : plutôt que d'échouer, on
+      // remet le run en pending pour qu'une passe suivante (worker dédié, ou
+      // tick) le reprenne où il en était. Sûreté : l'étape interrompue ne doit pas avoir d'effet de bord
       // possible (action/browser — y compris dans un parallel — risquent le
       // rejeu : l'appel orphelin du Promise.race peut encore aboutir), et 2
       // reprises max (un run qui ne finit jamais une étape en 280 s ne

@@ -289,6 +289,33 @@ export async function saveUserConnection(
   );
 }
 
+/**
+ * SOURCE DE VÉRITÉ unique de « cette connexion est lançable ».
+ *
+ * Partagée par `listUserConnections().usable` (gate du planificateur, qui
+ * décide du 409 « connecteur manquant ») et par `checkConnectorHealth` (gate du
+ * worker et de /api/run/agent). Les deux divergeaient : `usable` ne lisait pas
+ * `expires_at`, si bien qu'une ligne `status='connected'` au token périmé SANS
+ * refresh token était verte côté extension — pas de 409, donc pas de bouton
+ * « Connecter » ni de reprise post-OAuth — puis tuée par le worker en texte
+ * brut. Cas atteignable en pratique : les connexions Composio ne stockent
+ * jamais de `refresh_token_enc`.
+ *
+ * Aligné sur ce que fait réellement `resolveConnectionRow` à l'exécution : un
+ * access token OAuth expire en permanence (Google : 1 h), ce n'est bloquant
+ * que s'il n'y a pas de quoi le rafraîchir.
+ */
+export function isConnectionUsable(row: {
+  status?: string | null;
+  expires_at?: string | null;
+  refresh_token_enc?: string | null;
+}): boolean {
+  if (row.status !== "connected" && row.status !== "expired") return false;
+  const expired =
+    row.status === "expired" || (row.expires_at != null && new Date(row.expires_at) < new Date());
+  return expired ? Boolean(row.refresh_token_enc) : true;
+}
+
 export async function listUserConnections(userId: string): Promise<ConnectionStatus[]> {
   const { data } = await db()
     .from("user_connections")
@@ -301,9 +328,7 @@ export async function listUserConnections(userId: string): Promise<ConnectionSta
     (r) => ({
       connectorId: r.connector_id,
       status: r.status as ConnectionStatus["status"],
-      usable:
-        r.status === "connected" ||
-        (r.status === "expired" && Boolean(r.refresh_token_enc)),
+      usable: isConnectionUsable(r),
       scopes: r.scopes ?? [],
       expiresAt: r.expires_at,
       provider: (r.provider as ConnectionStatus["provider"]) ?? "native",

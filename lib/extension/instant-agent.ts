@@ -21,6 +21,7 @@ import { parseLlmJson } from "@/lib/llm/json";
 import type { ResolvedModel } from "@/lib/llm/resolve-model";
 import { connectorsForSteps } from "@/lib/connectors/registry";
 import { canonicalConnectorKey } from "@/lib/connectors/resolve-id";
+import { computeManifestLimits } from "@/lib/builder/manifest";
 
 // La logique de garde vit dans lib/agent/approval-guards (partagée avec la
 // route de run et le worker) ; réexport pour les consommateurs historiques.
@@ -203,7 +204,6 @@ TYPES D'ÉTAPES DISPONIBLES (format RUNTIME strict) :
 - {"type":"approval","label":"…","payloadTemplate":"{{cle}}","outputKey":"valide"} — validation humaine
 - {"type":"ask","question":"…","outputKey":"reponse_utilisateur"} — POSE UNE QUESTION à l'utilisateur EN COURS de mission : le run se met en pause, sa réponse devient {{outputKey}} pour les étapes suivantes. La question peut référencer des {{variables}} amont (ex. « J'ai trouvé 3 fichiers : {{liste}}. Lequel ? »)
 - {"type":"browser","goal":"objectif précis en langage naturel (quoi faire, sur quelle page, quand s'arrêter)","tabHint":"pagesjaunes","outputKey":"pilotage"} — PILOTE le navigateur de l'utilisateur : clique, remplit des formulaires, navigue, avec sa session, sous ses yeux (il confirme chaque action risquée dans la page). "tabHint" (optionnel) = extrait d'URL ou de titre d'un onglet OUVERT (repris de la liste des onglets fournie) : le pilotage bascule sur CET onglet — indispensable quand l'action vise un AUTRE onglet que la page active (ex. cliquer « Afficher le numéro » dans l'onglet PagesJaunes pendant que l'utilisateur est sur Sheets). Sans tabHint : onglet actif. Résultat = résumé de ce qui a été fait/observé.
-- {"type":"condition","expression":"{{cle}} contains X"}
 - {"type":"parallel","branches":[{"steps":[…],"outputKey":"b1"},…],"outputKey":"tout"}
 - Autres apps (notion, trello, shopify, hubspot…) : {"type":"action","connector":"<app>","action":"<app>.<verbe_objet>","params":{…}} — le résolveur trouve le bon outil.
 
@@ -225,7 +225,10 @@ RÈGLES DURES :
    • SIMPLE / CONVERSATIONNEL (question, traduction, réécriture, explication, calcul, brainstorming, résumé d'un texte fourni) → réponds DIRECTEMENT : UNE seule étape llm dont l'outputKey est "reponse". N'ajoute NI email, NI action externe, NI validation. La réponse s'affiche à l'utilisateur.
    • MISSION / AGENT (produire un livrable, écrire dans une app, envoyer, publier, recenser, croiser des pages) → enchaîne les étapes utiles ; termine par le livrable. N'ajoute un gmail.send de restitution QUE si l'ordre demande un envoi/rapport par email OU si le livrable est un lien (Sheets/Doc créé) à te transmettre — sinon la dernière étape llm "reponse" résume ce qui a été fait.
 9. Ne fabrique JAMAIS une étape d'envoi/action externe que l'ordre ne justifie pas (une simple question ne déclenche pas d'email). Une mission d'ANALYSE (« analyse », « compare », « synthétise », « dis-moi », « rédige une synthèse/un rapport ») SANS destinataire ni app de destination explicites se termine par l'étape llm "reponse" — PAS de gmail.send, PAS d'approval : le livrable EST la réponse affichée. 1 étape pour le simple, jusqu'à 12 pour une grosse mission.
-10. Étape "browser" (pilotage) : UNIQUEMENT quand l'ordre exige d'INTERAGIR avec l'interface d'une page OUVERTE — l'onglet actif ou un AUTRE onglet ouvert via "tabHint" (cliquer, remplir un formulaire, dérouler des résultats, révéler des infos masquées type « Afficher le numéro », agir sur un site SANS connecteur ni API). Ordre de préférence STRICT : connecteur > web_fetch/web_search > browser (le pilotage est lent et mobilise l'utilisateur). JAMAIS de browser pour lire la page ({{page_active}} suffit) ni pour un site public statique (web_fetch suffit). JAMAIS pour se connecter ou payer. Le goal doit être autoportant et borné (« remplis le formulaire de contact avec …, ne l'envoie qu'après confirmation »). 1 seule étape browser par mission.`;
+10. Étape "browser" (pilotage) : UNIQUEMENT quand l'ordre exige d'INTERAGIR avec l'interface d'une page OUVERTE — l'onglet actif ou un AUTRE onglet ouvert via "tabHint" (cliquer, remplir un formulaire, dérouler des résultats, révéler des infos masquées type « Afficher le numéro », agir sur un site SANS connecteur ni API). Ordre de préférence STRICT : connecteur > web_fetch/web_search > browser (le pilotage est lent et mobilise l'utilisateur). JAMAIS de browser pour lire la page ({{page_active}} suffit) ni pour un site public statique (web_fetch suffit). JAMAIS pour se connecter ou payer. Le goal doit être autoportant et borné (« remplis le formulaire de contact avec …, ne l'envoie qu'après confirmation »). 1 seule étape browser par mission.
+11. CONDITIONS (« si …, alors … ») : il n'existe AUCUN type d'étape de branchement. N'invente pas de "condition" — toutes les étapes d'un plan s'exécutent. Deux façons correctes de traiter un « si » :
+   • le test porte sur le CONTENU → fais-le faire par l'étape llm elle-même (« Voici {{donnees}}. Si le stock est inférieur à 10, rédige le bon de commande ; sinon réponds exactement RIEN_A_FAIRE ») et fais dépendre l'étape suivante de ce texte ;
+   • le test doit décider d'une ACTION EXTERNE (envoyer ou non, écrire ou non) → insère une étape "ask" ou "approval" qui montre le résultat du test à l'utilisateur et le laisse trancher. Ne planifie JAMAIS une écriture externe dont l'exécution est censée dépendre d'un test automatique.`;
 
 
 /** Prompt de réparation structurelle d'un manifeste rejeté par le validateur. */
@@ -236,7 +239,7 @@ const REPAIR_PROMPT = `Tu répares la STRUCTURE JSON d'un manifeste d'agent reje
 - {"type":"approval","label":"…","payloadTemplate":"…","outputKey":"…"}
 - {"type":"ask","question":"…","outputKey":"…"}
 - {"type":"browser","goal":"…","tabHint":"…","outputKey":"…"}
-- {"type":"condition","expression":"…"} | {"type":"parallel","branches":[{"steps":[…]}]}
+- {"type":"parallel","branches":[{"steps":[…]}]}
 Champs racine : {"kind":"agent","inputs":[{"key","label"}…],"secrets":[],"connectors":[],"tools":[],"outputs":[],"steps":[…]}.
 Réponds UNIQUEMENT avec le JSON : {"manifest":{…}}.`;
 
@@ -547,7 +550,13 @@ export async function buildInstantAgent(params: {
     };
   }
 
-  const manifest = ensureApprovalGuards(data);
+  // Plafonds dimensionnés sur le plan réel. Sans ça, les défauts Zod
+  // (16 000 tokens cumulés, 10 appels outils) s'appliquent quelle que soit la
+  // taille du plan : une mission légitime à 12 étapes mourait en « Plafond
+  // atteint » à mi-parcours, puis consommait ses 2 réparations sur le même
+  // plan (le replan conserve ...manifest, donc les mêmes limites).
+  const guarded = ensureApprovalGuards(data);
+  const manifest: AgentManifest = { ...guarded, limits: computeManifestLimits(guarded.steps) };
   const missingConnectors = computeMissingConnectors(manifest, usableConnectors);
 
   return {
