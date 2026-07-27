@@ -154,6 +154,7 @@ function msgCard(item, liveSteps) {
         <textarea data-aptext ${isQ ? 'placeholder="Ta réponse…"' : ""} style="width:100%;margin-top:7px;min-height:${isQ ? "52" : "80"}px;max-height:170px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:12px;padding:7px;resize:vertical;outline:none;line-height:1.45;box-sizing:border-box">${isQ ? "" : esc(p.full || p.preview || "")}</textarea>
         <div style="display:flex;gap:7px;margin-top:7px;justify-content:flex-end">
           <button class="mact" data-apreject="1" style="border-color:var(--red);color:var(--red);padding:5px 11px;font-size:12px">${isQ ? "Annuler la mission" : "Refuser"}</button>
+          ${isQ ? "" : `<button class="mact" data-apskip="1" title="Ne pas faire cette action, mais continuer la mission" style="padding:5px 11px;font-size:12px">Passer</button>`}
           <button data-approve="1" style="background:var(--accent);color:#04121F;border:none;border-radius:8px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer">${isQ ? "Répondre ↵" : "Valider"}</button>
         </div>
         ${item.approvalError ? `<div class="err" style="margin-top:5px;font-size:11px">${esc(item.approvalError)}</div>` : ""}
@@ -265,11 +266,15 @@ function renderFeed(force) {
     sync();
     apText.addEventListener("input", sync);
   }
-  feed.querySelectorAll("[data-approve],[data-apreject]").forEach((b) => b.addEventListener("click", async () => {
+  feed.querySelectorAll("[data-approve],[data-apreject],[data-apskip]").forEach((b) => b.addEventListener("click", async () => {
     if (!current || !current.approval) return;
     if (b.hasAttribute("data-approve") && isQ && (!apText || !apText.value.trim())) return;
-    const decision = b.hasAttribute("data-approve") ? "approved" : "rejected";
-    feed.querySelectorAll("[data-approve],[data-apreject]").forEach((x) => { x.disabled = true; });
+    // « Passer » : on saute CETTE écriture, la mission continue. Refuser la
+    // tue entièrement — sur 10 envois, ça détruisait aussi les suivants.
+    const decision = b.hasAttribute("data-approve")
+      ? "approved"
+      : b.hasAttribute("data-apskip") ? "skipped" : "rejected";
+    feed.querySelectorAll("[data-approve],[data-apreject],[data-apskip]").forEach((x) => { x.disabled = true; });
     const r = await send("prompta:approve", {
       runId: current.runId,
       approvalId: current.approval.id,
@@ -456,6 +461,9 @@ async function launchMission(goal, notice, pageOverride) {
   current.runId = r.body.runId;
   current.title = r.body.title;
   current.status = "running";
+  // Ce que le plan ne fait pas alors que l'ordre le suggérait (récurrence) :
+  // le serveur seul le sait, et se taire laisserait croire à une automatisation.
+  if (r.body.notice) current.notice = r.body.notice;
   // Mission avec pilotage : le service worker exécutera les actions de l'agent
   // dans l'onglet actif (celui que l'utilisateur regarde).
   if (r.body.pilots) armPilot(current.runId);

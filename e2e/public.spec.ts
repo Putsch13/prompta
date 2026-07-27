@@ -22,14 +22,19 @@ test.describe("Prompta — parcours public", () => {
     await expect(page).toHaveURL(/\/$/);
     await page.goto("/u/demo");
     await expect(page).toHaveURL(/\/$/);
-    await page.goto("/cas-usage");
-    await expect(page).toHaveURL(/\/$/);
-    await page.goto("/cas-usage/veille-quotidienne");
-    await expect(page).toHaveURL(/\/$/);
     await page.goto("/listing/demo-agent");
     await expect(page).toHaveURL(/\/$/);
     await page.goto("/org/demo");
     await expect(page).toHaveURL(/\/$/);
+  });
+
+  // /cas-usage a été RE-publié après la purge marketplace : il figurait encore
+  // dans les « surfaces coupées » ci-dessus, ce qui faisait échouer la suite.
+  test("cas d'usage — index et fiche accessibles", async ({ page }) => {
+    await page.goto("/cas-usage");
+    await expect(page).toHaveURL(/\/cas-usage$/);
+    await page.goto("/cas-usage/resumer-page-web-ia");
+    await expect(page.locator("body")).toContainText(/résum|page web/i);
   });
 
   test("pages légales accessibles", async ({ page }) => {
@@ -86,10 +91,12 @@ test.describe("Prompta — parcours public", () => {
   });
 });
 
-test("pricing — page publique avec les 4 plans et JSON-LD", async ({ page }) => {
+// Grille à 3 offres depuis la refonte du 2026-07-24 (lib/billing/plans.ts) :
+// le test attendait encore Starter/Scale, disparus avec l'ancienne grille.
+test("pricing — page publique avec les 3 plans et JSON-LD", async ({ page }) => {
   await page.goto("/pricing");
   await expect(page.getByRole("heading", { level: 1 })).toContainText(/gratuit/i);
-  for (const plan of ["Découverte", "Starter", "Pro", "Scale"]) {
+  for (const plan of ["Découverte", "Illimité", "Pro"]) {
     await expect(page.getByRole("heading", { name: plan, exact: true })).toBeVisible();
   }
   const jsonLd = await page.locator('script[type="application/ld+json"]').first().textContent();

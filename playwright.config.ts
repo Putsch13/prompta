@@ -10,11 +10,17 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: process.env.CI
+  // En CI on sert le BUILD (npm start), pas le dev server : c'est l'artefact
+  // qu'on déploie. `webServer: undefined` en CI laissait la suite viser un
+  // port où rien n'écoutait — une des raisons pour lesquelles elle n'y a
+  // jamais tourné. PLAYWRIGHT_BASE_URL pointant ailleurs (staging), on
+  // n'en démarre aucun.
+  webServer: process.env.PLAYWRIGHT_EXTERNAL_URL
     ? undefined
     : {
-        command: "npm run dev",
+        command: process.env.CI ? "npm start" : "npm run dev",
         url: "http://localhost:3000",
-        reuseExistingServer: true,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
       },
 });

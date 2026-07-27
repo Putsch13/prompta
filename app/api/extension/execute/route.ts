@@ -5,7 +5,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getBuilderApiKey } from "@/lib/builder/api-key";
 import { builderRateLimit } from "@/lib/builder/rate-limit";
 import { listUserConnections } from "@/lib/connections";
-import { buildInstantAgent, sanitizeUrlForContext, type PageContext } from "@/lib/extension/instant-agent";
+import {
+  buildInstantAgent,
+  buildRuntimeContextVars,
+  sanitizeUrlForContext,
+  type PageContext,
+} from "@/lib/extension/instant-agent";
 import { getAvailableBalance, debitPlatformUsage, CREDIT_VALUE_CENTS } from "@/lib/credits";
 import { getCreditCircuitStatus } from "@/lib/billing/circuit-breaker";
 import { getModelPricing } from "@/lib/llm/pricing";
@@ -200,11 +205,9 @@ export async function POST(request: NextRequest) {
   // injectés comme variables {{tab_N}} — même numérotation que le contexte
   // montré au planificateur. C'est ce qui permet de croiser des pages derrière
   // login sans web_fetch (qui n'a pas la session).
-  const tabVars: Record<string, string> = {};
-  if (page.content?.trim()) tabVars.page_active = page.content.slice(0, 15_000);
-  (page.openTabs ?? []).slice(0, 30).forEach((t, i) => {
-    if (t.content?.trim()) tabVars[`tab_${i + 1}`] = t.content.slice(0, 12_000);
-  });
+  // Même fonction que celle qui dit au planificateur quelles variables il peut
+  // référencer : les deux numérotations ne peuvent plus diverger.
+  const tabVars = buildRuntimeContextVars(page);
 
   const admin = createAdminClient();
   const { data: run, error: insertError } = await admin
@@ -256,6 +259,8 @@ export async function POST(request: NextRequest) {
     // Le plan contient du pilotage navigateur : l'extension doit armer son
     // exécuteur de tâches (le run dialoguera avec l'onglet de l'utilisateur).
     pilots: built.manifest.steps.some((s) => s.type === "browser"),
+    // Ce que le plan NE fait pas alors que l'ordre le suggérait (récurrence).
+    notice: built.notice ?? null,
     runUrl: `/dashboard/runs/${run.id}`,
   });
 }

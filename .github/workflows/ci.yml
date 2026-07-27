@@ -48,3 +48,15 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      # Parcours public (redirections des surfaces coupées, pages légales,
+      # pricing, fail-closed des APIs sensibles) contre le build réel. La suite
+      # existait mais n'était lancée par personne : elle avait dérivé de deux
+      # versions du produit (grille tarifaire, retour de /cas-usage).
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # playwright.config.ts démarre `npm start` sur le build produit à l'étape
+      # précédente et l'arrête à la fin.
+      - name: End-to-end tests
+        run: npx playwright test

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { AgentManifestSchema } from "@/lib/agent/schema";
+import { AgentManifestSchema, hasBrowserStep } from "@/lib/agent/schema";
 import {
   ensureApprovalGuards,
   APPROVAL_GUARD_STAMP_KEY,
@@ -300,6 +300,24 @@ export async function POST(request: NextRequest) {
         issues: preflightIssues,
       },
       { status: 400 }
+    );
+  }
+
+  // Garde-fou PILOTAGE NAVIGATEUR : ce point d'entrée n'a pas d'exécuteur.
+  // Le pilotage pousse une tâche dans agent_browser_tasks, consommée par
+  // l'extension — qui n'arme son watcher que sur les runs qu'elle a lancés
+  // elle-même (pilotSessions). Un agent gardé contenant une étape browser et
+  // relancé depuis le dashboard attendait donc 60 s avant « le navigateur n'a
+  // pas répondu », sans que rien ne l'annonce. /api/extension/execute a le
+  // garde-fou équivalent (browserAvailable) depuis toujours.
+  if (!dryRun && hasBrowserStep(guardedManifest)) {
+    return NextResponse.json(
+      {
+        error: "browser_required",
+        message:
+          "Cet agent pilote le navigateur : lance-le depuis l'extension « Prompta partout », avec l'onglet concerné ouvert.",
+      },
+      { status: 400 },
     );
   }
 

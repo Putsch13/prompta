@@ -260,7 +260,15 @@ export default function QuickPage() {
     }
 
     const runId: string = body.runId;
-    setLive((l) => l && { ...l, runId, title: body.title ?? g, status: "running" });
+    // `notice` : ce que le plan ne fait pas alors que l'ordre le suggérait
+    // (récurrence). Ne pas écraser un notice client déjà posé (reprise OAuth).
+    setLive((l) => l && {
+      ...l,
+      runId,
+      title: body.title ?? g,
+      status: "running",
+      notice: l.notice ?? body.notice ?? null,
+    });
 
     pollRef.current = setInterval(async () => {
       const r = await fetch(`/api/run/agent/${runId}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
@@ -283,7 +291,7 @@ export default function QuickPage() {
   }, [explore, model, loadHistory, fetchApproval, buildConvoHistory]);
 
   /** Décision de validation envoyée depuis la carte in-feed. */
-  const decideApproval = useCallback(async (decision: "approved" | "rejected") => {
+  const decideApproval = useCallback(async (decision: "approved" | "rejected" | "skipped") => {
     if (!approval || !live || live.runId === "…" || live.runId === "instant") return;
     setDeciding(true); setApprovalErr(null);
     try {
@@ -546,6 +554,15 @@ export default function QuickPage() {
                         className="rounded-lg border border-destructive/50 px-3 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50">
                   {approval.kind === "question" ? "Annuler la mission" : "Refuser"}
                 </button>
+                {approval.kind !== "question" && (
+                  /* Refuser tue la mission entière : « Passer » saute cette
+                     seule écriture et laisse les étapes suivantes se faire. */
+                  <button onClick={() => decideApproval("skipped")} disabled={deciding}
+                          title="Ne pas faire cette action, mais continuer la mission"
+                          className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-soft transition-colors hover:text-ink disabled:opacity-50">
+                    Passer
+                  </button>
+                )}
                 <button onClick={() => decideApproval("approved")} disabled={deciding || (approval.kind === "question" && !approvalText.trim())}
                         className="rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-ink shadow-glow-sm transition-colors hover:bg-accent-hover disabled:opacity-50">
                   {approval.kind === "question" ? "Répondre ↵" : "Valider"}

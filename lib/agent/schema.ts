@@ -209,6 +209,20 @@ export const AgentManifestSchema = z.object({
     .optional(),
 });
 
+/**
+ * Le manifeste exige-t-il un exécuteur de pilotage navigateur (branches
+ * comprises) ? Seule l'extension en fournit un : les autres points d'entrée
+ * doivent refuser AVANT de créer le run, sinon la tâche part dans
+ * agent_browser_tasks et personne ne la consomme (60 s puis échec).
+ */
+export function hasBrowserStep(manifest: AgentManifest): boolean {
+  return manifest.steps.some(
+    (s) =>
+      s.type === "browser" ||
+      (s.type === "parallel" && s.branches.some((b) => b.steps.some((x) => x.type === "browser"))),
+  );
+}
+
 export type AgentKind = z.infer<typeof AgentKindSchema>;
 export type ExecutionMode = z.infer<typeof ExecutionModeSchema>;
 export type AgentInput = z.infer<typeof AgentInputSchema>;

@@ -22,6 +22,7 @@ import type { ResolvedModel } from "@/lib/llm/resolve-model";
 import { connectorsForSteps } from "@/lib/connectors/registry";
 import { canonicalConnectorKey } from "@/lib/connectors/resolve-id";
 import { computeManifestLimits } from "@/lib/builder/manifest";
+import { collectUndeclaredVariables } from "@/lib/builder/validate-agent";
 
 // La logique de garde vit dans lib/agent/approval-guards (partagée avec la
 // route de run et le worker) ; réexport pour les consommateurs historiques.
@@ -64,6 +65,11 @@ export interface InstantAgentPlan {
   missingConnectors: string[];
   /** Titre court, affiché dans la barre de l'extension. */
   title: string;
+  /**
+   * Message honnête à afficher sur la carte de mission quand l'ordre demande
+   * plus que ce que le plan fait réellement (aujourd'hui : la récurrence).
+   */
+  notice?: string;
 }
 
 /** L'agent a besoin de précisions avant de pouvoir construire un bon plan. */
@@ -136,6 +142,25 @@ export function computeMissingConnectors(manifest: AgentManifest, usable: Set<st
 const MAX_OPEN_TABS = 30;
 
 /** Le contexte de page, encadré comme DONNÉE non fiable (secrets retirés). */
+/**
+ * Variables de contexte réellement injectées dans le run ({{page_active}},
+ * {{tab_N}}) — mêmes bornes et MÊME numérotation que le contexte montré au
+ * planificateur (buildPageContextBlock).
+ *
+ * Une seule fonction pour les deux usages : le planificateur s'en sert pour
+ * savoir quelles variables il a le droit de référencer, la route d'exécution
+ * pour peupler `inputs`. Si les deux numérotations divergeaient, un
+ * {{tab_3}} légitime pointerait sur un autre onglet, ou sur rien.
+ */
+export function buildRuntimeContextVars(page: PageContext): Record<string, string> {
+  const vars: Record<string, string> = {};
+  if (page.content?.trim()) vars.page_active = page.content.slice(0, 15_000);
+  (page.openTabs ?? []).slice(0, MAX_OPEN_TABS).forEach((t, i) => {
+    if (t.content?.trim()) vars[`tab_${i + 1}`] = t.content.slice(0, 12_000);
+  });
+  return vars;
+}
+
 export function buildPageContextBlock(page: PageContext): string {
   const links = (page.links ?? [])
     .slice(0, MAX_LINKS)
@@ -475,16 +500,15 @@ export async function buildInstantAgent(params: {
   const m = raw.manifest as Record<string, unknown>;
   normalizeRawManifest(m, resolved.catalogId, { perStepModels, usableModels });
 
-  let parsed = AgentManifestSchema.safeParse(m);
-  if (!parsed.success) {
-    // Auto-réparation : plutôt que de jeter la mission sur un écart de forme,
-    // UNE passe corrective demande au modèle de réparer la structure (mêmes
-    // étapes, même intention), puis on re-normalise et on re-valide.
-    const issues = parsed.error.issues
-      .slice(0, 4)
-      .map((i) => `${i.path.join(".")}: ${i.message}`)
-      .join(" | ");
-    console.warn("[instant-agent] plan invalide — tentative de réparation:", issues);
+  /**
+   * UNE passe corrective : on demande au modèle de réparer (mêmes étapes, même
+   * intention), puis on re-normalise et on re-valide. Sert aux écarts de FORME
+   * (schéma) comme aux références cassées.
+   */
+  const repair = async (
+    source: Record<string, unknown>,
+    issues: string,
+  ): Promise<Record<string, unknown> | null> => {
     try {
       const fix = await callModel({
         provider: resolved.provider,
@@ -493,7 +517,7 @@ export async function buildInstantAgent(params: {
           { role: "system", content: REPAIR_PROMPT },
           {
             role: "user",
-            content: `ERREURS DU VALIDATEUR : ${issues}\n\nMANIFESTE À RÉPARER :\n${JSON.stringify(m).slice(0, 20000)}`,
+            content: `ERREURS DU VALIDATEUR : ${issues}\n\nMANIFESTE À RÉPARER :\n${JSON.stringify(source).slice(0, 20000)}`,
           },
         ],
         apiKey,
@@ -504,15 +528,60 @@ export async function buildInstantAgent(params: {
       const m2 = (fixedRaw?.manifest ?? fixedRaw) as Record<string, unknown> | null;
       if (m2 && typeof m2 === "object" && Array.isArray((m2 as { steps?: unknown }).steps)) {
         normalizeRawManifest(m2, resolved.catalogId, { perStepModels, usableModels });
-        parsed = AgentManifestSchema.safeParse(m2);
+        return m2;
       }
     } catch {
       /* réparation best-effort — l'erreur d'origine sera renvoyée */
     }
+    return null;
+  };
+
+  let parsed = AgentManifestSchema.safeParse(m);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .slice(0, 4)
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join(" | ");
+    console.warn("[instant-agent] plan invalide — tentative de réparation:", issues);
+    const m2 = await repair(m, issues);
+    if (m2) parsed = AgentManifestSchema.safeParse(m2);
   }
   if (!parsed.success) {
     throw new Error(
       `Plan invalide (${parsed.error.issues[0]?.path?.join(".")} : ${parsed.error.issues[0]?.message}) — réessayez.`,
+    );
+  }
+
+  // ── Références {{…}} cassées ────────────────────────────────────────────
+  // L'interpolation runtime laisse le LITTÉRAL quand la clé n'existe pas
+  // (orchestrator.interpolate) : une étape llm reçoit « {{clients}} » en clair
+  // et brode autour, une action l'envoie tel quel au connecteur. Le livrable
+  // paraît correct et ne l'est pas. Le builder validait déjà ces références ;
+  // le chemin conversationnel ne le faisait pas du tout.
+  const runtimeKeys = Object.keys(buildRuntimeContextVars(page));
+  let undeclared = collectUndeclaredVariables(parsed.data.steps, runtimeKeys);
+  if (undeclared.length > 0) {
+    const issues = `Variables référencées mais jamais produites : ${undeclared
+      .map((v) => `{{${v}}}`)
+      .join(", ")}. Chaque {{variable}} doit être l'outputKey d'une étape AMONT, ou l'une des variables de contexte fournies (${runtimeKeys.join(", ") || "aucune"}).`;
+    console.warn("[instant-agent] références cassées — tentative de réparation:", issues);
+    const m2 = await repair(parsed.data as unknown as Record<string, unknown>, issues);
+    const reparsed = m2 ? AgentManifestSchema.safeParse(m2) : null;
+    if (reparsed?.success) {
+      const stillMissing = collectUndeclaredVariables(reparsed.data.steps, runtimeKeys);
+      if (stillMissing.length === 0) {
+        parsed = reparsed;
+        undeclared = [];
+      } else {
+        undeclared = stillMissing;
+      }
+    }
+  }
+  if (undeclared.length > 0) {
+    throw new Error(
+      `Plan incohérent : ${undeclared.map((v) => `« ${v} »`).join(", ")} ${
+        undeclared.length > 1 ? "sont référencées" : "est référencée"
+      } sans jamais être produite — reformulez votre ordre.`,
     );
   }
 
@@ -564,5 +633,24 @@ export async function buildInstantAgent(params: {
     manifest,
     missingConnectors,
     title: (raw.title ?? goal).slice(0, 80),
+    notice: recurrenceNotice(goal),
   };
+}
+
+/**
+ * Intention de RÉCURRENCE (« chaque lundi », « tous les matins », « every
+ * week ») — détectée en code, pas déléguée au modèle.
+ *
+ * Le planificateur ne produit que des plans one-shot : la mission partait
+ * immédiatement et l'utilisateur repartait convaincu que son automatisation
+ * tournerait chaque semaine. On exécute toujours maintenant (c'est ce qu'il
+ * veut aussi), mais on dit franchement comment la rendre récurrente.
+ */
+const RECURRENCE_RE =
+  /\b(chaque|tous les|toutes les|every)\s+(jour|matin|soir|semaine|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|mois|day|morning|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b|\b(quotidien|quotidienne|hebdomadaire|mensuel|mensuelle|daily|weekly|monthly)\b/i;
+
+export function recurrenceNotice(goal: string): string | undefined {
+  return RECURRENCE_RE.test(goal)
+    ? "Je lance la mission maintenant. Pour qu'elle se répète, garde-la comme agent puis planifie-la depuis Dashboard → Runs."
+    : undefined;
 }

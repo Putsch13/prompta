@@ -477,6 +477,7 @@
           <textarea data-aptext style="width:100%;margin-top:8px;min-height:90px;max-height:200px;background:rgba(14,21,36,.9);border:1px solid rgba(56,189,248,.2);border-radius:9px;color:#E4EDF9;font-size:12px;padding:8px;resize:vertical;outline:none;line-height:1.45">${esc(p.full || p.preview || "")}</textarea>
           <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end">
             <button class="apno" data-apreject="1">Refuser</button>
+            <button class="apno" data-apskip="1" title="Ne pas faire cette action, mais continuer la mission">Passer</button>
             <button class="apyes" data-approve="1">Valider</button>
           </div>
           ${it.approvalError ? `<div class="err">${esc(it.approvalError)}</div>` : ""}
@@ -561,10 +562,13 @@
         apText.addEventListener("input", sync);
       }
     }
-    feed.querySelectorAll("[data-approve],[data-apreject]").forEach((b) => b.addEventListener("click", async () => {
+    feed.querySelectorAll("[data-approve],[data-apreject],[data-apskip]").forEach((b) => b.addEventListener("click", async () => {
       if (!current || !current.approval) return;
       if (b.hasAttribute("data-approve") && isQ && (!apText || !apText.value.trim())) return;
-      const decision = b.hasAttribute("data-approve") ? "approved" : "rejected";
+      // « Passer » : sauter CETTE écriture sans tuer la mission entière.
+      const decision = b.hasAttribute("data-approve")
+        ? "approved"
+        : b.hasAttribute("data-apskip") ? "skipped" : "rejected";
       feed.querySelectorAll("[data-approve],[data-apreject]").forEach((x) => { x.disabled = true; });
       const r = await send("prompta:approve", {
         runId: current.runId,
@@ -756,6 +760,8 @@
       renderFeed(); return;
     }
     current.runId = r.body.runId; current.title = r.body.title; current.status = "running";
+    // Ce que le plan ne fait pas alors que l'ordre le suggérait (récurrence).
+    if (r.body.notice) current.notice = r.body.notice;
     // Mission avec pilotage : le service worker surveille la file de tâches
     // navigateur et les fait exécuter dans CET onglet.
     if (r.body.pilots) send("prompta:pilot-watch", { runId: current.runId });

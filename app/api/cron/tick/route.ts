@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
       for (const s of dueSchedules ?? []) {
         const { data: listing } = await sb
           .from("listings")
-          .select("current_version_id, status")
+          .select("current_version_id, status, creator_id")
           .eq("id", s.listing_id)
           .single();
         const preset = parseScheduleToken(s.cron_expression);
@@ -67,7 +67,15 @@ export async function GET(req: NextRequest) {
           .from("scheduled_runs")
           .update({ last_run_at: nowIso, next_run_at: next.toISOString() })
           .eq("id", s.id);
-        if (!listing?.current_version_id || listing.status !== "published") continue;
+        // `published` est un reliquat marketplace : un agent gardé depuis
+        // l'extension est un agent PERSONNEL, créé en `draft`. /api/run/agent
+        // laisse déjà son propriétaire le lancer sans regarder ce statut —
+        // l'exiger ici aurait sauté en silence tous les plannings personnels,
+        // en les replanifiant indéfiniment sans jamais rien exécuter.
+        const ownedByScheduler = listing?.creator_id === s.user_id;
+        if (!listing?.current_version_id || !(ownedByScheduler || listing.status === "published")) {
+          continue;
+        }
         await sb.from("listing_agent_runs").insert({
           user_id: s.user_id,
           listing_id: s.listing_id,

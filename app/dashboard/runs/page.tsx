@@ -74,6 +74,16 @@ function RunsHistoryContent() {
   const [savedAgents, setSavedAgents] = useState<
     { id: string; title: string; versionId: string; createdAt: string }[]
   >([]);
+  // Plannings (scheduled_runs) : un par agent au plus, indexé par listingId.
+  const [schedules, setSchedules] = useState<
+    Record<string, { id: string; label: string; active: boolean; nextRunAt: string | null }>
+  >({});
+  const [schedulingFor, setSchedulingFor] = useState<string | null>(null);
+  const [scheduleKind, setScheduleKind] = useState<"daily" | "weekly">("weekly");
+  const [scheduleDay, setScheduleDay] = useState(1);
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [relancing, setRelancing] = useState<string | null>(null);
   const [launchingAgent, setLaunchingAgent] = useState<string | null>(null);
@@ -120,6 +130,75 @@ function RunsHistoryContent() {
   }
 
   /** Relance un agent gardé depuis zéro (nouveau run, même chemin worker). */
+  function loadSchedules() {
+    fetch("/api/schedules")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.schedules) return;
+        const byListing: Record<
+          string,
+          { id: string; label: string; active: boolean; nextRunAt: string | null }
+        > = {};
+        for (const s of d.schedules) {
+          byListing[s.listingId] = {
+            id: s.id,
+            label: s.label,
+            active: s.active,
+            nextRunAt: s.nextRunAt ?? null,
+          };
+        }
+        setSchedules(byListing);
+      })
+      .catch(() => undefined);
+  }
+
+  async function saveSchedule(listingId: string) {
+    setScheduleBusy(true);
+    setScheduleError(null);
+    const token =
+      scheduleKind === "daily" ? `daily@${scheduleTime}` : `weekly:${scheduleDay}@${scheduleTime}`;
+    try {
+      // Les entrées de contexte de page sont écartées côté serveur : un
+      // planning ne doit pas rejouer l'écran d'il y a trois semaines.
+      const lastRun = [...runs, ...olderRuns].find((r) => r.listing_id === listingId && r.inputs);
+      const res = await fetch("/api/schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, token, inputs: lastRun?.inputs ?? {} }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setScheduleError(body.message ?? "Planning impossible.");
+        return;
+      }
+      setSchedules((s) => ({
+        ...s,
+        [listingId]: { id: body.id, label: body.label, active: true, nextRunAt: body.nextRunAt },
+      }));
+      setSchedulingFor(null);
+    } catch {
+      setScheduleError("Réseau indisponible.");
+    } finally {
+      setScheduleBusy(false);
+    }
+  }
+
+  async function removeSchedule(listingId: string, scheduleId: string) {
+    setScheduleBusy(true);
+    try {
+      await fetch(`/api/schedules/${scheduleId}`, { method: "DELETE" });
+      setSchedules((s) => {
+        const next = { ...s };
+        delete next[listingId];
+        return next;
+      });
+    } catch {
+      /* best-effort : le rechargement corrigera l'affichage */
+    } finally {
+      setScheduleBusy(false);
+    }
+  }
+
   async function launchSavedAgent(agent: { id: string; versionId: string }) {
     setLaunchingAgent(agent.id);
     setLaunchError(null);
@@ -157,6 +236,7 @@ function RunsHistoryContent() {
 
   useEffect(() => {
     loadRuns({ initial: true });
+    loadSchedules();
     const t = setInterval(() => loadRuns(), 10_000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -391,6 +471,21 @@ function RunsHistoryContent() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => {
+                      setScheduleError(null);
+                      setSchedulingFor(schedulingFor === a.id ? null : a.id);
+                    }}
+                    title={schedules[a.id] ? schedules[a.id].label : "Planifier cet agent"}
+                    className={`shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
+                      schedules[a.id]
+                        ? "border-success/40 bg-success/10 text-success hover:bg-success/20"
+                        : "border-line bg-card2 text-ink-soft hover:text-ink"
+                    }`}
+                  >
+                    🕘
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => launchSavedAgent(a)}
                     disabled={launchingAgent === a.id}
                     title="Relancer cet agent"
@@ -400,6 +495,83 @@ function RunsHistoryContent() {
                   </button>
                 </div>
               ))}
+              {/* Planning : la table scheduled_runs et le cron existaient déjà,
+                  il manquait le seul moyen d'y écrire. */}
+              {schedulingFor ? (
+                <div className="mx-2 mt-1 rounded-lg border border-line bg-card2 p-3">
+                  {schedules[schedulingFor] ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-success">
+                          {schedules[schedulingFor].label}
+                        </p>
+                        {schedules[schedulingFor].nextRunAt ? (
+                          <p className="truncate text-[11px] text-ink-faint">
+                            Prochaine fois :{" "}
+                            {new Date(schedules[schedulingFor].nextRunAt as string).toLocaleString("fr-FR")}
+                          </p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={scheduleBusy}
+                        onClick={() =>
+                          removeSchedule(schedulingFor, schedules[schedulingFor].id)
+                        }
+                        className="shrink-0 rounded-md border border-destructive/40 px-2 py-1 text-[11px] font-semibold text-destructive disabled:opacity-50"
+                      >
+                        Supprimer
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={scheduleKind}
+                          onChange={(e) => setScheduleKind(e.target.value as "daily" | "weekly")}
+                          className="rounded-md border border-line bg-card px-2 py-1 text-xs text-ink"
+                        >
+                          <option value="daily">Chaque jour</option>
+                          <option value="weekly">Chaque semaine</option>
+                        </select>
+                        {scheduleKind === "weekly" ? (
+                          <select
+                            value={scheduleDay}
+                            onChange={(e) => setScheduleDay(Number(e.target.value))}
+                            className="rounded-md border border-line bg-card px-2 py-1 text-xs text-ink"
+                          >
+                            {["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"].map(
+                              (d, i) => (
+                                <option key={d} value={i}>
+                                  {d}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        ) : null}
+                        <input
+                          type="time"
+                          value={scheduleTime}
+                          onChange={(e) => setScheduleTime(e.target.value)}
+                          className="rounded-md border border-line bg-card px-2 py-1 text-xs text-ink"
+                        />
+                        <button
+                          type="button"
+                          disabled={scheduleBusy}
+                          onClick={() => saveSchedule(schedulingFor)}
+                          className="rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-[11px] font-semibold text-accent disabled:opacity-50"
+                        >
+                          {scheduleBusy ? "…" : "Planifier"}
+                        </button>
+                      </div>
+                      <p className="pt-1.5 text-[11px] text-ink-faint">Heure de Paris.</p>
+                    </>
+                  )}
+                  {scheduleError ? (
+                    <p className="pt-1.5 text-[11px] text-destructive">{scheduleError}</p>
+                  ) : null}
+                </div>
+              ) : null}
               {launchError ? (
                 <p className="px-3 pt-1 text-xs text-destructive">{launchError}</p>
               ) : null}

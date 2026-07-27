@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
   const body = await request.json();
   const { approvalId, decision, modifiedContent } = body as {
     approvalId?: string;
-    decision?: "approved" | "rejected";
+    decision?: "approved" | "rejected" | "skipped";
     modifiedContent?: string;
   };
 
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
       { status: 400 },
     );
   }
-  if (!result && decision === "approved") {
+  if (!result && decision !== "rejected") {
     return NextResponse.json({ error: "Approbation introuvable ou déjà traitée" }, { status: 404 });
   }
   if (decision === "rejected") {
@@ -63,7 +63,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
     return NextResponse.json({ error: "Approbation introuvable ou déjà traitée" }, { status: 404 });
   }
 
-  if (decision === "approved") {
+  // « skipped » reprend la mission comme « approved » (à l'étape d'après
+  // l'écriture sautée) : elle a donc besoin du même kick worker.
+  if (decision === "approved" || decision === "skipped") {
     // Kick ciblé, détaché de la requête via after() (sinon l'abort du proxy
     // peut tuer la reprise en plein vol).
     const resumedRunId = result.runId;

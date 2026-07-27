@@ -157,10 +157,26 @@ async function approvalStepOutputKey(
   }
 }
 
+/**
+ * `skipped` : passer CETTE écriture et poursuivre la mission.
+ *
+ * Il n'existait que « valider » et « refuser », et refuser tuait le run entier
+ * — sur une mission à 10 envois, refuser le 7ᵉ détruisait aussi les 3 suivants.
+ *
+ * Note d'implémentation : la ligne est enregistrée avec le statut `rejected`,
+ * marquée `skipped` dans son payload, plutôt qu'avec un statut dédié. La
+ * colonne porte un CHECK (`pending|approved|rejected|expired`, migration 0029)
+ * et l'historique de ce dépôt montre des migrations partiellement appliquées en
+ * production : introduire une valeur nouvelle ferait échouer la décision en
+ * base là où le schéma est en retard. `rejected` n'est de toute façon pas
+ * `pending`, donc les trois dérivations de statut de run restent correctes.
+ */
+export type ApprovalDecision = "approved" | "rejected" | "skipped";
+
 export async function decideApproval(
   approvalId: string,
   userId: string,
-  decision: "approved" | "rejected",
+  decision: ApprovalDecision,
   options?: { modifiedContent?: string },
 ): Promise<{ runId: string; stepIndex: number } | null> {
   const { data: approval } = await db()
@@ -211,6 +227,57 @@ export async function decideApproval(
   }
 
   const payload = (approval.payload ?? {}) as { preview?: string; full?: string; label?: string; kind?: string };
+
+  if (decision === "skipped") {
+    // Une QUESTION n'est pas « passable » : sa réponse alimente les étapes
+    // aval, la sauter les priverait de leur entrée.
+    if (payload.kind === "question") {
+      throw new Error("Cette étape est une question : réponds-y, ou annule la mission.");
+    }
+    const { data: updated } = await db()
+      .from("agent_approvals")
+      .update({
+        status: "rejected",
+        decided_at: new Date().toISOString(),
+        decided_by: userId,
+        payload: { ...payload, skipped: true } as Json,
+      })
+      .eq("id", approvalId)
+      .eq("status", "pending")
+      .select("id");
+    if (!updated?.length) return null;
+
+    const skipIndex = approval.step_index ?? 0;
+    const { data: skipRow } = await db()
+      .from("listing_agent_runs")
+      .select("output")
+      .eq("id", approval.run_id)
+      .single();
+    const skipOutput = {
+      ...((skipRow?.output as Record<string, string> | null) ?? {}),
+      [`approval_${skipIndex}`]: "[PASSÉ PAR L'UTILISATEUR]",
+    };
+    // +2 : l'approbation est en `skipIndex`, l'écriture qu'elle garde en
+    // `skipIndex + 1` — on saute les deux et on reprend à la suivante.
+    const resume = {
+      status: "pending",
+      resume_from_step: skipIndex + 2,
+      steps_completed: skipIndex + 2,
+      output: skipOutput as Json,
+      error_message: null,
+    };
+    const { error: skipErr } = await db()
+      .from("listing_agent_runs")
+      .update({ ...resume, queued_at: new Date().toISOString() })
+      .eq("id", approval.run_id);
+    if (skipErr) {
+      // Drift 0051 (queued_at absente) : même repli que la reprise normale.
+      console.error("[approvals] reprise (skip) avec queued_at refusée:", skipErr.message);
+      await db().from("listing_agent_runs").update(resume).eq("id", approval.run_id);
+    }
+    return { runId: approval.run_id, stepIndex: skipIndex };
+  }
+
   // Une QUESTION (étape ask) : la sortie DOIT être la réponse tapée par
   // l'utilisateur. Pas de repli sur preview (= le texte de la question), sinon
   // l'étape aval reçoit la question à la place de la réponse.
