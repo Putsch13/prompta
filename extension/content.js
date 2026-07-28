@@ -252,7 +252,27 @@
       @keyframes pghost-spin { to { transform:rotate(360deg); } }
       @keyframes pshimmer { to { background-position:-200% 0; } }
       @keyframes pspark { 0% { top:4px; opacity:0; } 12% { opacity:1; } 88% { opacity:1; } 100% { top:calc(100% - 10px); opacity:0; } }
-      @media (prefers-reduced-motion: reduce) { .pnode { animation: none; opacity: 1; } .pnode.act .knot, .pnode.ghost .knot, .pnode.ghost .lbl { animation: none; } .ptree .spark { display: none; } }
+      .pnode.act .knot::after { content:""; position:absolute; inset:-5px; border-radius:50%; border:1px dashed rgba(103,208,255,.6); animation:preticle 2.8s linear infinite; }
+      .ptree.run::after { content:""; position:absolute; left:-6px; right:-6px; height:24px; top:-15%; background:linear-gradient(180deg,transparent,rgba(56,189,248,.09),transparent); animation:pscan 3.2s ease-in-out infinite; pointer-events:none; }
+      @keyframes preticle { to { transform:rotate(360deg); } }
+      @keyframes pscan { 0% { top:-15%; opacity:0; } 12% { opacity:1; } 88% { opacity:1; } 100% { top:100%; opacity:0; } }
+      .pbrain { position:relative; margin-top:8px; border:1px solid rgba(56,189,248,.22); border-radius:12px; overflow:hidden; padding:7px 9px 3px; background:radial-gradient(ellipse at 50% 42%,rgba(56,189,248,.08),transparent 72%),radial-gradient(rgba(56,189,248,.10) 1px,transparent 1.2px); background-size:100% 100%,15px 15px; }
+      .pbrain::before, .pbrain::after { content:""; position:absolute; width:13px; height:13px; border:1.5px solid rgba(56,189,248,.55); z-index:2; }
+      .pbrain::before { top:5px; left:5px; border-right:none; border-bottom:none; border-radius:3px 0 0 0; }
+      .pbrain::after { bottom:5px; right:5px; border-left:none; border-top:none; border-radius:0 0 3px 0; }
+      .pbrain svg { display:block; width:100%; height:auto; }
+      .pbrain .scan { position:absolute; left:0; right:0; height:22px; top:-15%; background:linear-gradient(180deg,transparent,rgba(56,189,248,.12),transparent); animation:pscan 3s ease-in-out infinite; pointer-events:none; }
+      .pbrain .pe { stroke:#38BDF8; stroke-opacity:.38; stroke-width:1; fill:none; stroke-dasharray:1; stroke-dashoffset:1; animation:pdraw .7s ease forwards; }
+      .pbrain .pn { fill:#0E1524; stroke:#38BDF8; stroke-width:1.5; opacity:0; animation:pnpop .45s cubic-bezier(.2,.9,.3,1.5) forwards; transform-box:fill-box; transform-origin:center; filter:drop-shadow(0 0 3px rgba(56,189,248,.65)); }
+      .pbrain .core { fill:rgba(56,189,248,.25); stroke:#67D0FF; animation:pnpop .45s cubic-bezier(.2,.9,.3,1.5) forwards, pcore 2.2s ease-in-out 1s infinite; }
+      .pbrain .ring { fill:none; stroke:rgba(103,208,255,.55); stroke-width:1; stroke-dasharray:4 5; transform-box:fill-box; transform-origin:center; opacity:0; animation:pfade .4s ease .9s forwards, preticle 3.5s linear infinite; }
+      .pbrain .sp { fill:#67D0FF; opacity:0; filter:drop-shadow(0 0 4px #38BDF8); }
+      .pbrain .sp.s1 { animation:pfade .3s ease 1.25s forwards; } .pbrain .sp.s2 { animation:pfade .3s ease 1.65s forwards; } .pbrain .sp.s3 { animation:pfade .3s ease 2.05s forwards; }
+      @keyframes pdraw { to { stroke-dashoffset:0; } }
+      @keyframes pnpop { from { opacity:0; transform:scale(.3); } to { opacity:1; transform:scale(1); } }
+      @keyframes pfade { to { opacity:1; } }
+      @keyframes pcore { 0%,100% { filter:drop-shadow(0 0 3px rgba(56,189,248,.65)); } 50% { filter:drop-shadow(0 0 9px rgba(103,208,255,.95)); } }
+      @media (prefers-reduced-motion: reduce) { .pnode { animation:none; opacity:1; } .pnode.act .knot, .pnode.ghost .knot, .pnode.ghost .lbl, .pnode.act .knot::after, .ptree.run::after { animation:none; } .ptree .spark, .pbrain .sp, .pbrain .scan { display:none; } .pbrain .pe { animation:none; stroke-dashoffset:0; } .pbrain .pn, .pbrain .core, .pbrain .ring { animation:none; opacity:1; } }
       .pilotlive { display:flex; align-items:center; gap:7px; margin-top:8px; padding:7px 10px; border-radius:9px; background:rgba(56,189,248,.1); border:1px solid rgba(56,189,248,.28); font-size:12px; color:#E4EDF9; } .pilotlive b { color:#38BDF8; font-weight:600; }
       .actlog { margin-top:8px; border-left:2px solid rgba(56,189,248,.2); padding-left:9px; display:flex; flex-direction:column; gap:2px; }
       .actrow { display:flex; gap:7px; font-size:11.5px; color:#8FA1BC; line-height:1.45; } .actrow .k { width:12px; text-align:center; flex-shrink:0; } .actrow .k.ok { color:#34D399; } .actrow .k.ko { color:#F87171; } .actrow .k.run { color:#FBBF24; } .actrow .pv { color:#5B6B85; }
@@ -455,13 +475,13 @@
     if (isMission && it.planned?.length) {
       const d = it.stepsCompleted ?? it.stepsDone ?? 0;
       const runLive = it.status === "running" || it.status === "pending";
-      body += `<div class="ptree" style="margin-top:${it.answer ? "8px" : "0"}">${it.planned.map((l, i) => {
+      body += `<div class="ptree${runLive ? " run" : ""}" style="margin-top:${it.answer ? "8px" : "0"}">${it.planned.map((l, i) => {
         const cls = i < d ? "done" : i === d && runLive ? "act" : "";
         const delay = cls === "done" ? "" : ` style="animation-delay:${Math.min(i * 80, 640)}ms"`;
         return `<div class="pnode ${cls}"${delay}><span class="knot">${i < d ? "✓" : i + 1}</span><span class="lbl">${esc(l)}</span></div>`;
       }).join("")}</div>`;
     }
-    else if (isMission && (it.status === "running" || it.status === "pending")) body += `<div class="ptree-head"><span class="orb"></span> Je conçois le plan…</div><div class="ptree"><span class="spark"></span>${[62, 78, 54, 70].map((w, i) => `<div class="pnode ghost" style="animation-delay:${i * 300}ms"><span class="knot"></span><span class="lbl" style="width:${w}%"></span></div>`).join("")}</div>`;
+    else if (isMission && (it.status === "running" || it.status === "pending")) body += `<div class="ptree-head"><span class="orb"></span> Je conçois le plan…</div>${BRAIN_SVG}`;
     // Rapport LIVE : action de pilotage en cours + journal des dernières étapes.
     if (isMission && live) {
       if (it.pilotAction) {
@@ -536,6 +556,32 @@
       <div class="res">${body}<div class="meta"><span class="dot d-${esc(it.status)}${pulse}"></span>${esc(statusText(it.status))}${it.model ? " · " + esc(it.model) : ""}${saveBtn}${savedNote}${link}</div>${err}</div>`;
   }
   let lastFeedSig = "";
+  /** Réseau neuronal de la phase conception — voir extension/popup.js. */
+  const BRAIN_SVG = `<div class="pbrain" aria-hidden="true">
+    <svg viewBox="0 0 220 112" xmlns="http://www.w3.org/2000/svg">
+      <path class="pe" pathLength="1" d="M16,88 L52,28" style="animation-delay:.05s"/>
+      <path class="pe" pathLength="1" d="M16,88 L96,66" style="animation-delay:.2s"/>
+      <path class="pe" pathLength="1" d="M52,28 L96,66" style="animation-delay:.35s"/>
+      <path class="pe" pathLength="1" d="M52,28 L140,24" style="animation-delay:.5s"/>
+      <path class="pe" pathLength="1" d="M96,66 L140,24" style="animation-delay:.65s"/>
+      <path class="pe" pathLength="1" d="M96,66 L178,76" style="animation-delay:.8s"/>
+      <path class="pe" pathLength="1" d="M140,24 L178,76" style="animation-delay:.95s"/>
+      <path class="pe" pathLength="1" d="M140,24 L206,44" style="animation-delay:1.1s"/>
+      <path class="pe" pathLength="1" d="M178,76 L206,44" style="animation-delay:1.25s"/>
+      <circle class="pn" cx="16" cy="88" r="3" style="animation-delay:.02s"/>
+      <circle class="pn" cx="52" cy="28" r="3" style="animation-delay:.3s"/>
+      <circle class="pn core" cx="96" cy="66" r="4.5" style="animation-delay:.55s"/>
+      <circle class="ring" cx="96" cy="66" r="9.5"/>
+      <circle class="pn" cx="140" cy="24" r="3" style="animation-delay:.8s"/>
+      <circle class="pn" cx="178" cy="76" r="3" style="animation-delay:1.05s"/>
+      <circle class="pn" cx="206" cy="44" r="3" style="animation-delay:1.3s"/>
+      <circle class="sp s1" r="1.7"><animateMotion dur="2.1s" begin="1.3s" repeatCount="indefinite" path="M16,88 L52,28 L96,66"/></circle>
+      <circle class="sp s2" r="1.7"><animateMotion dur="2.6s" begin="1.7s" repeatCount="indefinite" path="M96,66 L140,24 L206,44"/></circle>
+      <circle class="sp s3" r="1.4"><animateMotion dur="3.1s" begin="2.1s" repeatCount="indefinite" path="M52,28 L96,66 L178,76"/></circle>
+    </svg>
+    <span class="scan"></span>
+  </div>`;
+
   function renderFeed(force) {
     const seen = new Set(history.map((h) => (h.goal || "").slice(0, 200)));
     const localItems = session.filter((s) => !seen.has((s.goal || "").slice(0, 200)));

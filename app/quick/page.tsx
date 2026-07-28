@@ -715,7 +715,7 @@ function Message(props: {
         {/* Arborescence du plan : nœuds en cascade, halo pulsant sur l'étape
             active, ✓ à l'accomplissement — même langage visuel que l'extension. */}
         {isAgent && (planned.length > 0) && (
-          <div className="ptree mt-1">
+          <div className={`ptree mt-1 ${status === "running" || status === "pending" ? "run" : ""}`}>
             {planned.map((label, i) => {
               const runLive = status === "running" || status === "pending";
               const cls = i < stepsDone ? "done" : i === stepsDone && runLive ? "act" : "";
@@ -739,14 +739,27 @@ function Message(props: {
                     style={{ background: "conic-gradient(from 0deg, #38BDF8, #1E7FC2, #38BDF8)" }} />
               Je conçois le plan…
             </div>
-            <div className="ptree mt-1.5">
-              <span className="spark" />
-              {[62, 78, 54, 70].map((w, i) => (
-                <div key={i} className="pnode ghost" style={{ animationDelay: `${i * 300}ms` }}>
-                  <span className="knot" />
-                  <span className="lbl" style={{ width: `${w}%` }} />
-                </div>
-              ))}
+            <div className="pbrain mt-1.5" aria-hidden="true">
+              <svg viewBox="0 0 220 112" xmlns="http://www.w3.org/2000/svg">
+                {([
+                  ["M16,88 L52,28", 0.05], ["M16,88 L96,66", 0.2], ["M52,28 L96,66", 0.35],
+                  ["M52,28 L140,24", 0.5], ["M96,66 L140,24", 0.65], ["M96,66 L178,76", 0.8],
+                  ["M140,24 L178,76", 0.95], ["M140,24 L206,44", 1.1], ["M178,76 L206,44", 1.25],
+                ] as const).map(([d, delay]) => (
+                  <path key={d} className="pe" pathLength={1} d={d} style={{ animationDelay: `${delay}s` }} />
+                ))}
+                {([
+                  [16, 88, 0.02], [52, 28, 0.3], [140, 24, 0.8], [178, 76, 1.05], [206, 44, 1.3],
+                ] as const).map(([cx, cy, delay]) => (
+                  <circle key={`${cx}-${cy}`} className="pn" cx={cx} cy={cy} r={3} style={{ animationDelay: `${delay}s` }} />
+                ))}
+                <circle className="pn core" cx={96} cy={66} r={4.5} style={{ animationDelay: ".55s" }} />
+                <circle className="ring" cx={96} cy={66} r={9.5} />
+                <circle className="sp s1" r={1.7}><animateMotion dur="2.1s" begin="1.3s" repeatCount="indefinite" path="M16,88 L52,28 L96,66" /></circle>
+                <circle className="sp s2" r={1.7}><animateMotion dur="2.6s" begin="1.7s" repeatCount="indefinite" path="M96,66 L140,24 L206,44" /></circle>
+                <circle className="sp s3" r={1.4}><animateMotion dur="3.1s" begin="2.1s" repeatCount="indefinite" path="M52,28 L96,66 L178,76" /></circle>
+              </svg>
+              <span className="scan" />
             </div>
           </>
         )}

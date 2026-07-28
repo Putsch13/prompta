@@ -37,6 +37,38 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const slugLabel = (s) => String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
 const connKey = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
+/**
+ * Réseau neuronal de la phase CONCEPTION (« le cerveau se câble ») : synapses
+ * qui se dessinent (pathLength=1 + dashoffset), nœuds qui s'allument en
+ * cascade, cœur arc-reactor avec anneau réticule, impulsions SMIL circulant
+ * sur les liens. Purement décoratif (aria-hidden) — le CSS .pbrain fait le
+ * reste (grille, scanner, coins HUD).
+ */
+const BRAIN_SVG = `<div class="pbrain" aria-hidden="true">
+  <svg viewBox="0 0 220 112" xmlns="http://www.w3.org/2000/svg">
+    <path class="pe" pathLength="1" d="M16,88 L52,28" style="animation-delay:.05s"/>
+    <path class="pe" pathLength="1" d="M16,88 L96,66" style="animation-delay:.2s"/>
+    <path class="pe" pathLength="1" d="M52,28 L96,66" style="animation-delay:.35s"/>
+    <path class="pe" pathLength="1" d="M52,28 L140,24" style="animation-delay:.5s"/>
+    <path class="pe" pathLength="1" d="M96,66 L140,24" style="animation-delay:.65s"/>
+    <path class="pe" pathLength="1" d="M96,66 L178,76" style="animation-delay:.8s"/>
+    <path class="pe" pathLength="1" d="M140,24 L178,76" style="animation-delay:.95s"/>
+    <path class="pe" pathLength="1" d="M140,24 L206,44" style="animation-delay:1.1s"/>
+    <path class="pe" pathLength="1" d="M178,76 L206,44" style="animation-delay:1.25s"/>
+    <circle class="pn" cx="16" cy="88" r="3" style="animation-delay:.02s"/>
+    <circle class="pn" cx="52" cy="28" r="3" style="animation-delay:.3s"/>
+    <circle class="pn core" cx="96" cy="66" r="4.5" style="animation-delay:.55s"/>
+    <circle class="ring" cx="96" cy="66" r="9.5"/>
+    <circle class="pn" cx="140" cy="24" r="3" style="animation-delay:.8s"/>
+    <circle class="pn" cx="178" cy="76" r="3" style="animation-delay:1.05s"/>
+    <circle class="pn" cx="206" cy="44" r="3" style="animation-delay:1.3s"/>
+    <circle class="sp s1" r="1.7"><animateMotion dur="2.1s" begin="1.3s" repeatCount="indefinite" path="M16,88 L52,28 L96,66"/></circle>
+    <circle class="sp s2" r="1.7"><animateMotion dur="2.6s" begin="1.7s" repeatCount="indefinite" path="M96,66 L140,24 L206,44"/></circle>
+    <circle class="sp s3" r="1.4"><animateMotion dur="3.1s" begin="2.1s" repeatCount="indefinite" path="M52,28 L96,66 L178,76"/></circle>
+  </svg>
+  <span class="scan"></span>
+</div>`;
+
 /** Réponse texte d'une mission simple : la clé "reponse" sinon le 1er output. */
 function extractAnswer(output) {
   if (!output || typeof output !== "object") return null;
@@ -169,19 +201,15 @@ function msgCard(item, liveSteps) {
     // animation d'entrée (le feed se re-rend à chaque étape terminée).
     const done = item.stepsCompleted ?? 0;
     const runLive = item.status === "running" || item.status === "pending";
-    body += `<div class="ptree">${liveSteps.map((label, i) => {
+    body += `<div class="ptree${runLive ? " run" : ""}">${liveSteps.map((label, i) => {
       const cls = i < done ? "done" : i === done && runLive ? "act" : "";
       const knot = i < done ? "✓" : i + 1;
       const delay = cls === "done" ? "" : ` style="animation-delay:${Math.min(i * 80, 640)}ms"`;
       return `<div class="pnode ${cls}"${delay}><span class="knot">${knot}</span><span class="lbl">${esc(label)}</span></div>`;
     }).join("")}</div>`;
   } else if (liveSteps && (item.status === "running" || item.status === "pending")) {
-    // Phase conception : le « cerveau » se construit — nœuds fantômes qui
-    // apparaissent, étincelle qui parcourt la colonne, en attendant le plan.
-    body += `<div class="ptree-head"><span class="orb"></span> Je conçois le plan…</div>
-      <div class="ptree"><span class="spark"></span>${[62, 78, 54, 70].map((w, i) =>
-        `<div class="pnode ghost" style="animation-delay:${i * 300}ms"><span class="knot"></span><span class="lbl" style="width:${w}%"></span></div>`
-      ).join("")}</div>`;
+    // Phase conception : le cerveau se câble sous les yeux de l'utilisateur.
+    body += `<div class="ptree-head"><span class="orb"></span> Je conçois le plan…</div>${BRAIN_SVG}`;
   }
   let footer = "";
   if (item.answer) footer += `<div class="answer" style="margin-top:8px;color:var(--ink);white-space:pre-wrap">${esc(item.answer).slice(0, 12000)}${item.status === "streaming" ? '<span class="caret"></span>' : ""}</div>`;

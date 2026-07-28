@@ -67,7 +67,45 @@
     @keyframes pghost-spin { to { transform: rotate(360deg); } }
     @keyframes pshimmer { to { background-position: -200% 0; } }
     @keyframes pspark { 0% { top: 4px; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { top: calc(100% - 10px); opacity: 0; } }
-    @media (prefers-reduced-motion: reduce) { .pnode { animation: none; opacity: 1; } .pnode.act .knot, .pnode.ghost .knot, .pnode.ghost .lbl { animation: none; } .ptree .spark { display: none; } }
+
+    /* ── Mode HUD (exécution) : réticule rotatif sur l'étape active,
+       balayage scanner sur l'arborescence pendant que l'agent tourne. */
+    .pnode.act .knot::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1px dashed rgba(103,208,255,.6); animation: preticle 2.8s linear infinite; }
+    .ptree.run::after { content: ""; position: absolute; left: -6px; right: -6px; height: 24px; top: -15%; background: linear-gradient(180deg, transparent, rgba(56,189,248,.09), transparent); animation: pscan 3.2s ease-in-out infinite; pointer-events: none; }
+    @keyframes preticle { to { transform: rotate(360deg); } }
+    @keyframes pscan { 0% { top: -15%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+
+    /* ── Cerveau neuronal (conception) : réseau qui se câble — synapses qui se
+       dessinent, nœuds qui s'allument, cœur arc-reactor, impulsions qui
+       circulent sur les liens, grille + scanner holographiques. */
+    .pbrain { position: relative; margin-top: 8px; border: 1px solid rgba(56,189,248,.22); border-radius: 12px; overflow: hidden; padding: 7px 9px 3px;
+      background: radial-gradient(ellipse at 50% 42%, rgba(56,189,248,.08), transparent 72%), radial-gradient(rgba(56,189,248,.10) 1px, transparent 1.2px);
+      background-size: 100% 100%, 15px 15px; }
+    .pbrain::before, .pbrain::after { content: ""; position: absolute; width: 13px; height: 13px; border: 1.5px solid rgba(56,189,248,.55); z-index: 2; }
+    .pbrain::before { top: 5px; left: 5px; border-right: none; border-bottom: none; border-radius: 3px 0 0 0; }
+    .pbrain::after { bottom: 5px; right: 5px; border-left: none; border-top: none; border-radius: 0 0 3px 0; }
+    .pbrain svg { display: block; width: 100%; height: auto; }
+    .pbrain .scan { position: absolute; left: 0; right: 0; height: 22px; top: -15%; background: linear-gradient(180deg, transparent, rgba(56,189,248,.12), transparent); animation: pscan 3s ease-in-out infinite; pointer-events: none; }
+    .pbrain .pe { stroke: #38BDF8; stroke-opacity: .38; stroke-width: 1; fill: none; stroke-dasharray: 1; stroke-dashoffset: 1; animation: pdraw .7s ease forwards; }
+    .pbrain .pn { fill: var(--panel2); stroke: #38BDF8; stroke-width: 1.5; opacity: 0; animation: pnpop .45s cubic-bezier(.2,.9,.3,1.5) forwards; transform-box: fill-box; transform-origin: center; filter: drop-shadow(0 0 3px rgba(56,189,248,.65)); }
+    .pbrain .core { fill: rgba(56,189,248,.25); stroke: #67D0FF; animation: pnpop .45s cubic-bezier(.2,.9,.3,1.5) forwards, pcore 2.2s ease-in-out 1s infinite; }
+    .pbrain .ring { fill: none; stroke: rgba(103,208,255,.55); stroke-width: 1; stroke-dasharray: 4 5; transform-box: fill-box; transform-origin: center; opacity: 0; animation: pfade .4s ease .9s forwards, preticle 3.5s linear infinite; }
+    .pbrain .sp { fill: #67D0FF; opacity: 0; filter: drop-shadow(0 0 4px #38BDF8); }
+    .pbrain .sp.s1 { animation: pfade .3s ease 1.25s forwards; }
+    .pbrain .sp.s2 { animation: pfade .3s ease 1.65s forwards; }
+    .pbrain .sp.s3 { animation: pfade .3s ease 2.05s forwards; }
+    @keyframes pdraw { to { stroke-dashoffset: 0; } }
+    @keyframes pnpop { from { opacity: 0; transform: scale(.3); } to { opacity: 1; transform: scale(1); } }
+    @keyframes pfade { to { opacity: 1; } }
+    @keyframes pcore { 0%, 100% { filter: drop-shadow(0 0 3px rgba(56,189,248,.65)); } 50% { filter: drop-shadow(0 0 9px rgba(103,208,255,.95)); } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pnode { animation: none; opacity: 1; }
+      .pnode.act .knot, .pnode.ghost .knot, .pnode.ghost .lbl, .pnode.act .knot::after, .ptree.run::after { animation: none; }
+      .ptree .spark, .pbrain .sp, .pbrain .scan { display: none; }
+      .pbrain .pe { animation: none; stroke-dashoffset: 0; }
+      .pbrain .pn, .pbrain .core, .pbrain .ring { animation: none; opacity: 1; }
+    }
     .msg a { color: var(--accent-hi); text-decoration: none; } .msg a:hover { text-decoration: underline; }
     .msg .warn { color: var(--amber); } .msg .err { color: var(--red); white-space: pre-wrap; }
     .think { display: flex; align-items: center; gap: 8px; color: var(--soft); font-size: 12.5px; margin-top: 6px; }

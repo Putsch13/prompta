@@ -222,3 +222,33 @@ body {
   .ptree .pnode.act .knot, .ptree .pnode.ghost .knot, .ptree .pnode.ghost .lbl { animation: none; }
   .ptree .spark { display: none; }
 }
+
+/* ── Mode HUD + cerveau neuronal (conception) — voir extension/popup.html ── */
+.ptree .pnode.act .knot::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1px dashed rgba(103, 208, 255, 0.6); animation: preticle 2.8s linear infinite; }
+.ptree.run::after { content: ""; position: absolute; left: -6px; right: -6px; height: 24px; top: -15%; background: linear-gradient(180deg, transparent, rgba(56, 189, 248, 0.09), transparent); animation: pscan 3.2s ease-in-out infinite; pointer-events: none; }
+@keyframes preticle { to { transform: rotate(360deg); } }
+@keyframes pscan { 0% { top: -15%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+.pbrain { position: relative; border: 1px solid rgba(56, 189, 248, 0.22); border-radius: 12px; overflow: hidden; padding: 7px 9px 3px; background: radial-gradient(ellipse at 50% 42%, rgba(56, 189, 248, 0.08), transparent 72%), radial-gradient(rgba(56, 189, 248, 0.1) 1px, transparent 1.2px); background-size: 100% 100%, 15px 15px; }
+.pbrain::before, .pbrain::after { content: ""; position: absolute; width: 13px; height: 13px; border: 1.5px solid rgba(56, 189, 248, 0.55); z-index: 2; }
+.pbrain::before { top: 5px; left: 5px; border-right: none; border-bottom: none; border-radius: 3px 0 0 0; }
+.pbrain::after { bottom: 5px; right: 5px; border-left: none; border-top: none; border-radius: 0 0 3px 0; }
+.pbrain svg { display: block; width: 100%; height: auto; }
+.pbrain .scan { position: absolute; left: 0; right: 0; height: 22px; top: -15%; background: linear-gradient(180deg, transparent, rgba(56, 189, 248, 0.12), transparent); animation: pscan 3s ease-in-out infinite; pointer-events: none; }
+.pbrain .pe { stroke: #38bdf8; stroke-opacity: 0.38; stroke-width: 1; fill: none; stroke-dasharray: 1; stroke-dashoffset: 1; animation: pdraw 0.7s ease forwards; }
+.pbrain .pn { fill: #0e1524; stroke: #38bdf8; stroke-width: 1.5; opacity: 0; animation: pnpop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.5) forwards; transform-box: fill-box; transform-origin: center; filter: drop-shadow(0 0 3px rgba(56, 189, 248, 0.65)); }
+.pbrain .core { fill: rgba(56, 189, 248, 0.25); stroke: #67d0ff; animation: pnpop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.5) forwards, pcore 2.2s ease-in-out 1s infinite; }
+.pbrain .ring { fill: none; stroke: rgba(103, 208, 255, 0.55); stroke-width: 1; stroke-dasharray: 4 5; transform-box: fill-box; transform-origin: center; opacity: 0; animation: pfade 0.4s ease 0.9s forwards, preticle 3.5s linear infinite; }
+.pbrain .sp { fill: #67d0ff; opacity: 0; filter: drop-shadow(0 0 4px #38bdf8); }
+.pbrain .sp.s1 { animation: pfade 0.3s ease 1.25s forwards; }
+.pbrain .sp.s2 { animation: pfade 0.3s ease 1.65s forwards; }
+.pbrain .sp.s3 { animation: pfade 0.3s ease 2.05s forwards; }
+@keyframes pdraw { to { stroke-dashoffset: 0; } }
+@keyframes pnpop { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: scale(1); } }
+@keyframes pfade { to { opacity: 1; } }
+@keyframes pcore { 0%, 100% { filter: drop-shadow(0 0 3px rgba(56, 189, 248, 0.65)); } 50% { filter: drop-shadow(0 0 9px rgba(103, 208, 255, 0.95)); } }
+@media (prefers-reduced-motion: reduce) {
+  .ptree .pnode.act .knot::after, .ptree.run::after { animation: none; }
+  .pbrain .sp, .pbrain .scan { display: none; }
+  .pbrain .pe { animation: none; stroke-dashoffset: 0; }
+  .pbrain .pn, .pbrain .core, .pbrain .ring { animation: none; opacity: 1; }
+}
