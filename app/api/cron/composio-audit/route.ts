@@ -55,6 +55,25 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Sonde PLOMBERIE : ?plumbing=toolkit1,toolkit2 → batterie complète
+  // (résolution, param-guard, approbations, retry) sur ces toolkits, avec les
+  // intentions utilisateur simulées. Pilotée par scripts/plumbing-battery.ts.
+  const plumbingParam = url.searchParams.get("plumbing");
+  if (plumbingParam) {
+    const { checkToolkit, checkErrorMapping } = await import("@/lib/composio/plumbing-battery");
+    const slugsToCheck = plumbingParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12);
+    const failures: import("@/lib/composio/plumbing-battery").Failure[] = [];
+    const counters: Record<string, number> = new Proxy({} as Record<string, number>, {
+      get: (t, k: string) => t[k] ?? 0,
+      set: (t, k: string, v) => ((t[k] = v as number), true),
+    });
+    if (url.searchParams.get("errmap")) checkErrorMapping(failures);
+    for (const slug of slugsToCheck) {
+      await checkToolkit(slug, failures, counters);
+    }
+    return NextResponse.json({ toolkits: slugsToCheck.length, counters: { ...counters }, failures });
+  }
+
   // Sonde résolution : ?resolve=connector.action[,connector.action…] →
   // slug d'outil réellement choisi par le résolveur (vérif multi-apps).
   const resolveParam = url.searchParams.get("resolve");

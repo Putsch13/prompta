@@ -271,3 +271,44 @@ test("ensureApprovalGuards aplatit AVANT de poser les approbations", () => {
   // Et le résultat reste un point fixe de la garde.
   assert.deepEqual(ensureApprovalGuards(guarded).steps, guarded.steps);
 });
+
+// ── Slugs Composio UPPER_SNAKE : les lectures ne déclenchent pas de validation ──
+// L'ancienne détection testait un préfixe sur le segment après le dernier
+// point : « NOTION_FETCH_EMAILS » (pas de point) → verbe = slug entier → jamais
+// une lecture → l'utilisateur validait des lectures. On tokenise désormais.
+
+test("UPPER_SNAKE — une lecture (slug brut) ne demande pas de validation", () => {
+  for (const action of ["NOTION_QUERY_DATABASE", "GMAIL_FETCH_EMAILS", "NOTION_FETCH_DATA", "SLACK_LIST_CHANNELS"]) {
+    assert.equal(
+      isSensitiveWriteStep({ type: "action", connector: "notion", action, params: {} } as never),
+      false,
+      `${action} classée écriture sensible`,
+    );
+  }
+});
+
+test("UPPER_SNAKE — une écriture (slug brut) reste gardée", () => {
+  for (const action of ["NOTION_INSERT_ROW_DATABASE", "GMAIL_SEND_EMAIL", "SLACK_SEND_MESSAGE"]) {
+    assert.equal(
+      isSensitiveWriteStep({ type: "action", connector: "notion", action, params: {} } as never),
+      true,
+      `${action} non gardée`,
+    );
+  }
+});
+
+test("deny-by-default — un token d'écriture PRIME sur un token de lecture", () => {
+  // « search_and_replace », « find_and_delete » : lecture + écriture = écriture.
+  assert.equal(isSensitiveWriteStep({ type: "action", connector: "x", action: "x.search_and_replace", params: {} } as never), true);
+  assert.equal(isSensitiveWriteStep({ type: "action", connector: "x", action: "FIND_AND_DELETE_ROWS", params: {} } as never), true);
+});
+
+test("alias de connecteur canonisés — « Google Sheets » ne redemande pas de validation", () => {
+  for (const connector of ["google_sheets", "Google Sheets", "gsheets".replace("gs", "googles")]) {
+    assert.equal(
+      isSensitiveWriteStep({ type: "action", connector, action: "google_sheets.append_row", params: {} } as never),
+      false,
+      `alias « ${connector} » non canonisé`,
+    );
+  }
+});

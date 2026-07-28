@@ -15,25 +15,48 @@
  */
 
 import type { AgentManifest } from "@/lib/agent/schema";
+import { canonicalConnectorKey } from "@/lib/connectors/resolve-id";
 
 /**
  * Espaces personnels Google SANS envoi externe : écriture bénigne, pas
  * d'approval. Calendar en est EXCLU : un événement peut inviter des tiers
  * (envoi d'emails) → il doit passer par une validation humaine.
  */
-const SAFE_WRITE_CONNECTORS = new Set([
-  "google_sheets", "googlesheets", "google_docs", "googledocs",
-  "google_drive", "googledrive",
-]);
+// Formes CANONIQUES (canonicalConnectorKey : minuscules, alphanumérique).
+const SAFE_WRITE_CONNECTORS = new Set(["googlesheets", "googledocs", "googledrive"]);
 
 /**
  * Verbes de LECTURE (deny-by-default : tout ce qui n'est pas clairement une
  * lecture est traité comme une écriture sensible). Plus sûr qu'une liste de
  * verbes d'écriture forcément incomplète (stripe.charge, x.mutation…).
  */
-const READ_VERB_RE = /^(get|list|read|search|find|fetch|lire|lis|rechercher|chercher|find|show|view|count|describe|export)/i;
+const READ_VERB_RE = /^(get|list|read|search|find|fetch|lire|lis|rechercher|chercher|find|show|view|count|describe|export|query|retrieve|lookup)$/i;
 
 type Step = AgentManifest["steps"][number];
+
+/**
+ * L'action est-elle manifestement une LECTURE ?
+ *
+ * Deux formats d'action coexistent dans les plans : natif « notion.search »
+ * et slug Composio brut « NOTION_QUERY_DATABASE ». L'ancienne détection
+ * testait un préfixe sur le segment après le dernier point : sur un slug
+ * UPPER_SNAKE sans point, le « verbe » était le slug entier
+ * (« NOTION_FETCH_DATA » ne commence pas par fetch) → l'utilisateur validait
+ * des LECTURES. On tokenise donc et on teste chaque token — le préfixe
+ * toolkit (« NOTION ») n'est jamais un verbe de lecture, il ne gêne pas.
+ *
+ * Garde-fou conservé : un token d'ÉCRITURE explicite prime (deny-by-default —
+ * « search_and_replace », « find_and_delete » restent des écritures).
+ */
+const WRITE_VERB_RE =
+  /^(send|create|add|insert|update|delete|remove|post|publish|write|append|move|archive|upload|import|set|replace|cancel|invite|assign|merge|charge|pay|refund|submit|execute|trigger)$/i;
+
+function isReadOnlyAction(action: string): boolean {
+  const tail = (action.split(".").pop() ?? action).trim();
+  const tokens = tail.split(/[^a-zA-Z]+/).filter(Boolean);
+  if (tokens.some((t) => WRITE_VERB_RE.test(t))) return false;
+  return tokens.some((t) => READ_VERB_RE.test(t));
+}
 
 /**
  * Une action est « sensible » (⇒ validation humaine) si elle sort des espaces
@@ -41,9 +64,11 @@ type Step = AgentManifest["steps"][number];
  */
 export function isSensitiveWriteStep(step: Step): boolean {
   if (step.type !== "action") return false;
-  if (SAFE_WRITE_CONNECTORS.has(step.connector)) return false;
-  const verbPart = (step.action.split(".").pop() ?? step.action).trim();
-  return !READ_VERB_RE.test(verbPart);
+  // Canonisation : le LLM écrit « google_sheets », « Google Sheets » ou
+  // « gsheets » — sans elle, une variante d'alias déclenchait une validation
+  // par ligne écrite dans un tableur perso.
+  if (SAFE_WRITE_CONNECTORS.has(canonicalConnectorKey(step.connector))) return false;
+  return !isReadOnlyAction(step.action);
 }
 
 /**
@@ -51,12 +76,11 @@ export function isSensitiveWriteStep(step: Step): boolean {
  * rejouable à l'aveugle. Distinct de `isSensitiveWriteStep` : les espaces
  * Google perso n'exigent pas de validation humaine, mais un `append_row`
  * rejoué duplique quand même la ligne. Deny-by-default, comme au-dessus :
- * seul un verbe manifestement de lecture est considéré rejouable.
+ * seule une action manifestement de lecture est considérée rejouable.
  */
 export function isWriteActionStep(step: Step): boolean {
   if (step.type !== "action") return false;
-  const verbPart = (step.action.split(".").pop() ?? step.action).trim();
-  return !READ_VERB_RE.test(verbPart);
+  return !isReadOnlyAction(step.action);
 }
 
 /** Vrai si une étape — ou une sous-étape à N'IMPORTE quelle profondeur — est sensible. */
