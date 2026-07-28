@@ -303,6 +303,11 @@
       .note { font-size:11px; color:#5B6B85; margin:5px 0; } .note a { color:#67D0FF; }
       .opts { display:flex; gap:14px; padding:4px 0 7px; font-size:11px; color:#8FA1BC; }
       .opts label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+      .multiai { border-bottom:1px solid rgba(56,189,248,.12); padding:8px 13px; }
+      .multiai .mttl { font-size:11px; color:#5B6B85; margin-bottom:6px; }
+      .multiai label { display:inline-flex; align-items:center; gap:5px; margin:0 10px 5px 0; font-size:11.5px; color:#8FA1BC; cursor:pointer; }
+      .multiai input { accent-color:#38BDF8; }
+      .ico.on { border-color:#38BDF8; color:#38BDF8; }
       .composer { border-top:1px solid rgba(56,189,248,.12); padding:10px 13px 14px; flex-shrink:0; }
       .attach-chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 2px 7px; }
       .attach-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; background:rgba(14,21,36,.9); border:1px solid rgba(56,189,248,.35); border-radius:999px; padding:3px 6px 3px 10px; font-size:11px; color:#8FA1BC; }
@@ -354,6 +359,7 @@
         <span class="logo">P</span>
         <b>Prompta <span class="sub">· partout</span></b>
         <select data-r="model"><option>…</option></select>
+        <button class="ico" data-r="multiai" title="Multi-IA : répartir plusieurs modèles sur la mission">＋</button>
         <button class="ico" data-r="histbtn" title="Conversations précédentes">🕘</button>
         <a class="ico" data-r="conns" target="_blank" title="Apps connectées">🔌</a>
         <button class="ico" data-r="close" title="Fermer">✕</button>
@@ -364,6 +370,10 @@
           <button class="ico" data-r="histclose" title="Fermer l'historique">✕</button>
         </div>
         <div class="histlist" data-r="histlist"></div>
+      </div>
+      <div class="multiai" data-r="multiaipanel" style="display:none">
+        <div class="mttl">Multi-IA — coche les modèles autorisés : le plan répartit chaque étape (raisonnement lourd → le plus capable, extraction → le plus rapide). Ta consigne dans l'ordre prime.</div>
+        <div data-r="multiailist"></div>
       </div>
       <div class="upbar" data-r="upbar"></div>
       <div class="feed" data-r="feed"></div>
@@ -694,6 +704,8 @@
     const ms = r?.ok && Array.isArray(r.body.models) ? r.body.models : [];
     const firstUsable = ms.find((m) => m.usable);
     modelEl.innerHTML = (firstUsable ? "" : `<option value="">défaut</option>`) + ms.map((m) => `<option value="${esc(m.id)}" ${m.usable ? "" : "disabled"}>${esc(m.label)}${m.usable ? "" : " (clé)"}</option>`).join("");
+    knownModels = ms;
+    renderMultiAiList();
     modelEl.value = ms.find((m) => m.id === promptaModel && m.usable) ? promptaModel : (firstUsable?.id ?? "");
   }
   async function loadHistory() { const r = await send("prompta:history"); if (r?.ok && Array.isArray(r.body.items)) { history = r.body.items; renderFeed(); } }
@@ -824,7 +836,7 @@
         page.openTabs = (cap?.ok && Array.isArray(cap.tabs) ? cap.tabs : targeted).filter((t) => t.url !== location.href);
       }
     }
-    const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, history: buildConvoHistory(), attachments: attachmentRefs() } });
+    const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, modelIds: multiModelIds(), history: buildConvoHistory(), attachments: attachmentRefs() } });
     // L'agent demande des précisions : on affiche les questions, pas de run.
     if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
       launching = false; sendBtn.disabled = false;
@@ -899,6 +911,8 @@
 
   // ── Pièces jointes (bouton 📎) — voir extension/popup.js pour la doctrine.
   let attachments = [];
+  let multiModels = [];
+  let knownModels = [];
   const MAX_ATTACH = 3;
   const MAX_ATTACH_BYTES = 8 * 1024 * 1024;
   const attachChips = $("attachchips");
@@ -944,6 +958,29 @@
   function attachmentRefs() {
     return attachments.filter((a) => a.status === "ok" && a.id).map((a) => ({ id: a.id, name: a.name }));
   }
+
+  /** Multi-IA : ≥2 modèles distincts (principal + cochés) → répartition par étape. */
+  function multiModelIds() {
+    const ids = [...new Set([modelEl.value, ...multiModels].filter(Boolean))];
+    return ids.length >= 2 ? ids : undefined;
+  }
+
+  function renderMultiAiList() {
+    const box = $("multiailist");
+    if (!box) return;
+    const usable = knownModels.filter((m) => m.usable);
+    box.innerHTML = usable.map((m) => `
+      <label><input type="checkbox" data-mid="${esc(m.id)}" ${multiModels.includes(m.id) ? "checked" : ""}> ${esc(m.label || m.id)}</label>`).join("") || `<span style="font-size:11px;color:#5B6B85">Aucun modèle utilisable.</span>`;
+    box.querySelectorAll("[data-mid]").forEach((cb) => cb.addEventListener("change", () => {
+      const id = cb.dataset.mid;
+      multiModels = cb.checked ? [...new Set([...multiModels, id])] : multiModels.filter((x) => x !== id);
+      $("multiai").classList.toggle("on", !!multiModelIds());
+    }));
+  }
+  $("multiai").addEventListener("click", () => {
+    const panel = $("multiaipanel");
+    panel.style.display = panel.style.display === "none" ? "block" : "none";
+  });
 
   $("attach").addEventListener("click", () => attachInput.click());
   attachInput.addEventListener("change", async () => {

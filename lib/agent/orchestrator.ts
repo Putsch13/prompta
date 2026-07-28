@@ -193,6 +193,18 @@ function isContentParamKey(key: string): boolean {
 function extractErrorCode(err: unknown): string {
   if (!(err instanceof Error)) return "unknown";
   const msg = err.message;
+  // Erreurs DÉTERMINISTES : mêmes params → même refus. Les retenter à
+  // l'identique triple le bruit dans la console et le temps d'échec (vécu :
+  // « database_id manquant » affiché 3 fois). Seul le REPLAN peut les
+  // corriger, pas un retry.
+  if (msg.includes("missing_required_params")) return "missing_params";
+  if (
+    msg.includes("Extra inputs are not permitted") ||
+    msg.includes("Invalid request data") ||
+    msg.includes("could not be found")
+  ) {
+    return "invalid_request";
+  }
   if (msg.includes("401") || msg.includes("invalid_api_key")) return "invalid_api_key";
   if (msg.includes("403") || msg.includes("permission")) return "permission_denied";
   if (msg.includes("429") || msg.includes("rate_limit")) return "rate_limit";

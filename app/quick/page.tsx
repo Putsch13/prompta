@@ -117,6 +117,13 @@ export default function QuickPage() {
     { id?: string; name: string; chars?: number; status: "up" | "ok" | "err"; error?: string }[]
   >([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  /** Multi-IA : modèles cochés en plus du principal (≥2 → répartition par étape). */
+  const [multiModels, setMultiModels] = useState<string[]>([]);
+  const [showMultiAi, setShowMultiAi] = useState(false);
+  const multiModelIds = useCallback(() => {
+    const ids = [...new Set([model, ...multiModels].filter(Boolean))];
+    return ids.length >= 2 ? ids : undefined;
+  }, [model, multiModels]);
 
   const addAttachment = useCallback(async (file: File) => {
     if (file.size > 8 * 1024 * 1024) {
@@ -266,7 +273,7 @@ export default function QuickPage() {
         headers: { "content-type": "application/json" },
         // client:"quick" = pas d'exécuteur de pilotage navigateur ici : le
         // serveur interdit les étapes browser (sinon timeout 60 s garanti).
-        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined, history: buildConvoHistory(), client: "quick", attachments: attachmentRefs() }),
+        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined, modelIds: multiModelIds(), history: buildConvoHistory(), client: "quick", attachments: attachmentRefs() }),
       });
     } catch {
       busyRef.current = false; setBusy(false); setLive(null);
@@ -516,15 +523,22 @@ export default function QuickPage() {
           ✚ <span className="hidden sm:inline">Nouvelle</span>
         </button>
         {models.length > 0 && (
-          <select
-            value={model}
-            onChange={(e) => { setModel(e.target.value); try { localStorage.setItem("prompta_model", e.target.value); } catch { /* quota */ } }}
-            title="Modèle qui répond"
-            className="max-w-[120px] rounded-lg border border-line bg-card2 px-2 py-1 text-xs"
-          >
-            {!models.some((m) => m.usable) && <option value="">Modèle par défaut</option>}
-            {models.map((m) => <option key={m.id} value={m.id} disabled={!m.usable}>{m.label}{m.usable ? "" : " (clé requise)"}</option>)}
-          </select>
+          <>
+            <select
+              value={model}
+              onChange={(e) => { setModel(e.target.value); try { localStorage.setItem("prompta_model", e.target.value); } catch { /* quota */ } }}
+              title="Modèle qui répond"
+              className="max-w-[120px] rounded-lg border border-line bg-card2 px-2 py-1 text-xs"
+            >
+              {!models.some((m) => m.usable) && <option value="">Modèle par défaut</option>}
+              {models.map((m) => <option key={m.id} value={m.id} disabled={!m.usable}>{m.label}{m.usable ? "" : " (clé requise)"}</option>)}
+            </select>
+            <button
+              onClick={() => setShowMultiAi((v) => !v)}
+              title="Multi-IA : répartir plusieurs modèles sur la mission"
+              className={`rounded-lg border px-2 py-1 text-sm transition-colors ${multiModelIds() ? "border-accent text-accent" : "border-line text-ink-faint hover:text-ink"}`}
+            >＋</button>
+          </>
         )}
         {authed && (
           <a href="/dashboard/connexions" target="_blank" rel="noopener" title="Apps connectées"
@@ -533,6 +547,28 @@ export default function QuickPage() {
           </a>
         )}
       </header>
+
+      {/* Multi-IA : cocher plusieurs modèles → le plan répartit par étape. */}
+      {showMultiAi && models.length > 0 && (
+        <div className="border-b border-line px-4 py-2.5">
+          <p className="pb-1.5 text-[11px] text-ink-faint">
+            Multi-IA — coche les modèles autorisés : le plan répartit chaque étape (raisonnement lourd → le plus capable, extraction → le plus rapide). Ta consigne dans l&apos;ordre prime.
+          </p>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {models.filter((m) => m.usable).map((m) => (
+              <label key={m.id} className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-ink-soft">
+                <input
+                  type="checkbox"
+                  className="accent-[#38BDF8]"
+                  checked={multiModels.includes(m.id)}
+                  onChange={(e) => setMultiModels((list) => (e.target.checked ? [...new Set([...list, m.id])] : list.filter((x) => x !== m.id)))}
+                />
+                {m.label || m.id}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Fil de conversation */}
       <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-4">

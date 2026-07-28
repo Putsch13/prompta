@@ -19,6 +19,8 @@ let openTabs = [];       // [{title, url, checked}]
 let session = [];        // échanges instantanés terminés (cette session popup)
 let convoStart = 0;      // frontière « nouvelle conversation » (timestamp)
 let attachments = [];    // [{id, name, chars, status:"up"|"ok"|"err", error}] pièces jointes du chat
+let multiModels = [];    // IDs cochés dans le panneau Multi-IA (≥2 → répartition par étape)
+let knownModels = [];    // catalogue reçu de /api/extension/models
 
 const $ = (id) => document.getElementById(id);
 const feed = $("feed");
@@ -454,8 +456,33 @@ async function loadModels() {
     .join("");
   const chosen = models.find((m) => m.id === promptaModel && m.usable) ? promptaModel : (firstUsable?.id ?? "");
   modelEl.value = chosen;
+  knownModels = models;
+  renderMultiAiList();
 }
 modelEl.addEventListener("change", () => chrome.storage.sync.set({ promptaModel: modelEl.value }));
+
+// ── Multi-IA : plusieurs modèles cochés → le serveur répartit par étape ─────
+function multiModelIds() {
+  // Le modèle du sélecteur reste le principal (planification) ; les cochés
+  // complètent. < 2 modèles distincts = mode normal.
+  const ids = [...new Set([modelEl.value, ...multiModels].filter(Boolean))];
+  return ids.length >= 2 ? ids : undefined;
+}
+function renderMultiAiList() {
+  const box = $("multiai-list");
+  if (!box) return;
+  const usable = knownModels.filter((m) => m.usable);
+  box.innerHTML = usable.map((m) => `
+    <label><input type="checkbox" data-mid="${esc(m.id)}" ${multiModels.includes(m.id) ? "checked" : ""}> ${esc(m.label || m.id)}</label>`).join("") || `<span style="font-size:11px;color:var(--faint)">Aucun modèle utilisable.</span>`;
+  box.querySelectorAll("[data-mid]").forEach((cb) => cb.addEventListener("change", () => {
+    const id = cb.dataset.mid;
+    multiModels = cb.checked ? [...new Set([...multiModels, id])] : multiModels.filter((x) => x !== id);
+    $("multiai").classList.toggle("on", !!multiModelIds());
+  }));
+}
+$("multiai").addEventListener("click", () => {
+  $("multiai-panel").classList.toggle("open");
+});
 
 // ── Connexions ──────────────────────────────────────────────────────────────
 async function loadConns() {
@@ -536,7 +563,7 @@ async function launchMission(goal, notice, pageOverride) {
     }
   }
 
-  const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, history: buildConvoHistory(), attachments: attachmentRefs() } });
+  const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, modelIds: multiModelIds(), history: buildConvoHistory(), attachments: attachmentRefs() } });
   if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
     launching = false; sendBtn.disabled = false;
     pendingClarify = { goal, questions: r.body.clarify }; clarifyQ = r.body.clarify; current = null;

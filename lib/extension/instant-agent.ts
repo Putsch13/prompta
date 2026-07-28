@@ -244,7 +244,7 @@ RÈGLES DURES :
 3. Toute écriture sensible (email, publication, e-commerce, CRM, message) DOIT être précédée d'une étape approval montrant le contenu exact.
 4. Créations Google (Sheets/Docs/Drive/Calendar) : pas d'approval nécessaire, ce sont les espaces de l'utilisateur.
 5. gmail.send : "from" ET "to" = EMAIL_UTILISATEUR par défaut (rapport à soi-même), sauf si l'ordre désigne explicitement un autre destinataire.
-6. notion.create_page exige parent_id : précède-la de notion.search + une étape llm d'extraction d'id.
+6. IDENTIFIANTS INTERNES (règle absolue) : toute action qui exige un ID (database_id, page_id, parent_id, spreadsheet_id, board_id, channel_id, folder_id…) — n'INVENTE JAMAIS cet ID et ne le copie pas d'une URL (les IDs d'URL ne sont pas toujours partagés avec l'intégration API). Enchaîne TOUJOURS : (a) action de DÉCOUVERTE (<app>.search, notion.search, notion.fetch_data, drive.search…) → (b) étape llm d'extraction (« Réponds UNIQUEMENT l'id de … dans : {{resultat}} — si aucun ne correspond, réponds INTROUVABLE ») → (c) l'action avec {{id}}. Cas Notion : notion.create_page exige parent_id (découvert d'abord) ; écrire des lignes exige database_id découvert via notion.search — et si la base cible n'existe pas encore, crée-la (notion.create_database avec parent_id découvert), puis extrais son id de la SORTIE de création pour les insertions suivantes. « Réorganiser » un espace = lire l'existant d'abord (search/fetch), puis agir élément par élément avec les IDs découverts.
 7. Étapes llm : prompts riches (rôle + tâche + format de sortie) référençant les {{outputKey}} amont. Pour des données tabulaires : lignes "val1;val2;val3", une par ligne, SANS texte autour.
 8. DEUX RÉGIMES selon l'ordre :
    • SIMPLE / CONVERSATIONNEL (question, traduction, réécriture, explication, calcul, brainstorming, résumé d'un texte fourni) → réponds DIRECTEMENT : UNE seule étape llm dont l'outputKey est "reponse". N'ajoute NI email, NI action externe, NI validation. La réponse s'affiche à l'utilisateur.
@@ -405,8 +405,10 @@ export async function buildInstantAgent(params: {
   browserAvailable?: boolean;
   /** Pièces jointes déjà extraites : le texte intégral vit dans {{file_content}}. */
   attachments?: { name: string; chars: number }[];
+  /** Multi-IA coché : répartir les étapes entre les modèles de usableModels. */
+  distributeModels?: boolean;
 }): Promise<InstantAgentResult> {
-  const { goal, page, userEmail, apiKey, resolved, usableConnectors, usableModels, history, browserAvailable = true, attachments = [] } = params;
+  const { goal, page, userEmail, apiKey, resolved, usableConnectors, usableModels, history, browserAvailable = true, attachments = [], distributeModels = false } = params;
 
   // L'utilisateur nomme-t-il des modèles dans son ordre (« avec claude tu fais…,
   // gpt-5.5 tu fais… ») ? Si oui, on laisse le planificateur ASSIGNER le modèle
@@ -416,7 +418,8 @@ export async function buildInstantAgent(params: {
   // (« avec/utilise/via claude »).
   const MODEL_MENTION_RE =
     /\b(claude[-\s]?(sonnet|opus|haiku|\d)|(avec|utilise\w*|via)\s+claude\b|gpt[-\s]?[0-9o]|gemini|mistral|sonnet|opus|haiku|o3\b|o4\b)/i;
-  const perStepModels = MODEL_MENTION_RE.test(goal) && !!(usableModels && usableModels.length);
+  const hasModelMention = MODEL_MENTION_RE.test(goal);
+  const perStepModels = (hasModelMention || distributeModels) && !!(usableModels && usableModels.length);
 
   // Continuité conversationnelle : « tu as oublié les numéros », « corrige »,
   // « continue » doivent être compris comme la SUITE de la mission précédente.
@@ -444,7 +447,9 @@ export async function buildInstantAgent(params: {
     : "";
 
   // Directive multi-modèle : la liste des IDs exacts + consigne d'assignation.
-  const modelDirective = perStepModels
+  const modelDirective = perStepModels && !hasModelMention
+    ? `MODÈLES PAR ÉTAPE — L'utilisateur a AUTORISÉ plusieurs modèles pour cette mission : ${usableModels!.join(", ")}. RÉPARTIS-les intelligemment selon la nature de chaque étape llm/browser : raisonnement complexe, rédaction longue, croisement de données → le plus capable ; extraction simple, formatage, résumé court → le plus rapide/économique. S'il précise une répartition dans son ordre, elle prime. Chaque étape llm/browser reçoit un champ "model" avec EXACTEMENT un de ces IDs — jamais un ID hors liste.`
+    : perStepModels
     ? `MODÈLES PAR ÉTAPE — L'utilisateur a désigné des modèles précis dans son ordre. Assigne le champ "model" de CHAQUE étape llm/browser au modèle demandé, en utilisant EXACTEMENT un de ces IDs disponibles : ${usableModels!.join(", ")}. Mappe les noms courants : « claude » → claude-sonnet-4-6 (ou l'opus/haiku si précisé), « gpt-5.5 » → gpt-5.5, « gpt-5.4 » → gpt-5.4, « gemini » → un gemini-*, « mistral » → un mistral-*. Pour une étape dont le modèle n'est pas précisé, utilise ${resolved.catalogId}. N'invente JAMAIS un ID hors de la liste.`
     : "";
 

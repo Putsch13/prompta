@@ -174,7 +174,7 @@ export async function executeConnectorAction(
       const result = await runComposioDynamic(connectorId, toolkit, actionId, ctx.userId, params);
       if (result) return result;
       throw new Error(
-        `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit} via Composio. Ouvrez l'étape dans le builder et choisissez une action existante.`,
+        `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit} via Composio. Relance la mission en décrivant l'action avec des mots simples (ex. « ajoute une ligne dans ma base Notion ») : le résolveur choisira un outil existant.`,
       );
     }
 
@@ -194,7 +194,7 @@ export async function executeConnectorAction(
       const result = await runComposioDynamic(connectorId, toolkit, actionId, ctx.userId, params);
       if (result) return result;
       throw new Error(
-        `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit}. Ouvrez l'étape dans le builder et choisissez une action existante.`,
+        `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit}. Relance la mission en décrivant l'action avec des mots simples (ex. « ajoute une ligne dans ma base Notion ») : le résolveur choisira un outil existant.`,
       );
     }
 
@@ -231,7 +231,7 @@ export async function executeConnectorAction(
       if (result) return result;
 
       throw new Error(
-        `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit} via Composio. Ouvrez l'étape dans le builder et choisissez une action existante.`,
+        `Action « ${actionVerb(actionId)} » introuvable dans le toolkit ${toolkit} via Composio. Relance la mission en décrivant l'action avec des mots simples (ex. « ajoute une ligne dans ma base Notion ») : le résolveur choisira un outil existant.`,
       );
     }
 

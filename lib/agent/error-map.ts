@@ -110,7 +110,11 @@ export function mapAgentError(
       code: "missing_required_params",
       // Le message du garde liste déjà les champs et leurs libellés.
       message: raw.replace(/^.*missing_required_params:\s*/, ""),
-      hint: "Ouvrez l'étape dans le builder et renseignez ces champs (valeur fixe, « Demander à l'abonné » ou « Générer par IA »).",
+      // Le « builder » n'existe plus : ce message part vers l'extension//quick.
+      // Le réparateur tente d'abord de retrouver les champs (étape de
+      // recherche + extraction d'ID) ; si la mission échoue quand même, le
+      // seul levier de l'utilisateur est de préciser la cible.
+      hint: "L'agent n'a pas déterminé ces champs. Le réparateur va tenter de les retrouver ; si la mission échoue, relance en nommant précisément la cible (ex. le nom exact de la base ou de la page).",
       raw, connector, action,
     };
   }

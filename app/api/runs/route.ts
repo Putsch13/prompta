@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
       ? Promise.resolve({ data: null })
       : admin
           .from("listings")
-          .select("id, title, current_version_id, created_at")
+          .select("id, title, description, current_version_id, created_at")
           .eq("creator_id", user.id)
           .eq("type", "agent")
           .neq("status", "deleted")
@@ -89,6 +89,9 @@ export async function GET(request: NextRequest) {
     .map((l) => ({
       id: l.id as string,
       title: (l.title as string) || "Agent",
+      // L'ordre d'origine (« Créé depuis Prompta partout — ordre : … ») :
+      // c'est CE texte qui dit à l'utilisateur ce que fait l'agent.
+      description: ((l.description as string | null) ?? "").replace(/^Créé depuis Prompta partout — ordre d'origine : /, ""),
       versionId: l.current_version_id as string,
       createdAt: l.created_at as string,
     }));

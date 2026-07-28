@@ -182,6 +182,16 @@ export async function guardComposioParams(
   if (!entry) return { args };
 
   const aligned = alignParamKeysToSchema(entry.inputs, args);
+  // Clés HORS SCHÉMA : les plans LLM inventent parfois des paramètres
+  // (« target », « options »…). La validation Composio est stricte
+  // (« Extra inputs are not permitted ») : mieux vaut les retirer nous-mêmes
+  // — l'action s'exécute avec ce que le schéma connaît — que d'échouer.
+  const knownKeys = new Set(entry.inputs.map((i) => i.key));
+  const dropped = Object.keys(aligned).filter((k) => !knownKeys.has(k));
+  if (dropped.length > 0) {
+    console.warn("[composio:guard] paramètres hors schéma retirés", { toolSlug, dropped });
+    for (const k of dropped) delete aligned[k];
+  }
   const withDefaults = applyComposioSchemaDefaults(entry.inputs, aligned);
   const missing = missingRequiredComposioParams(entry.inputs, withDefaults);
 

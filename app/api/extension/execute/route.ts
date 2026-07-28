@@ -75,6 +75,12 @@ export async function POST(request: NextRequest) {
     client?: string;
     /** Pièces jointes (références — le texte est relu côté serveur). */
     attachments?: AttachmentRef[];
+    /**
+     * Multi-IA : plusieurs modèles cochés par l'utilisateur. Le premier sert
+     * à la planification ; le planificateur RÉPARTIT les étapes entre eux
+     * (raisonnement lourd → le plus capable, extraction → le plus rapide).
+     */
+    modelIds?: string[];
   } | null;
 
   const browserAvailable = body?.client !== "quick";
@@ -97,7 +103,11 @@ export async function POST(request: NextRequest) {
   // est légitime. On normalise vers un contexte vide plutôt que de rejeter.
   const page = body?.page ?? { url: "" };
 
-  const keyResult = await getBuilderApiKey(user.id, body?.modelId ?? "gpt-5.4-mini");
+  const multiModelIds = Array.isArray(body?.modelIds)
+    ? body.modelIds.filter((m): m is string => typeof m === "string" && m.length > 0).slice(0, 6)
+    : [];
+  const primaryModel = multiModelIds[0] ?? body?.modelId ?? "gpt-5.4-mini";
+  const keyResult = await getBuilderApiKey(user.id, primaryModel);
   if (!keyResult.ok) {
     return NextResponse.json({ error: "no_api_key", message: keyResult.error }, { status: 503 });
   }
@@ -167,7 +177,11 @@ export async function POST(request: NextRequest) {
       apiKey: keyResult.apiKey,
       resolved: keyResult.resolved,
       usableConnectors: usable,
-      usableModels,
+      // Multi-IA coché → l'assignation par étape est bornée aux modèles
+      // cochés (et utilisables) ; sinon le catalogue utilisable complet reste
+      // dispo pour les mentions explicites dans l'ordre.
+      usableModels: multiModelIds.length >= 2 ? usableModels.filter((m) => multiModelIds.includes(m)) : usableModels,
+      distributeModels: multiModelIds.length >= 2,
       history,
       browserAvailable,
       attachments: attachedDocs.map((d) => ({ name: d.name, chars: d.chars })),

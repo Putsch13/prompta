@@ -108,7 +108,10 @@ export async function replanAfterFailure(params: ReplanParams): Promise<ReplanRe
     "",
     `ÉTAPES DÉJÀ TERMINÉES : ${doneSteps.length} (index 0 à ${doneSteps.length - 1})`,
     `ÉTAPE ÉCHOUÉE : index ${failIndex} → ${JSON.stringify(manifest.steps[failIndex] ?? null)}`,
-    `ERREUR EXACTE : ${errorMessage.slice(0, 800)}`,
+    // 1 500 : les erreurs Composio embarquent souvent la MARCHE À SUIVRE
+    // (ex. Notion : « use NOTION_FETCH_DATA with fetch_type='databases' to
+    // find valid database IDs ») — tronquer à 800 la coupait parfois.
+    `ERREUR EXACTE : ${errorMessage.slice(0, 1500)}`,
     "",
     `VARIABLES DISPONIBLES (produites par les étapes réussies + contexte) :\n${availableVars || "(aucune)"}`,
     "",

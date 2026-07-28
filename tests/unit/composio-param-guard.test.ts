@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   applyComposioSchemaDefaults,
   missingRequiredComposioParams,
+  alignParamKeysToSchema,
 } from "../../lib/composio/param-guard";
 import type { ComposioToolEntry } from "../../lib/composio/catalog";
 
@@ -119,4 +120,24 @@ test("collectSchemaEnum — enum plat, anyOf, const, items (schémas composés t
     ["doc", "whiteboard", "presentation"],
   );
   assert.equal(collectSchemaEnum({ type: "string" }), undefined);
+});
+
+// ── Élagage des clés hors schéma ────────────────────────────────────────────
+// Les plans LLM inventent des paramètres (« target », « options »…) que la
+// validation Composio stricte rejette (« Extra inputs are not permitted »).
+// alignParamKeysToSchema conserve les inconnues : c'est guardComposioParams
+// qui les retire — testé ici sur la primitive d'alignement + le contrat.
+
+test("alignParamKeysToSchema — les clés inconnues subsistent (l'élagage vit dans guardComposioParams)", () => {
+  const inputs = [
+    { key: "database_id", label: "Database Id", required: true, rawType: "string" },
+    { key: "rows", label: "Rows", required: true, rawType: "array" },
+  ] as never[];
+  const aligned = alignParamKeysToSchema(inputs, {
+    databaseId: "abc",       // aligné par tokens → database_id
+    rows: "[]",
+    target: "ma base",       // inventé par le LLM — hors schéma
+  });
+  assert.equal(aligned.database_id, "abc");
+  assert.equal(aligned.target, "ma base"); // encore là : le garde l'élague ensuite
 });

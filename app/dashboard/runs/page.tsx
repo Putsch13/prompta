@@ -72,7 +72,7 @@ function RunsHistoryContent() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [savedAgents, setSavedAgents] = useState<
-    { id: string; title: string; versionId: string; createdAt: string }[]
+    { id: string; title: string; description?: string; versionId: string; createdAt: string }[]
   >([]);
   // Plannings (scheduled_runs) : un par agent au plus, indexé par listingId.
   const [schedules, setSchedules] = useState<
@@ -449,8 +449,11 @@ function RunsHistoryContent() {
           {/* Bibliothèque : agents gardés depuis l'extension, relançables. */}
           {savedAgents.length > 0 && (
             <>
-              <p className="px-2 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+              <p className="px-2 pb-0.5 pt-5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
                 Agents sauvegardés
+              </p>
+              <p className="px-2 pb-1.5 text-[11px] leading-snug text-ink-faint">
+                Tes missions gardées depuis l&apos;extension : ▶ rejoue le même plan, 🕘 le programme (chaque jour/semaine).
               </p>
               {savedAgents.map((a) => (
                 <div
@@ -465,8 +468,15 @@ function RunsHistoryContent() {
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   >
                     <span className="text-accent">🤖</span>
-                    <span className={`truncate font-medium ${selectedAgent === a.id ? "text-accent" : "text-ink-soft"}`}>
-                      {a.title}
+                    <span className="min-w-0">
+                      <span className={`block truncate font-medium ${selectedAgent === a.id ? "text-accent" : "text-ink-soft"}`}>
+                        {a.title}
+                      </span>
+                      {a.description ? (
+                        <span className="block truncate text-[11px] text-ink-faint" title={a.description}>
+                          {a.description}
+                        </span>
+                      ) : null}
                     </span>
                   </button>
                   <button
