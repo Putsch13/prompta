@@ -164,13 +164,24 @@ function msgCard(item, liveSteps) {
     }
   }
   if (liveSteps && liveSteps.length) {
-    body += `<div class="steps">${liveSteps.map((label, i) => {
-      const done = item.stepsCompleted ?? 0;
-      const ic = i < done ? "✓" : i === done && (item.status === "running" || item.status === "pending") ? "▶" : "·";
-      return `<div class="step"><span class="ic ${i < done ? "ok" : ""}">${ic}</span><span>${esc(label)}</span></div>`;
+    // Arborescence du plan : nœuds en cascade, halo pulsant sur l'étape
+    // active, ✓ à l'accomplissement. Les nœuds faits ne rejouent pas leur
+    // animation d'entrée (le feed se re-rend à chaque étape terminée).
+    const done = item.stepsCompleted ?? 0;
+    const runLive = item.status === "running" || item.status === "pending";
+    body += `<div class="ptree">${liveSteps.map((label, i) => {
+      const cls = i < done ? "done" : i === done && runLive ? "act" : "";
+      const knot = i < done ? "✓" : i + 1;
+      const delay = cls === "done" ? "" : ` style="animation-delay:${Math.min(i * 80, 640)}ms"`;
+      return `<div class="pnode ${cls}"${delay}><span class="knot">${knot}</span><span class="lbl">${esc(label)}</span></div>`;
     }).join("")}</div>`;
   } else if (liveSteps && (item.status === "running" || item.status === "pending")) {
-    body += `<div class="think"><span class="orb"></span> Prompta conçoit l'agent…</div>`;
+    // Phase conception : le « cerveau » se construit — nœuds fantômes qui
+    // apparaissent, étincelle qui parcourt la colonne, en attendant le plan.
+    body += `<div class="ptree-head"><span class="orb"></span> Je conçois le plan…</div>
+      <div class="ptree"><span class="spark"></span>${[62, 78, 54, 70].map((w, i) =>
+        `<div class="pnode ghost" style="animation-delay:${i * 300}ms"><span class="knot"></span><span class="lbl" style="width:${w}%"></span></div>`
+      ).join("")}</div>`;
   }
   let footer = "";
   if (item.answer) footer += `<div class="answer" style="margin-top:8px;color:var(--ink);white-space:pre-wrap">${esc(item.answer).slice(0, 12000)}${item.status === "streaming" ? '<span class="caret"></span>' : ""}</div>`;

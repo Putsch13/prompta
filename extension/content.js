@@ -229,6 +229,30 @@
       .caret { display:inline-block; width:7px; height:14px; background:#38BDF8; border-radius:2px; vertical-align:-2px; animation:pblink .9s steps(1) infinite; }
       @keyframes pblink { 50% { opacity:0; } }
       .step { display:flex; gap:8px; font-size:12px; color:#8FA1BC; padding:1.5px 0; } .step .k { width:14px; text-align:center; } .step .k.ok { color:#34D399; } .step .k.run { color:#FBBF24; }
+      /* Arborescence du plan (« cerveau » de l'agent) — voir popup.html. */
+      .ptree { margin-top:8px; position:relative; display:flex; flex-direction:column; }
+      .pnode { display:flex; align-items:flex-start; gap:9px; position:relative; padding:3px 0 5px; opacity:0; animation:pnode-in .38s cubic-bezier(.2,.9,.3,1.35) forwards; }
+      .pnode.done { animation:none; opacity:1; }
+      .pnode::before { content:""; position:absolute; left:7px; top:19px; bottom:-2px; width:2px; background:#172136; border-radius:1px; }
+      .pnode:last-child::before { display:none; }
+      .pnode.done::before { background:#34D399; opacity:.45; }
+      .pnode .knot { position:relative; z-index:1; width:16px; height:16px; border-radius:50%; border:2px solid #172136; background:#0E1524; flex:none; display:flex; align-items:center; justify-content:center; font-size:8.5px; font-weight:700; color:#5B6B85; transition:border-color .35s,background .35s,color .35s; box-sizing:border-box; }
+      .pnode.done .knot { border-color:#34D399; color:#34D399; background:rgba(52,211,153,.12); animation:pknot-pop .32s cubic-bezier(.2,.9,.3,1.6); }
+      .pnode.act .knot { border-color:#38BDF8; color:#38BDF8; animation:ppulse 1.5s ease-out infinite; }
+      .pnode .lbl { font-size:12px; color:#8FA1BC; line-height:1.45; padding-top:1px; min-width:0; }
+      .pnode.done .lbl { color:#5B6B85; }
+      .pnode.act .lbl { color:#E4EDF9; }
+      .pnode.ghost .knot { border-style:dashed; animation:pghost-spin 2.4s linear infinite; }
+      .pnode.ghost .lbl { height:9px; border-radius:5px; margin-top:4px; background:linear-gradient(90deg,#172136 25%,#0E1524 50%,#172136 75%); background-size:200% 100%; animation:pshimmer 1.4s linear infinite; }
+      .ptree .spark { position:absolute; z-index:2; left:5px; top:0; width:6px; height:6px; border-radius:50%; background:#67D0FF; box-shadow:0 0 9px #38BDF8,0 0 3px #67D0FF; animation:pspark 1.9s ease-in-out infinite; pointer-events:none; }
+      .ptree-head { display:flex; align-items:center; gap:7px; margin:6px 0 4px; font-size:12px; color:#8FA1BC; }
+      @keyframes pnode-in { from { opacity:0; transform:translateY(7px) scale(.9); } to { opacity:1; transform:none; } }
+      @keyframes pknot-pop { 0% { transform:scale(.6); } 60% { transform:scale(1.25); } 100% { transform:scale(1); } }
+      @keyframes ppulse { 0% { box-shadow:0 0 0 0 rgba(56,189,248,.5); } 75% { box-shadow:0 0 0 7px rgba(56,189,248,0); } 100% { box-shadow:0 0 0 0 rgba(56,189,248,0); } }
+      @keyframes pghost-spin { to { transform:rotate(360deg); } }
+      @keyframes pshimmer { to { background-position:-200% 0; } }
+      @keyframes pspark { 0% { top:4px; opacity:0; } 12% { opacity:1; } 88% { opacity:1; } 100% { top:calc(100% - 10px); opacity:0; } }
+      @media (prefers-reduced-motion: reduce) { .pnode { animation: none; opacity: 1; } .pnode.act .knot, .pnode.ghost .knot, .pnode.ghost .lbl { animation: none; } .ptree .spark { display: none; } }
       .pilotlive { display:flex; align-items:center; gap:7px; margin-top:8px; padding:7px 10px; border-radius:9px; background:rgba(56,189,248,.1); border:1px solid rgba(56,189,248,.28); font-size:12px; color:#E4EDF9; } .pilotlive b { color:#38BDF8; font-weight:600; }
       .actlog { margin-top:8px; border-left:2px solid rgba(56,189,248,.2); padding-left:9px; display:flex; flex-direction:column; gap:2px; }
       .actrow { display:flex; gap:7px; font-size:11.5px; color:#8FA1BC; line-height:1.45; } .actrow .k { width:12px; text-align:center; flex-shrink:0; } .actrow .k.ok { color:#34D399; } .actrow .k.ko { color:#F87171; } .actrow .k.run { color:#FBBF24; } .actrow .pv { color:#5B6B85; }
@@ -428,8 +452,16 @@
     let body = it.notice ? `<div style="color:#34D399;font-size:12px;margin-bottom:6px">${esc(it.notice)}</div>` : "";
     if (it.answer) body += `<div class="ans">${esc(it.answer).slice(0, 12000)}${it.status === "streaming" ? '<span class="caret"></span>' : ""}</div>`;
     else if (it.status === "streaming") body += `<div class="think"><span class="orb"></span> Prompta réfléchit…</div>`;
-    if (isMission && it.planned?.length) body += `<div style="margin-top:${it.answer ? "8px" : "0"}">${it.planned.map((l, i) => { const d = it.stepsCompleted ?? it.stepsDone ?? 0; const k = i < d ? "✓" : i === d && (it.status === "running" || it.status === "pending") ? "▶" : "·"; return `<div class="step"><span class="k ${i < d ? "ok" : i === d && (it.status === "running" || it.status === "pending") ? "run" : ""}">${k}</span><span>${esc(l)}</span></div>`; }).join("")}</div>`;
-    else if (isMission && (it.status === "running" || it.status === "pending")) body += `<div class="think"><span class="orb"></span> Prompta conçoit l'agent…</div>`;
+    if (isMission && it.planned?.length) {
+      const d = it.stepsCompleted ?? it.stepsDone ?? 0;
+      const runLive = it.status === "running" || it.status === "pending";
+      body += `<div class="ptree" style="margin-top:${it.answer ? "8px" : "0"}">${it.planned.map((l, i) => {
+        const cls = i < d ? "done" : i === d && runLive ? "act" : "";
+        const delay = cls === "done" ? "" : ` style="animation-delay:${Math.min(i * 80, 640)}ms"`;
+        return `<div class="pnode ${cls}"${delay}><span class="knot">${i < d ? "✓" : i + 1}</span><span class="lbl">${esc(l)}</span></div>`;
+      }).join("")}</div>`;
+    }
+    else if (isMission && (it.status === "running" || it.status === "pending")) body += `<div class="ptree-head"><span class="orb"></span> Je conçois le plan…</div><div class="ptree"><span class="spark"></span>${[62, 78, 54, 70].map((w, i) => `<div class="pnode ghost" style="animation-delay:${i * 300}ms"><span class="knot"></span><span class="lbl" style="width:${w}%"></span></div>`).join("")}</div>`;
     // Rapport LIVE : action de pilotage en cours + journal des dernières étapes.
     if (isMission && live) {
       if (it.pilotAction) {

@@ -712,21 +712,43 @@ function Message(props: {
         )}
         {status === "streaming" && !answer && <div className="animate-pulse text-ink-soft">Prompta réfléchit…</div>}
 
+        {/* Arborescence du plan : nœuds en cascade, halo pulsant sur l'étape
+            active, ✓ à l'accomplissement — même langage visuel que l'extension. */}
         {isAgent && (planned.length > 0) && (
-          <div className="mt-1 space-y-0.5">
-            {planned.map((label, i) => (
-              <div key={i} className="flex items-baseline gap-2 text-ink-soft">
-                <span className={i < stepsDone ? "text-success" : "text-ink-faint"}>
-                  {i < stepsDone ? "✓" : i === stepsDone && (status === "running" || status === "pending") ? "▶" : "·"}
-                </span>
-                <span>{label}</span>
-              </div>
-            ))}
+          <div className="ptree mt-1">
+            {planned.map((label, i) => {
+              const runLive = status === "running" || status === "pending";
+              const cls = i < stepsDone ? "done" : i === stepsDone && runLive ? "act" : "";
+              return (
+                <div key={i} className={`pnode ${cls}`}
+                     style={cls === "done" ? undefined : { animationDelay: `${Math.min(i * 80, 640)}ms` }}>
+                  <span className="knot">{i < stepsDone ? "✓" : i + 1}</span>
+                  <span className="lbl">{label}</span>
+                </div>
+              );
+            })}
           </div>
         )}
 
+        {/* Phase conception : le « cerveau » se construit — nœuds fantômes,
+            étincelle qui parcourt la colonne, en attendant le plan. */}
         {isAgent && planned.length === 0 && (status === "running" || status === "pending") && (
-          <div className="text-ink-soft">🧠 Prompta conçoit l&apos;agent…</div>
+          <>
+            <div className="flex items-center gap-2 text-ink-soft">
+              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full"
+                    style={{ background: "conic-gradient(from 0deg, #38BDF8, #1E7FC2, #38BDF8)" }} />
+              Je conçois le plan…
+            </div>
+            <div className="ptree mt-1.5">
+              <span className="spark" />
+              {[62, 78, 54, 70].map((w, i) => (
+                <div key={i} className="pnode ghost" style={{ animationDelay: `${i * 300}ms` }}>
+                  <span className="knot" />
+                  <span className="lbl" style={{ width: `${w}%` }} />
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         <div className="mt-2 flex items-center gap-2 text-xs">

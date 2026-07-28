@@ -219,7 +219,15 @@ export async function runBrowserPilot(params: {
   // Plafond relevé : les tâches répétitives (révéler N numéros, dérouler des
   // résultats) épuisaient vite 12 actions. 40 max reste borné contre la boucle.
   const maxActions = Math.min(Math.max(params.maxActions ?? DEFAULT_MAX_ACTIONS, 1), 40);
+  // Le plafond ne compte que les VRAIES interactions (click/type/select/
+  // navigate). Avant, chaque tour décomptait — scroll, wait, action refusée,
+  // erreur de transport — si bien qu'une page lente ou une liste à dérouler
+  // « brûlait » 22 actions sans avoir interagi, et la mission mourait sur
+  // « Plafond atteint » alors que l'objectif n'exigeait presque rien.
+  // Les tours d'observation gardent leur propre borne, large, contre la boucle.
+  const maxTurns = maxActions * 2 + 8;
   const history: string[] = [];
+  let interactions = 0;
   let inputTokens = 0;
   let outputTokens = 0;
   // Deux échecs de transport consécutifs (extension fermée, onglet perdu) :
@@ -236,13 +244,20 @@ export async function runBrowserPilot(params: {
   if (!resp.ok || !resp.snapshot) throw new Error(resp.error ?? "Snapshot de page impossible.");
   let snapshot: BrowserSnapshot = resp.snapshot;
 
-  for (let turn = 0; turn < maxActions; turn++) {
+  for (let turn = 0; turn < maxTurns && interactions < maxActions; turn++) {
+    // Prévenir le pilote quand le budget baisse : il conclut de lui-même
+    // (« done » avec ce qui est acquis) au lieu de foncer dans le plafond.
+    const remaining = maxActions - interactions;
+    const budgetWarning =
+      remaining <= 3
+        ? `\n⚠️ BUDGET : il te reste ${remaining} action${remaining > 1 ? "s" : ""} d'interaction. Si l'objectif est atteint ou presque, termine par "done" MAINTENANT avec le résumé de ce qui est fait et observé.`
+        : "";
     const userPrompt = [
       `OBJECTIF : ${goal}`,
       "",
       history.length ? `HISTORIQUE DE TES ACTIONS :\n${history.map((h, i) => `${i + 1}. ${h}`).join("\n")}` : "Aucune action encore effectuée.",
       "",
-      `SNAPSHOT ACTUEL :\n${formatSnapshot(snapshot)}`,
+      `SNAPSHOT ACTUEL :\n${formatSnapshot(snapshot)}${budgetWarning}`,
     ].join("\n");
 
     const result = await callModel({
@@ -266,7 +281,7 @@ export async function runBrowserPilot(params: {
       return {
         summary: decision.summary?.trim() || "Objectif atteint.",
         finalUrl: snapshot.url,
-        actionsUsed: turn,
+        actionsUsed: interactions,
         inputTokens,
         outputTokens,
         model: resolved.apiModel,
@@ -307,10 +322,59 @@ export async function runBrowserPilot(params: {
     }
     transportFailures = 0;
     history.push(label);
+    // Seules les interactions consomment le budget ; scroll/wait sont de
+    // l'observation, bornée séparément par maxTurns.
+    if (action.type !== "scroll" && action.type !== "wait") interactions++;
     if (resp.snapshot) snapshot = resp.snapshot;
   }
 
+  // ── Plafond atteint : dernier tour de SYNTHÈSE, pas une perte sèche ───────
+  // Le pilote a souvent déjà accompli (ou observé) l'essentiel quand le budget
+  // s'épuise. Avant, on jetait tout — l'utilisateur récupérait « Plafond de
+  // 22 actions atteint » après avoir REGARDÉ l'agent travailler. On force
+  // maintenant un bilan : ce qui a été fait et observé devient la sortie de
+  // l'étape, exploitable par la suite de la mission.
+  try {
+    const wrap = await callModel({
+      provider: resolved.provider,
+      model: resolved.apiModel,
+      messages: [
+        { role: "system", content: PILOT_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: [
+            `OBJECTIF : ${goal}`,
+            "",
+            `HISTORIQUE DE TES ACTIONS :\n${history.map((h, i) => `${i + 1}. ${h}`).join("\n")}`,
+            "",
+            `DERNIER SNAPSHOT :\n${formatSnapshot(snapshot)}`,
+            "",
+            `BUDGET ÉPUISÉ — plus aucune action possible. Réponds OBLIGATOIREMENT {"action":"done","summary":"…"} : résume précisément ce qui a été ACCOMPLI et les informations OBSERVÉES (données, textes, résultats visibles dans l'historique et le snapshot). Si strictement rien d'utile n'a été fait ni observé, réponds {"action":"fail","reason":"…"}.`,
+          ].join("\n"),
+        },
+      ],
+      apiKey,
+      maxTokens: 900,
+      tokenParam: resolved.tokenParam,
+    });
+    inputTokens += wrap.inputTokens;
+    outputTokens += wrap.outputTokens;
+    const finale = parseLlmJson<PilotDecision>(wrap.content);
+    if (finale?.action === "done" && finale.summary?.trim()) {
+      return {
+        summary: `${finale.summary.trim()}\n\n[Pilotage arrêté au plafond de ${maxActions} actions : le bilan ci-dessus couvre ce qui a été réalisé — l'objectif n'est peut-être pas complet.]`,
+        finalUrl: snapshot.url,
+        actionsUsed: interactions,
+        inputTokens,
+        outputTokens,
+        model: resolved.apiModel,
+      };
+    }
+  } catch {
+    /* bilan best-effort — on retombe sur l'erreur explicite ci-dessous */
+  }
+
   throw new Error(
-    `Plafond de ${maxActions} actions de pilotage atteint sans terminer — reformule un objectif plus précis ou découpe la mission.`,
+    `Plafond de ${maxActions} actions de pilotage atteint sans terminer — reformule un objectif plus précis ou découpe la mission. Dernières actions : ${history.slice(-4).join(" ; ").slice(0, 300)}`,
   );
 }
