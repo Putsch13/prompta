@@ -138,6 +138,14 @@
 
     /* Composer */
     .composer { padding: 8px 14px 14px; border-top: 1px solid var(--line); }
+    .attach-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px 7px; }
+    .attach-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: var(--panel2); border: 1px solid rgba(56,189,248,.35); border-radius: 999px; padding: 3px 6px 3px 10px; font-size: 11px; color: var(--soft); }
+    .attach-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+    .attach-chip.up { border-style: dashed; } .attach-chip.err { border-color: var(--red); color: var(--red); }
+    .attach-chip .x { border: none; background: none; color: var(--faint); cursor: pointer; font-size: 12px; padding: 0 3px; }
+    .attach-chip .x:hover { color: var(--red); }
+    .attach-btn { border: none; background: none; color: var(--faint); font-size: 15px; cursor: pointer; padding: 4px 2px; align-self: flex-end; transition: color .15s; }
+    .attach-btn:hover { color: var(--accent-hi); }
     .composer-box { display: flex; gap: 8px; align-items: flex-end; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
     .composer-box:focus-within { border-color: var(--accent); }
     textarea { flex: 1; border: none; background: none; color: var(--ink); font-size: 13px; resize: none; outline: none; max-height: 120px; min-height: 20px; line-height: 1.4; }
@@ -178,7 +186,11 @@
   </div>
 
   <div class="composer">
+    <div id="attach-chips" class="attach-chips" style="display:none"></div>
     <div class="composer-box">
+      <button class="attach-btn" id="attach" title="Joindre un fichier (PDF, Word, Excel…)">📎</button>
+      <input type="file" id="attach-input" multiple style="display:none"
+             accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.csv,.md,.json" />
       <textarea id="goal" rows="1" placeholder="Demande simple ou grosse mission…  (Entrée)"></textarea>
       <button class="send" id="send" title="Lancer">➤</button>
     </div>

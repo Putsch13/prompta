@@ -112,6 +112,42 @@ export default function QuickPage() {
   const [deciding, setDeciding] = useState(false);
   /** Frontière « nouvelle conversation » : le fil et l'historique envoyé au cerveau repartent d'ici. */
   const [convoStart, setConvoStart] = useState(0);
+  /** Pièces jointes du chat (📎) — texte extrait côté serveur, {{file_content}} au runtime. */
+  const [attachments, setAttachments] = useState<
+    { id?: string; name: string; chars?: number; status: "up" | "ok" | "err"; error?: string }[]
+  >([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const addAttachment = useCallback(async (file: File) => {
+    if (file.size > 8 * 1024 * 1024) {
+      setAttachments((a) => [...a, { name: file.name, status: "err", error: "Fichier trop volumineux (max 8 Mo)." }]);
+      return;
+    }
+    const key = `${file.name}-${Date.now()}`;
+    setAttachments((a) => (a.filter((x) => x.status !== "err").length >= 3 ? a : [...a, { id: key, name: file.name, status: "up" }]));
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await fetch("/api/extension/attachment", { method: "POST", body: fd });
+      const body = await res.json().catch(() => ({}));
+      setAttachments((a) =>
+        a.map((x) =>
+          x.id === key
+            ? res.ok && body.id
+              ? { id: body.id, name: x.name, chars: body.chars, status: "ok" as const }
+              : { name: x.name, status: "err" as const, error: body.message ?? "Envoi impossible." }
+            : x,
+        ),
+      );
+    } catch {
+      setAttachments((a) => a.map((x) => (x.id === key ? { name: x.name, status: "err" as const, error: "Réseau indisponible." } : x)));
+    }
+  }, []);
+
+  const attachmentRefs = useCallback(
+    () => attachments.filter((a) => a.status === "ok" && a.id).map((a) => ({ id: a.id, name: a.name })),
+    [attachments],
+  );
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const busyRef = useRef(false);
@@ -230,7 +266,7 @@ export default function QuickPage() {
         headers: { "content-type": "application/json" },
         // client:"quick" = pas d'exécuteur de pilotage navigateur ici : le
         // serveur interdit les étapes browser (sinon timeout 60 s garanti).
-        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined, history: buildConvoHistory(), client: "quick" }),
+        body: JSON.stringify({ goal: g, page: { ...page, links: explore ? page.links : undefined }, modelId: model || undefined, history: buildConvoHistory(), client: "quick", attachments: attachmentRefs() }),
       });
     } catch {
       busyRef.current = false; setBusy(false); setLive(null);
@@ -383,6 +419,7 @@ export default function QuickPage() {
           history: [...history].reverse().slice(-3).flatMap((h) =>
             h.goal && h.answer ? [{ role: "user" as const, content: h.goal }, { role: "assistant" as const, content: h.answer }] : [],
           ),
+          attachments: attachmentRefs(),
         }),
       });
       if (!res.ok || !res.body) {
@@ -431,6 +468,7 @@ export default function QuickPage() {
   /** ✚ Nouvelle conversation : frontière nette — le cerveau ne reçoit plus l'historique d'avant. */
   function newConversation() {
     setConvoStart(Date.now());
+    setAttachments([]);
     setClarify(null); setPendingConnect(null); setError(null);
     setApproval(null); setApprovalErr(null); approvalSeenRef.current = null;
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -649,7 +687,32 @@ export default function QuickPage() {
             </div>
           )}
 
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-1 pb-2">
+              {attachments.map((a, i) => (
+                <span key={a.id ?? `${a.name}-${i}`} title={a.error ?? a.name}
+                      className={`inline-flex max-w-full items-center gap-1.5 rounded-full border py-0.5 pl-2.5 pr-1.5 text-[11px] ${
+                        a.status === "err" ? "border-destructive/50 text-destructive" : a.status === "up" ? "border-dashed border-accent/40 text-ink-soft" : "border-accent/40 text-ink-soft"
+                      }`}>
+                  {a.status === "up" ? "⏳" : a.status === "err" ? "⚠️" : "📎"}
+                  <span className="max-w-[180px] truncate">{a.name}</span>
+                  <button onClick={() => setAttachments((list) => list.filter((_, j) => j !== i))}
+                          className="px-0.5 text-ink-faint hover:text-destructive" title="Retirer">✕</button>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="flex items-end gap-2 rounded-2xl border border-line bg-card2 p-2 focus-within:border-accent">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              title="Joindre un fichier (PDF, Word, Excel…)"
+              className={`shrink-0 px-1.5 pb-1.5 text-[15px] transition-colors ${attachments.some((a) => a.status === "ok") ? "text-accent" : "text-ink-faint hover:text-accent-hover"}`}
+            >📎</button>
+            <input
+              ref={fileInputRef} type="file" multiple className="hidden"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.csv,.md,.json"
+              onChange={async (e) => { for (const f of Array.from(e.target.files ?? [])) await addAttachment(f); e.target.value = ""; }}
+            />
             <textarea
               ref={inputRef}
               value={goal}

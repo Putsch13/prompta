@@ -244,6 +244,20 @@ export async function runBrowserPilot(params: {
   if (!resp.ok || !resp.snapshot) throw new Error(resp.error ?? "Snapshot de page impossible.");
   let snapshot: BrowserSnapshot = resp.snapshot;
 
+  // Fail-fast : page sans DOM pilotable (visionneuse PDF de Chrome, fichier
+  // local). Sans ce garde, le pilote brûlait des tours LLM à constater
+  // « aucun texte lisible ni éléments interactifs » avant d'échouer en
+  // termes techniques. On échoue tout de suite, avec la marche à suivre.
+  const unpilotable =
+    snapshot.elements.length === 0 &&
+    snapshot.text.trim().length < 40 &&
+    (/\.pdf($|[?#])/i.test(snapshot.url) || /^file:/i.test(snapshot.url));
+  if (unpilotable) {
+    throw new Error(
+      "Cette page est un PDF ou un fichier local : la visionneuse du navigateur n'expose ni texte ni éléments cliquables, elle n'est pas pilotable. Joins le fichier à ta demande (bouton 📎 du chat) ou fournis une URL http(s) lisible.",
+    );
+  }
+
   for (let turn = 0; turn < maxTurns && interactions < maxActions; turn++) {
     // Prévenir le pilote quand le budget baisse : il conclut de lui-même
     // (« done » avec ce qui est acquis) au lieu de foncer dans le plafond.

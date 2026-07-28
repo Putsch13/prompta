@@ -403,8 +403,10 @@ export async function buildInstantAgent(params: {
    * (extension).
    */
   browserAvailable?: boolean;
+  /** Pièces jointes déjà extraites : le texte intégral vit dans {{file_content}}. */
+  attachments?: { name: string; chars: number }[];
 }): Promise<InstantAgentResult> {
-  const { goal, page, userEmail, apiKey, resolved, usableConnectors, usableModels, history, browserAvailable = true } = params;
+  const { goal, page, userEmail, apiKey, resolved, usableConnectors, usableModels, history, browserAvailable = true, attachments = [] } = params;
 
   // L'utilisateur nomme-t-il des modèles dans son ordre (« avec claude tu fais…,
   // gpt-5.5 tu fais… ») ? Si oui, on laisse le planificateur ASSIGNER le modèle
@@ -452,9 +454,27 @@ export async function buildInstantAgent(params: {
     ? `⚠️ PILOTAGE NAVIGATEUR INDISPONIBLE — L'utilisateur ne passe PAS par l'extension : le type d'étape "browser" est STRICTEMENT INTERDIT pour cette mission. Accomplis l'objectif avec les connecteurs, web_fetch/web_search et les étapes llm. Si l'ordre EXIGE d'interagir avec l'interface d'une page (cliquer, remplir un formulaire, dérouler des résultats), réponds au format B (questions) en expliquant que cette mission doit être lancée depuis l'extension « Prompta partout ».`
     : "";
 
+  // Pièces jointes : le planificateur sait CE QUI est joint et OÙ le lire.
+  const attachDirective = attachments.length
+    ? `📎 PIÈCES JOINTES FOURNIES : ${attachments.map((a) => `« ${a.name} » (${a.chars} caractères)`).join(", ")}. Leur texte INTÉGRAL est déjà disponible dans la variable {{file_content}} — lis-le directement dans une étape llm ({{file_content}}) ou via {"type":"tool","tool":"file_read"}. INTERDICTION d'utiliser web_fetch, browser ou une action d'app pour « récupérer » un fichier joint : il est déjà là.`
+    : "";
+
+  // Visionneuse PDF de Chrome : AUCUN texte ni DOM accessible. Sans cette
+  // consigne le planificateur envoyait un pilotage browser sur une page vide
+  // (cul-de-sac garanti : « aucun texte lisible ni éléments interactifs »).
+  const isHttpPdf = page.isPdf && /^https?:/i.test(page.url ?? "");
+  const pdfConstraint =
+    page.isPdf && !page.content?.trim() && attachments.length === 0
+      ? isHttpPdf
+        ? `⚠️ PAGE ACTIVE = PDF dont le texte n'est PAS accessible à l'écran (visionneuse Chrome). Si l'ordre porte sur ce document : lis-le avec {"type":"tool","tool":"web_fetch","params":{"url":"${(page.url ?? "").slice(0, 300)}"}} (web_fetch extrait le texte intégral des PDF). JAMAIS d'étape browser sur cette page : elle n'a ni texte ni éléments cliquables.`
+        : `⚠️ PAGE ACTIVE = PDF LOCAL (fichier hors ligne) : son contenu est TOTALEMENT inaccessible — ni à l'écran, ni par web_fetch, ni par pilotage browser. Si l'ordre porte sur ce document, réponds au format B (questions) en demandant à l'utilisateur de JOINDRE le fichier avec le bouton 📎 du chat.`
+      : "";
+
   const userPrompt = [
     `ORDRE DE L'UTILISATEUR : ${goal}`,
     "",
+    ...(attachDirective ? [attachDirective, ""] : []),
+    ...(pdfConstraint ? [pdfConstraint, ""] : []),
     ...(noBrowserConstraint ? [noBrowserConstraint, ""] : []),
     ...(screenConstraint ? [screenConstraint, ""] : []),
     ...(modelDirective ? [modelDirective, ""] : []),
@@ -610,6 +630,33 @@ export async function buildInstantAgent(params: {
   // (le LLM a ignoré la contrainte) partirait en timeout 60 s « le navigateur
   // ne répond pas » → on explique à l'utilisateur AVANT de lancer quoi que
   // ce soit, via le canal clarify existant.
+  // Garde-fou CODE : un pilotage sur la page PDF active (pas de tabHint =
+  // onglet actif) échouerait à coup sûr — la visionneuse n'expose rien.
+  if (
+    page.isPdf &&
+    !page.content?.trim() &&
+    data.steps.some((st) => st.type === "browser" && !("tabHint" in st && st.tabHint?.trim()))
+  ) {
+    if (/^https?:/i.test(page.url ?? "")) {
+      // PDF en ligne : remplacer le pilotage par une lecture web_fetch.
+      data = {
+        ...data,
+        steps: data.steps.map((st) =>
+          st.type === "browser" && !st.tabHint?.trim()
+            ? ({ type: "tool", tool: "web_fetch", params: { url: (page.url ?? "").slice(0, 500) }, outputKey: st.outputKey ?? "pdf_actif" } as (typeof data.steps)[number])
+            : st,
+        ),
+      };
+    } else {
+      return {
+        kind: "clarify",
+        questions: [
+          "Le document affiché est un PDF local : je ne peux pas le lire depuis l'écran. Joins le fichier à ta demande avec le bouton 📎 du chat, et je m'en occupe.",
+        ],
+      };
+    }
+  }
+
   if (!browserAvailable && data.steps.some((st) => st.type === "browser")) {
     return {
       kind: "clarify",

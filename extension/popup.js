@@ -18,6 +18,7 @@ let activePage = null;   // capture de l'onglet actif
 let openTabs = [];       // [{title, url, checked}]
 let session = [];        // échanges instantanés terminés (cette session popup)
 let convoStart = 0;      // frontière « nouvelle conversation » (timestamp)
+let attachments = [];    // [{id, name, chars, status:"up"|"ok"|"err", error}] pièces jointes du chat
 
 const $ = (id) => document.getElementById(id);
 const feed = $("feed");
@@ -32,6 +33,9 @@ const ctxHead = $("ctx-head");
 const ctxSummary = $("ctx-summary");
 const alltabsEl = $("alltabs");
 const exploreEl = $("explore");
+const attachBtn = $("attach");
+const attachInput = $("attach-input");
+const attachChips = $("attach-chips");
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const slugLabel = (s) => String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
@@ -80,6 +84,64 @@ function extractAnswer(output) {
 // lastError lu volontairement : sinon le navigateur logue « Unchecked
 // runtime.lastError » quand le worker/event page est momentanément absent.
 const send = (type, extra) => new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => { void chrome.runtime.lastError; res(r || { ok: false, status: 0, body: {} }); }));
+
+// ── Pièces jointes (bouton 📎) ──────────────────────────────────────────────
+// Chrome n'expose RIEN du contenu des PDF à l'extension (visionneuse interne) :
+// joindre le fichier est LA façon de donner un document local à l'agent. Le
+// texte est extrait côté serveur à l'upload ({{file_content}} au runtime).
+const MAX_ATTACH = 3;
+const MAX_ATTACH_BYTES = 8 * 1024 * 1024; // marge sous le cap serveur (10 Mo) : le base64 transite par le messaging
+
+function renderAttachments() {
+  const ready = attachments.filter((a) => a.status !== "err");
+  attachChips.style.display = attachments.length ? "flex" : "none";
+  attachChips.innerHTML = attachments.map((a, i) => `
+    <span class="attach-chip ${a.status === "up" ? "up" : a.status === "err" ? "err" : ""}" title="${esc(a.error || a.name)}">
+      ${a.status === "up" ? "⏳" : a.status === "err" ? "⚠️" : "📎"} <span class="nm">${esc(a.name)}</span>
+      <button class="x" data-rm="${i}" title="Retirer">✕</button>
+    </span>`).join("");
+  attachChips.querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", () => {
+    attachments.splice(Number(b.dataset.rm), 1);
+    renderAttachments();
+  }));
+  attachBtn.style.color = ready.length ? "var(--accent)" : "";
+}
+
+async function addAttachment(file) {
+  if (attachments.filter((a) => a.status !== "err").length >= MAX_ATTACH) return;
+  if (file.size > MAX_ATTACH_BYTES) {
+    attachments.push({ name: file.name, status: "err", error: "Fichier trop volumineux (max 8 Mo)." });
+    renderAttachments(); return;
+  }
+  const entry = { name: file.name, status: "up" };
+  attachments.push(entry); renderAttachments();
+  try {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let bin = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < buf.length; i += CHUNK) bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
+    const r = await send("prompta:attach", { name: file.name, mime: file.type, b64: btoa(bin) });
+    if (r?.ok && r.body?.id) {
+      Object.assign(entry, { id: r.body.id, chars: r.body.chars, status: "ok" });
+    } else {
+      Object.assign(entry, { status: "err", error: r?.body?.message || "Envoi impossible." });
+    }
+  } catch {
+    Object.assign(entry, { status: "err", error: "Lecture du fichier impossible." });
+  }
+  renderAttachments();
+}
+
+/** Références prêtes à joindre aux appels instant/execute. */
+function attachmentRefs() {
+  return attachments.filter((a) => a.status === "ok" && a.id).map((a) => ({ id: a.id, name: a.name }));
+}
+
+attachBtn.addEventListener("click", () => attachInput.click());
+attachInput.addEventListener("change", async () => {
+  for (const f of attachInput.files || []) await addAttachment(f);
+  attachInput.value = "";
+});
 
 // ── Capture ─────────────────────────────────────────────────────────────────
 function pageCaptureFn(allowExplore, maxContent, maxLinks) {
@@ -474,7 +536,7 @@ async function launchMission(goal, notice, pageOverride) {
     }
   }
 
-  const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, history: buildConvoHistory() } });
+  const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, history: buildConvoHistory(), attachments: attachmentRefs() } });
   if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
     launching = false; sendBtn.disabled = false;
     pendingClarify = { goal, questions: r.body.clarify }; clarifyQ = r.body.clarify; current = null;
@@ -581,7 +643,7 @@ function launchInstant(goal, page) {
   });
   port.onDisconnect.addListener(() => { if (!closed) finish(current?.answer ? false : true, "Connexion interrompue."); });
   armWatchdog();
-  port.postMessage({ type: "start", payload: { goal, page, modelId: modelEl.value || undefined, history: hist.slice(-6) } });
+  port.postMessage({ type: "start", payload: { goal, page, modelId: modelEl.value || undefined, history: hist.slice(-6), attachments: attachmentRefs() } });
 }
 
 async function launch() {
@@ -625,6 +687,7 @@ sendBtn.addEventListener("click", launch);
 // plus envoyé au cerveau (fini les fausses « suites de mission »).
 $("newconvo-btn").addEventListener("click", () => {
   convoStart = Date.now();
+  attachments = []; renderAttachments();
   pendingClarify = null; clarifyQ = null;
   setPendingConnect(null);
   clearInterval(pollTimer); pollTimer = null;

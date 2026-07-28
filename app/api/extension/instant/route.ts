@@ -5,6 +5,8 @@ import { getBuilderApiKey } from "@/lib/builder/api-key";
 import { builderRateLimit } from "@/lib/builder/rate-limit";
 import { streamModelDeltas, type ChatMessage } from "@/lib/llm/gateway";
 import { buildPageContextBlock, type PageContext } from "@/lib/extension/instant-agent";
+import { loadAttachments, attachmentsBlock } from "@/lib/extension/attachments";
+import type { AttachmentRef } from "@/lib/extension/attachments";
 import {
   SENTINEL,
   isSentinelLead,
@@ -40,7 +42,7 @@ const SYSTEM_PROMPT = `Tu es l'assistant instantané de Prompta, dans le navigat
 
 DEUX régimes — choisis au premier token :
 
-1) RÉPONSE DIRECTE (la norme) : question, explication, traduction, réécriture, calcul, brainstorming, résumé ou analyse de la page/sélection fournie, avis, conversation. → Réponds DIRECTEMENT, dans la langue de l'utilisateur, de façon nette et utile. Le contenu de la page active t'est fourni : « cette page », « ce tableau », « ce que je vois » = ce contenu.
+1) RÉPONSE DIRECTE (la norme) : question, explication, traduction, réécriture, calcul, brainstorming, résumé ou analyse de la page/sélection fournie OU d'une PIÈCE JOINTE fournie (son texte t'est donné : lis-le directement), avis, conversation. → Réponds DIRECTEMENT, dans la langue de l'utilisateur, de façon nette et utile. Le contenu de la page active t'est fourni : « cette page », « ce tableau », « ce que je vois » = ce contenu.
 
 2) MISSION : l'ordre exige d'AGIR hors de cette conversation — écrire/envoyer/créer dans une app (email, Sheets, Notion, CRM, e-commerce…), produire un livrable (document, présentation, tableur), INTERAGIR avec la page affichée (cliquer, remplir un formulaire, naviguer sur le site), aller LIRE d'autres pages ou onglets que la page active fournie, recenser sur le web, ou enchaîner plusieurs outils. → Réponds EXACTEMENT « ${SENTINEL} » (ce seul mot, rien d'autre). Ne tente JAMAIS d'accomplir une mission toi-même : tu n'as aucun outil dans ce régime.
 
@@ -52,6 +54,8 @@ interface InstantBody {
   modelId?: string;
   /** Derniers échanges (continuité conversationnelle), plus récent en dernier. */
   history?: { role: "user" | "assistant"; content: string }[];
+  /** Pièces jointes (références — le texte est relu côté serveur). */
+  attachments?: AttachmentRef[];
 }
 
 function sse(payload: Record<string, unknown>): Uint8Array {
@@ -129,10 +133,15 @@ export async function POST(request: NextRequest) {
     .slice(-6)
     .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
 
+  // Pièces jointes : leur texte rejoint le contexte (plafonné pour le tac au
+  // tac — le régime mission reçoit la version longue via {{file_content}}).
+  const attachedDocs = await loadAttachments(user.id, body?.attachments, 10_000);
+  const attachBlock = attachmentsBlock(attachedDocs);
+
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     ...historyMsgs,
-    { role: "user", content: `${goal}\n\n${buildPageContextBlock(page)}` },
+    { role: "user", content: `${goal}\n\n${attachBlock ? `${attachBlock}\n\n` : ""}${buildPageContextBlock(page)}` },
   ];
 
   const { provider, apiModel, tokenParam, catalogId } = keyResult.resolved;

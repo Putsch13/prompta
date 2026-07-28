@@ -304,6 +304,12 @@
       .opts { display:flex; gap:14px; padding:4px 0 7px; font-size:11px; color:#8FA1BC; }
       .opts label { display:flex; align-items:center; gap:5px; cursor:pointer; }
       .composer { border-top:1px solid rgba(56,189,248,.12); padding:10px 13px 14px; flex-shrink:0; }
+      .attach-chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 2px 7px; }
+      .attach-chip { display:inline-flex; align-items:center; gap:6px; max-width:100%; background:rgba(14,21,36,.9); border:1px solid rgba(56,189,248,.35); border-radius:999px; padding:3px 6px 3px 10px; font-size:11px; color:#8FA1BC; }
+      .attach-chip .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:160px; }
+      .attach-chip.up { border-style:dashed; } .attach-chip.err { border-color:#F87171; color:#F87171; }
+      .attach-chip .x { border:none; background:none; color:#5B6B85; cursor:pointer; font-size:12px; padding:0 3px; }
+      .attach-chip .x:hover { color:#F87171; }
       .cbox { display:flex; align-items:flex-end; gap:8px; background:rgba(14,21,36,.9); border:1px solid rgba(56,189,248,.18); border-radius:15px; padding:8px; transition:border-color .15s, box-shadow .15s; }
       .cbox:focus-within { border-color:#38BDF8; box-shadow:0 0 0 3px rgba(56,189,248,.12); }
       .newc { width:32px; height:32px; flex-shrink:0; border-radius:10px; border:1px solid rgba(56,189,248,.3); background:transparent; color:#8FA1BC; font-size:15px; cursor:pointer; transition:all .15s; align-self:flex-end; }
@@ -375,8 +381,12 @@
         </div>
       </div>
       <div class="composer">
+        <div class="attach-chips" data-r="attachchips" style="display:none"></div>
         <div class="cbox">
           <button class="newc" data-r="newconvo" title="Nouvelle conversation">✚</button>
+          <button class="newc" data-r="attach" title="Joindre un fichier (PDF, Word, Excel…)">📎</button>
+          <input type="file" data-r="attachinput" multiple style="display:none"
+                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.csv,.md,.json" />
           <textarea data-r="goal" rows="1" placeholder="Demande simple ou grosse mission…  (Entrée)"></textarea>
           <button class="snd" data-r="send">↑</button>
         </div>
@@ -814,7 +824,7 @@
         page.openTabs = (cap?.ok && Array.isArray(cap.tabs) ? cap.tabs : targeted).filter((t) => t.url !== location.href);
       }
     }
-    const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, history: buildConvoHistory() } });
+    const r = await send("prompta:execute", { payload: { goal, page, modelId: modelEl.value || undefined, history: buildConvoHistory(), attachments: attachmentRefs() } });
     // L'agent demande des précisions : on affiche les questions, pas de run.
     if (r?.ok && Array.isArray(r.body?.clarify) && r.body.clarify.length) {
       launching = false; sendBtn.disabled = false;
@@ -884,8 +894,62 @@
     });
     port.onDisconnect.addListener(() => { if (!closed) finish(current?.answer ? false : true, "Connexion interrompue."); });
     armWatchdog();
-    port.postMessage({ type: "start", payload: { goal, page, modelId: modelEl.value || undefined, history: hist.slice(-6) } });
+    port.postMessage({ type: "start", payload: { goal, page, modelId: modelEl.value || undefined, history: hist.slice(-6), attachments: attachmentRefs() } });
   }
+
+  // ── Pièces jointes (bouton 📎) — voir extension/popup.js pour la doctrine.
+  let attachments = [];
+  const MAX_ATTACH = 3;
+  const MAX_ATTACH_BYTES = 8 * 1024 * 1024;
+  const attachChips = $("attachchips");
+  const attachInput = $("attachinput");
+
+  function renderAttachments() {
+    const ready = attachments.filter((a) => a.status !== "err");
+    attachChips.style.display = attachments.length ? "flex" : "none";
+    attachChips.innerHTML = attachments.map((a, i) => `
+      <span class="attach-chip ${a.status === "up" ? "up" : a.status === "err" ? "err" : ""}" title="${esc(a.error || a.name)}">
+        ${a.status === "up" ? "⏳" : a.status === "err" ? "⚠️" : "📎"} <span class="nm">${esc(a.name)}</span>
+        <button class="x" data-rm="${i}" title="Retirer">✕</button>
+      </span>`).join("");
+    attachChips.querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", () => {
+      attachments.splice(Number(b.dataset.rm), 1);
+      renderAttachments();
+    }));
+    $("attach").style.color = ready.length ? "#38BDF8" : "";
+  }
+
+  async function addAttachment(file) {
+    if (attachments.filter((a) => a.status !== "err").length >= MAX_ATTACH) return;
+    if (file.size > MAX_ATTACH_BYTES) {
+      attachments.push({ name: file.name, status: "err", error: "Fichier trop volumineux (max 8 Mo)." });
+      renderAttachments(); return;
+    }
+    const entry = { name: file.name, status: "up" };
+    attachments.push(entry); renderAttachments();
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      let bin = "";
+      const CHUNK = 0x8000;
+      for (let i = 0; i < buf.length; i += CHUNK) bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
+      const r = await send("prompta:attach", { name: file.name, mime: file.type, b64: btoa(bin) });
+      if (r?.ok && r.body?.id) Object.assign(entry, { id: r.body.id, chars: r.body.chars, status: "ok" });
+      else Object.assign(entry, { status: "err", error: r?.body?.message || "Envoi impossible." });
+    } catch {
+      Object.assign(entry, { status: "err", error: "Lecture du fichier impossible." });
+    }
+    renderAttachments();
+  }
+
+  function attachmentRefs() {
+    return attachments.filter((a) => a.status === "ok" && a.id).map((a) => ({ id: a.id, name: a.name }));
+  }
+
+  $("attach").addEventListener("click", () => attachInput.click());
+  attachInput.addEventListener("change", async () => {
+    for (const f of attachInput.files || []) await addAttachment(f);
+    attachInput.value = "";
+  });
 
   async function launch() {
     if (launching) return;
@@ -973,6 +1037,7 @@
   // l'historique d'avant n'est plus envoyé au cerveau (fini les fausses suites).
   $("newconvo").addEventListener("click", () => {
     convoStart = Date.now();
+    attachments = []; renderAttachments();
     pendingClarify = null; clarifyQ = null;
     autoApproveSigs.clear(); // les « ne plus me demander » ne franchissent pas une nouvelle mission
     if (pendingConnect) { pendingConnect = null; stopConnectPoll(); }

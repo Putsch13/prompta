@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getBuilderApiKey } from "@/lib/builder/api-key";
 import { builderRateLimit } from "@/lib/builder/rate-limit";
 import { listUserConnections } from "@/lib/connections";
+import { loadAttachments, mergedAttachmentText } from "@/lib/extension/attachments";
+import type { AttachmentRef } from "@/lib/extension/attachments";
 import {
   buildInstantAgent,
   buildRuntimeContextVars,
@@ -71,6 +73,8 @@ export async function POST(request: NextRequest) {
      * Absent = extension (compat versions déployées) → pilotage disponible.
      */
     client?: string;
+    /** Pièces jointes (références — le texte est relu côté serveur). */
+    attachments?: AttachmentRef[];
   } | null;
 
   const browserAvailable = body?.client !== "quick";
@@ -150,6 +154,10 @@ export async function POST(request: NextRequest) {
     }).map((m) => m.id);
   })();
 
+  // Pièces jointes : texte complet pour le runtime ({{file_content}}), noms
+  // et tailles pour le planificateur (qui décide comment s'en servir).
+  const attachedDocs = await loadAttachments(user.id, body?.attachments, 80_000);
+
   let built;
   try {
     built = await buildInstantAgent({
@@ -162,6 +170,7 @@ export async function POST(request: NextRequest) {
       usableModels,
       history,
       browserAvailable,
+      attachments: attachedDocs.map((d) => ({ name: d.name, chars: d.chars })),
     });
   } catch (err) {
     return NextResponse.json(
@@ -208,6 +217,11 @@ export async function POST(request: NextRequest) {
   // Même fonction que celle qui dit au planificateur quelles variables il peut
   // référencer : les deux numérotations ne peuvent plus diverger.
   const tabVars = buildRuntimeContextVars(page);
+  // Pièces jointes → {{file_content}} : la variable que le runtime connaît
+  // déjà (outil file_read, interpolation llm, validateur de références).
+  if (attachedDocs.length > 0) {
+    tabVars.file_content = mergedAttachmentText(attachedDocs, 150_000);
+  }
 
   const admin = createAdminClient();
   const { data: run, error: insertError } = await admin

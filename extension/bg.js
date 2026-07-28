@@ -74,7 +74,19 @@ async function captureTabContents(urls, maxTabs = 8, maxChars = 8000) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
-      if (msg?.type === "prompta:execute") {
+      if (msg?.type === "prompta:attach") {
+        // Pièce jointe du chat : le fichier transite en base64 par le message
+        // (les surfaces in-page ne peuvent pas fetch cross-origin), le worker
+        // le re-matérialise et l'envoie en multipart.
+        const base = await baseUrl();
+        const bin = Uint8Array.from(atob(msg.b64 || ""), (c) => c.charCodeAt(0));
+        const fd = new FormData();
+        fd.append("file", new File([bin], msg.name || "document", { type: msg.mime || "application/octet-stream" }));
+        const res = await fetch(`${base}/api/extension/attachment`, { method: "POST", body: fd });
+        let body = null;
+        try { body = await res.json(); } catch { /* non-JSON */ }
+        sendResponse({ ok: res.ok, status: res.status, body });
+      } else if (msg?.type === "prompta:execute") {
         sendResponse(await api("/api/extension/execute", { method: "POST", body: JSON.stringify(msg.payload) }));
       } else if (msg?.type === "prompta:status") {
         sendResponse(await api(`/api/run/agent/${encodeURIComponent(msg.runId)}`));
