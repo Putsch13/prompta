@@ -64,6 +64,10 @@ const VERB_SYNONYMS: Record<string, string[]> = {
   send: ["send", "post", "share", "create", "deliver"],
   update: ["update", "edit", "modify", "patch", "change", "rename", "move", "set"],
   delete: ["delete", "remove", "trash", "destroy", "drop"],
+  // Symétrie manquante (batterie catalogue) : « remove_X » doit trouver
+  // DELETE_X, et « generate_X » les outils GENERATE/CREATE.
+  remove: ["remove", "delete", "trash", "destroy", "drop"],
+  generate: ["generate", "create", "make", "new", "build"],
   // ── Verbes français → mêmes familles ──
   creer: ["create", "add", "insert", "new", "make", "post"],
   generer: ["create", "make", "generate", "new"],

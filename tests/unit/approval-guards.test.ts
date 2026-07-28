@@ -312,3 +312,24 @@ test("alias de connecteur canonisés — « Google Sheets » ne redemande pas de
     );
   }
 });
+
+// ── Batterie catalogue (1038 toolkits) : cas réels remontés ─────────────────
+
+test("batterie — exécuter une QUERY (SOQL/GraphQL) est une lecture", () => {
+  for (const action of ["salesforce.execute_soql_query", "DIGICERT_EXECUTE_GRAPHQL_QUERY", "appdrag.execute_function_get_prod"]) {
+    assert.equal(isSensitiveWriteStep({ type: "action", connector: "x", action, params: {} } as never), false, action);
+  }
+});
+
+test("batterie — exécuter un WORKFLOW reste gardé (deny-by-default)", () => {
+  assert.equal(isSensitiveWriteStep({ type: "action", connector: "x", action: "x.execute_workflow", params: {} } as never), true);
+});
+
+test("batterie — segment final sans verbe : la lecture s'hérite du nom d'app, jamais l'écriture", () => {
+  // composio_search.amazon : « search » vient du nom d'app → lecture.
+  assert.equal(isSensitiveWriteStep({ type: "action", connector: "composio_search", action: "composio_search.amazon", params: {} } as never), false);
+  // remove_bg.get_account : « remove » (nom d'app) n'en fait PAS une écriture.
+  assert.equal(isSensitiveWriteStep({ type: "action", connector: "remove_bg", action: "remove_bg.get_account", params: {} } as never), false);
+  // remove_bg.remove_background : le verbe du segment final tranche → écriture.
+  assert.equal(isSensitiveWriteStep({ type: "action", connector: "remove_bg", action: "remove_bg.remove_background", params: {} } as never), true);
+});

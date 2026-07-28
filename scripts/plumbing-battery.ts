@@ -62,6 +62,12 @@ async function main() {
           failures?: Failure[];
           counters?: Record<string, number>;
         };
+        // Une réponse 200 SANS `counters` = version déployée sans la sonde
+        // plumbing (le paramètre est ignoré et l'audit historique répond).
+        // Compter « zéro échec » serait un faux vert : on échoue bruyamment.
+        if (!d.counters) {
+          throw new Error("réponse sans `counters` — la sonde plumbing n'est pas déployée sur cette cible");
+        }
         for (const f of d.failures ?? []) failures.push(f);
         for (const [k, v] of Object.entries(d.counters ?? {})) counters[k] = (counters[k] ?? 0) + Number(v);
         got = true;

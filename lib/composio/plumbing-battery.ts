@@ -15,14 +15,21 @@ import { mapAgentError } from "@/lib/agent/error-map";
 // ── Génération d'intentions « utilisateur » par toolkit ─────────────────────
 
 const READ_TOKENS = new Set(["get", "list", "search", "fetch", "find", "query", "read", "retrieve", "lookup", "view", "show", "count", "describe", "export"]);
-const WRITE_TOKENS = new Set(["send", "create", "add", "insert", "update", "delete", "remove", "post", "publish", "write", "append", "move", "archive", "upload", "import", "set", "replace", "cancel", "invite", "assign", "merge", "charge", "pay", "refund", "submit"]);
+const WRITE_TOKENS = new Set(["send", "create", "add", "insert", "update", "delete", "remove", "post", "publish", "write", "append", "move", "archive", "upload", "import", "set", "replace", "cancel", "invite", "assign", "merge", "charge", "pay", "refund", "submit", "trigger"]);
 
 function slugTokens(slug: string): string[] {
   return slug.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 }
 
-function toolFamily(slug: string): "read" | "write" | "other" {
-  const toks = slugTokens(slug);
+function toolFamily(slug: string, toolkitSlug?: string): "read" | "write" | "other" {
+  // Le préfixe d'app peut contenir un verbe (« REMOVE_BG_GET_ACCOUNT » est
+  // une lecture) : la famille se juge sur la queue, pas sur le nom d'app.
+  let tail = slug;
+  if (toolkitSlug) {
+    const prefix = `${toolkitSlug.toUpperCase()}_`;
+    if (slug.toUpperCase().startsWith(prefix)) tail = slug.slice(prefix.length);
+  }
+  const toks = slugTokens(tail);
   if (toks.some((t) => WRITE_TOKENS.has(t))) return "write";
   if (toks.some((t) => READ_TOKENS.has(t))) return "read";
   return "other";
@@ -50,9 +57,9 @@ function sloppyVariant(native: string): string | null {
 }
 
 /** Échantillon représentatif : 1 lecture, 1 création/écriture, 1 autre. */
-function sampleTools(tools: ComposioToolEntry[]): ComposioToolEntry[] {
-  const read = tools.find((t) => toolFamily(t.slug) === "read");
-  const write = tools.find((t) => toolFamily(t.slug) === "write");
+function sampleTools(tools: ComposioToolEntry[], toolkitSlug: string): ComposioToolEntry[] {
+  const read = tools.find((t) => toolFamily(t.slug, toolkitSlug) === "read");
+  const write = tools.find((t) => toolFamily(t.slug, toolkitSlug) === "write");
   const other = tools.find((t) => t !== read && t !== write);
   return [read, write, other].filter(Boolean) as ComposioToolEntry[];
 }
@@ -95,8 +102,8 @@ export async function checkToolkit(toolkitSlug: string, failures: Failure[], cou
     return;
   }
 
-  for (const tool of sampleTools(tools)) {
-    const family = toolFamily(tool.slug);
+  for (const tool of sampleTools(tools, toolkitSlug)) {
+    const family = toolFamily(tool.slug, toolkitSlug);
     const native = nativeActionFor(toolkitSlug, tool.slug);
     const candidates = [native, sloppyVariant(native)].filter(Boolean) as string[];
 
@@ -117,7 +124,7 @@ export async function checkToolkit(toolkitSlug: string, failures: Failure[], cou
         continue;
       }
       // Une LECTURE demandée ne doit JAMAIS résoudre vers une mutation.
-      const resolvedFamily = toolFamily(slug);
+      const resolvedFamily = toolFamily(slug, toolkitSlug);
       if (family === "read" && resolvedFamily === "write") {
         counters.resolution_read_to_write++;
         failures.push({ toolkit: toolkitSlug, check: "resolution_read_to_write", action, detail: `→ ${slug}` });

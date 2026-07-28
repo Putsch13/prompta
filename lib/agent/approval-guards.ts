@@ -48,14 +48,25 @@ type Step = AgentManifest["steps"][number];
  * Garde-fou conservé : un token d'ÉCRITURE explicite prime (deny-by-default —
  * « search_and_replace », « find_and_delete » restent des écritures).
  */
+// « execute » est volontairement ABSENT : exécuter une *query* SOQL/GraphQL
+// est une lecture (batterie catalogue : salesforce, digicert, chatbotkit…),
+// exécuter un workflow est une écriture — c'est l'autre token qui tranche,
+// et le deny-by-default couvre « execute_workflow » (aucun token de lecture).
 const WRITE_VERB_RE =
-  /^(send|create|add|insert|update|delete|remove|post|publish|write|append|move|archive|upload|import|set|replace|cancel|invite|assign|merge|charge|pay|refund|submit|execute|trigger)$/i;
+  /^(send|create|add|insert|update|delete|remove|post|publish|write|append|move|archive|upload|import|set|replace|cancel|invite|assign|merge|charge|pay|refund|submit|trigger)$/i;
 
 function isReadOnlyAction(action: string): boolean {
+  // L'ÉCRITURE se juge sur le segment final seul : le nom d'app peut contenir
+  // un verbe d'écriture (« remove_bg ».get_account est une lecture).
   const tail = (action.split(".").pop() ?? action).trim();
-  const tokens = tail.split(/[^a-zA-Z]+/).filter(Boolean);
-  if (tokens.some((t) => WRITE_VERB_RE.test(t))) return false;
-  return tokens.some((t) => READ_VERB_RE.test(t));
+  const tailTokens = tail.split(/[^a-zA-Z]+/).filter(Boolean);
+  if (tailTokens.some((t) => WRITE_VERB_RE.test(t))) return false;
+  if (tailTokens.some((t) => READ_VERB_RE.test(t))) return true;
+  // Segment final SANS verbe (« composio_search.amazon ») : repli sur l'action
+  // entière pour la LECTURE uniquement — un token de lecture dans le nom
+  // d'app (search…) suffit, jamais l'inverse (pas d'écriture héritée du nom).
+  const allTokens = action.split(/[^a-zA-Z]+/).filter(Boolean);
+  return allTokens.some((t) => READ_VERB_RE.test(t));
 }
 
 /**
