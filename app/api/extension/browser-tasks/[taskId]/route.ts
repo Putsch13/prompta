@@ -20,7 +20,13 @@ export async function POST(request: NextRequest, props: { params: Promise<{ task
 
   const body = (await request.json().catch(() => null)) as {
     ok?: boolean;
-    snapshot?: { url?: string; title?: string; text?: string; elements?: unknown[] };
+    snapshot?: {
+      url?: string;
+      title?: string;
+      text?: string;
+      elements?: unknown[];
+      scroll?: { y?: number; max?: number };
+    };
     declined?: boolean;
     error?: string;
   } | null;
@@ -56,6 +62,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ task
         title: String(body.snapshot.title ?? "").slice(0, 300),
         text: String(body.snapshot.text ?? "").slice(0, 12_000),
         elements: Array.isArray(body.snapshot.elements) ? body.snapshot.elements.slice(0, 100) : [],
+        scroll:
+          body.snapshot.scroll && typeof body.snapshot.scroll.y === "number"
+            ? { y: Math.round(body.snapshot.scroll.y), max: Math.round(Number(body.snapshot.scroll.max) || 0) }
+            : undefined,
       }
     : undefined;
 

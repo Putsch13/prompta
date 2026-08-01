@@ -7,8 +7,10 @@ import {
   buildPageContextBlock,
   sanitizeUrlForContext,
   neutralizeUntrusted,
+  detectScreenIntent,
 } from "../../lib/extension/instant-agent";
 import { AgentManifestSchema, type AgentManifest } from "../../lib/agent/schema";
+import { stepThought } from "../../lib/agent/step-label";
 
 test("sanitizeUrlForContext : retire les paramètres porteurs de secrets", () => {
   assert.equal(
@@ -192,4 +194,55 @@ test("contexte : les onglets ouverts sont listés (l'assistant voit tout ce qui 
 test("contexte : sans onglets, aucune section « ouvert » parasite", () => {
   const block = buildPageContextBlock({ url: "https://a.fr", title: "A" });
   assert.ok(!block.includes("A OUVERT"));
+});
+
+// ── detectScreenIntent : la frontière écran / API ───────────────────────────
+// Les positifs sont des ORDRES RÉELS de runs prod qui avaient échoué parce que
+// le planificateur partait chercher via l'API un contenu affiché à l'écran.
+test("detectScreenIntent : tournures qui désignent l'écran (ordres réels)", () => {
+  const positives = [
+    "peux tu regarder la page des 250 meilleurs films, et recenser les meilleurs film d'horreurs et thriller dans la feuille de calcul vierge quie st ouverte",
+    "tu dois tout crer sur le tableau excel ouvert vierge",
+    "utilise uniquement les pages ouvertes : compte combien de prospects",
+    "analyse le tableau affiché et fais un résumé",
+    "résume ce qui est à l'écran",
+    "résume ce qui est à l’écran",
+    "traduis cette annonce en anglais",
+    "réorganise cette bdd stp",
+    "compare les infos de mes onglets",
+    "le doc ouvert contient des erreurs, corrige-les",
+    "récupère les contacts de la liste affichée devant moi",
+    "résume l'email que je regarde",
+  ];
+  for (const goal of positives) {
+    assert.equal(detectScreenIntent(goal), true, `aurait dû détecter l'écran : « ${goal} »`);
+  }
+});
+
+test("detectScreenIntent : tournures apps/web/création → PAS d'écran forcé", () => {
+  const negatives = [
+    "crée une feuille de calcul avec le budget prévisionnel 2027",
+    "retrouve la facture Acme dans mon Drive et envoie-la moi",
+    "cherche en ligne les meilleurs restaurants de Marseille",
+    "envoie un email à Marie pour confirmer le rendez-vous",
+    "retrouve mes 3 derniers échanges avec Marie Leroy",
+    "fais une synthèse des tendances IA de la semaine",
+  ];
+  for (const goal of negatives) {
+    assert.equal(detectScreenIntent(goal), false, `écran forcé à tort : « ${goal} »`);
+  }
+});
+
+// ── stepThought : la réflexion live à la première personne, sur TOUT ────────
+test("stepThought : chaque type d'étape pense à voix haute", () => {
+  assert.equal(stepThought({ step_type: "llm", model: "gpt-5.5" }), "je réfléchis et je rédige (gpt-5.5)");
+  assert.equal(stepThought({ step_type: "tool", tool_slug: "web_search" }), "je cherche sur le web");
+  assert.equal(stepThought({ step_type: "tool", tool_slug: "web_fetch" }), "je lis une page web");
+  assert.equal(stepThought({ step_type: "action", action_slug: "google_sheets.append_row" }), "j'écris dans Google Sheets");
+  assert.equal(stepThought({ step_type: "action", action_slug: "notion.search" }), "je consulte Notion");
+  assert.equal(stepThought({ step_type: "action", action_slug: "gmail.send" }), "j'envoie via Gmail");
+  assert.equal(stepThought({ step_type: "action", action_slug: "hubspot.update_contact" }), "je mets à jour Hubspot");
+  assert.equal(stepThought({ step_type: "browser" }), "je pilote ton navigateur");
+  assert.equal(stepThought({ step_type: "ask" }), "j'ai besoin d'une précision de ta part");
+  assert.equal(stepThought({ step_type: "approval" }), "j'attends ta validation");
 });

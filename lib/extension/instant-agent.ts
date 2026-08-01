@@ -141,6 +141,29 @@ export function computeMissingConnectors(manifest: AgentManifest, usable: Set<st
 
 const MAX_OPEN_TABS = 30;
 
+// ── Détection « travaille sur mon écran » ────────────────────────────────────
+// ['’] : l'apostrophe typographique (défaut macOS/iOS) doit matcher comme
+// l'ASCII, sinon « à l’écran » n'active pas la contrainte.
+const SCREEN_INTENT_RE = /\b(page[s]?\s+ouvert|onglet[s]?\s+ouvert|(sur|dans|depuis)\s+(les?\s+)?(page[s]?|onglet[s]?)\s+ouvert|à\s+l['’]?[ée]cran|ce\s+qui\s+est\s+(ouvert|affich|à\s+l['’]?[ée]cran)|sous\s+(mes|tes)\s+yeux|ce\s+que\s+(je|tu)\s+vois|le[s]?\s+onglet[s]?|mes\s+onglet|utilise\s+les?\s+page|devant\s+moi|que\s+je\s+regarde)/i;
+// Objet d'écran QUALIFIÉ : « la feuille de calcul vierge qui est ouverte »,
+// « le tableau excel ouvert », « le doc affiché ». La fenêtre de 40 caractères
+// absorbe les qualificatifs intermédiaires et les fautes de frappe (vécu :
+// « la feuille de calcul vierge quie st ouverte »).
+const SCREEN_OBJECT_RE = /\b(feuille|tableau|classeur|fichier|document|doc|excel|sheet|formulaire|liste|base|bdd)[sx]?\b[^.!?\n]{0,40}\b(ouvert|affich|vierge|à\s+l['’]?[ée]cran)/i;
+// Démonstratif pointant un contenu montré : « cette feuille », « ce tableau »,
+// « cet email », « cette annonce » — l'utilisateur montre son écran du doigt.
+const SCREEN_DEMONSTRATIVE_RE = /\b(cette?|cet)\s+(feuille|tableau|classeur|page|onglet|document|doc|mail|email|sheet|excel|formulaire|article|annonce|fiche|liste|base|bdd)\b/i;
+
+/**
+ * L'ordre désigne-t-il EXPLICITEMENT ce qui est affiché à l'écran ?
+ * Exporté pour tests : ces tournures sont la frontière écran/API — chaque
+ * faux négatif envoie le planificateur chercher via l'API un contenu que
+ * l'utilisateur REGARDE (« il ne trouve pas alors que c'est ouvert »).
+ */
+export function detectScreenIntent(goal: string): boolean {
+  return SCREEN_INTENT_RE.test(goal) || SCREEN_OBJECT_RE.test(goal) || SCREEN_DEMONSTRATIVE_RE.test(goal);
+}
+
 /** Le contexte de page, encadré comme DONNÉE non fiable (secrets retirés). */
 /**
  * Variables de contexte réellement injectées dans le run ({{page_active}},
@@ -228,7 +251,7 @@ TYPES D'ÉTAPES DISPONIBLES (format RUNTIME strict) :
 - {"type":"action","connector":"gmail","action":"gmail.send","params":{"from":"EMAIL_UTILISATEUR","to":"…","subject":"…","body":"…"}}
 - {"type":"approval","label":"…","payloadTemplate":"{{cle}}","outputKey":"valide"} — validation humaine
 - {"type":"ask","question":"…","outputKey":"reponse_utilisateur"} — POSE UNE QUESTION à l'utilisateur EN COURS de mission : le run se met en pause, sa réponse devient {{outputKey}} pour les étapes suivantes. La question peut référencer des {{variables}} amont (ex. « J'ai trouvé 3 fichiers : {{liste}}. Lequel ? »)
-- {"type":"browser","goal":"objectif précis en langage naturel (quoi faire, sur quelle page, quand s'arrêter)","tabHint":"pagesjaunes","outputKey":"pilotage"} — PILOTE le navigateur de l'utilisateur : clique, remplit des formulaires, navigue, avec sa session, sous ses yeux (il confirme chaque action risquée dans la page). "tabHint" (optionnel) = extrait d'URL ou de titre d'un onglet OUVERT (repris de la liste des onglets fournie) : le pilotage bascule sur CET onglet — indispensable quand l'action vise un AUTRE onglet que la page active (ex. cliquer « Afficher le numéro » dans l'onglet PagesJaunes pendant que l'utilisateur est sur Sheets). Sans tabHint : onglet actif. Résultat = résumé de ce qui a été fait/observé.
+- {"type":"browser","goal":"objectif précis en langage naturel (quoi faire, sur quelle page, quand s'arrêter)","tabHint":"pagesjaunes","outputKey":"pilotage"} — PILOTE le navigateur de l'utilisateur : clique, remplit des formulaires, navigue, scrolle les listes infinies, RECENSE les données visibles au fil du défilement, ouvre de nouveaux onglets — avec sa session, sous ses yeux (il confirme chaque action risquée dans la page). "tabHint" = extrait d'URL ou de titre d'un onglet OUVERT (repris de la liste des onglets fournie) : le pilotage démarre sur CET onglet — renseigne-le TOUJOURS quand la liste des onglets est fournie (sans lui, un run relancé hors du panneau ne retrouve pas sa page). Pas de champ "model" : un pilote rapide dédié s'en charge. Résultat = résumé de ce qui a été fait + les données collectées pendant le pilotage (exploitables par les étapes llm suivantes).
 - {"type":"parallel","branches":[{"steps":[…],"outputKey":"b1"},…],"outputKey":"tout"}
 - Autres apps (notion, trello, shopify, hubspot…) : {"type":"action","connector":"<app>","action":"<app>.<verbe_objet>","params":{…}} — le résolveur trouve le bon outil.
 
@@ -240,17 +263,24 @@ RÈGLES DURES :
    • SUR LE WEB public non ouvert — « le site de X », « cherche en ligne », un lien du contexte → web_fetch / web_search. Jamais web_fetch sur un onglet déjà capturé (il n'a pas la session : il verrait une page de login).
    • L'HISTORIQUE tranche les ambiguïtés : une suite (« continue », « compare-le maintenant avec… », « tu as oublié… ») reprend les MÊMES sources et cibles que la mission précédente.
    HYBRIDE = LE CAS NORMAL : la plupart des vraies missions mélangent les trois (lire l'onglet CRM affiché + retrouver un fichier Drive + écrire dans Sheets). Décide source par source, pas un mode global pour toute la mission. Doute entre écran et API ? Si un onglet listé correspond, l'écran gagne ; sinon l'API. N'invente JAMAIS d'URL ni d'identifiant — uniquement ceux fournis ou trouvés par une étape de recherche.
+   • LEXIQUE DES TOURNURES — repère ces signaux dans l'ordre (fautes de frappe incluses) :
+     ÉCRAN → « ouvert(e) », « affiché(e) », « vierge » (la feuille vierge = celle qui est ouverte), « à l'écran », « sous mes yeux », « devant moi », « que je regarde », tout démonstratif (« cette feuille », « ce tableau », « cet email », « cette annonce », « cette bdd »), ou un onglet listé dont le titre/sujet correspond à l'objet de l'ordre.
+     APPS → « dans mon Drive/Notion/CRM/Gmail », « mes derniers emails », « retrouve/cherche la facture/le fichier », « mes documents ».
+     WEB → « cherche en ligne », « google X », « va sur le site », « regarde ce qui se dit sur ».
+   • EXEMPLE CANONIQUE (mission mixte écran + API — à imiter) : « recense les films d'horreur du top 250 dans la feuille de calcul vierge ouverte » → (a) étape llm qui LIT le classement depuis l'onglet IMDb capturé ({{tab_N}}) et produit les lignes du tableau ; (b) google_sheets.update_values avec le spreadsheet_id LU DANS L'URL de l'onglet Sheets ouvert (règle 6, exception Google) ; (c) étape llm "reponse" qui résume. SANS pilotage browser (canvas non pilotable), SANS clarify (tout est sous les yeux), SANS gmail.send.
 2. MISSIONS CROSS-APP (ta force). Combine librement : (a) LIRE l'écran ({{page_active}}, {{tab_N}}), (b) AGIR sur une app connectée — pour modifier précisément l'enregistrement AFFICHÉ, retrouve-le d'abord via l'action de recherche du connecteur (ex. hubspot.search_contacts avec le nom/email lu à l'écran) PUIS agis (update/create), (c) RÉCUPÉRER une ressource non ouverte (<app>.search puis lecture), (d) CROISER le tout dans une étape llm, (e) PRODUIRE le livrable (Sheets, Doc, Canva…) et le transmettre. Exemple : analyser la page ouverte → google_drive.search la bdd → lire → llm de comparaison → canva.create_design → restituer. Jusqu'à 12 étapes.
 3. Toute écriture sensible (email, publication, e-commerce, CRM, message) DOIT être précédée d'une étape approval montrant le contenu exact.
 4. Créations Google (Sheets/Docs/Drive/Calendar) : pas d'approval nécessaire, ce sont les espaces de l'utilisateur.
 5. gmail.send : "from" ET "to" = EMAIL_UTILISATEUR par défaut (rapport à soi-même), sauf si l'ordre désigne explicitement un autre destinataire.
 6. IDENTIFIANTS INTERNES (règle absolue) : toute action qui exige un ID (database_id, page_id, parent_id, spreadsheet_id, board_id, channel_id, folder_id…) — n'INVENTE JAMAIS cet ID et ne le copie pas d'une URL (les IDs d'URL ne sont pas toujours partagés avec l'intégration API). Enchaîne TOUJOURS : (a) action de DÉCOUVERTE (<app>.search, notion.search, notion.fetch_data, drive.search…) → (b) étape llm d'extraction (« Réponds UNIQUEMENT l'id de … dans : {{resultat}} — si aucun ne correspond, réponds INTROUVABLE ») → (c) l'action avec {{id}}. Cas Notion : notion.create_page exige parent_id (découvert d'abord) ; écrire des lignes exige database_id découvert via notion.search — et si la base cible n'existe pas encore, crée-la (notion.create_database avec parent_id découvert), puis extrais son id de la SORTIE de création pour les insertions suivantes. « Réorganiser » un espace = lire l'existant d'abord (search/fetch), puis agir élément par élément avec les IDs découverts.
+   ⚠️ EXCEPTION GOOGLE (Sheets/Docs/Slides/Drive) : l'ID présent dans l'URL d'un onglet OUVERT (docs.google.com/spreadsheets/d/<ID>/…, /document/d/<ID>/…) EST l'identifiant API : utilise-le directement comme spreadsheet_id/document_id, SANS étape de découverte. Si l'API répond « pas l'autorisation », l'erreur guidera l'utilisateur (partage/scope) — c'est la bonne voie quand même.
 7. Étapes llm : prompts riches (rôle + tâche + format de sortie) référençant les {{outputKey}} amont. Pour des données tabulaires : lignes "val1;val2;val3", une par ligne, SANS texte autour.
 8. DEUX RÉGIMES selon l'ordre :
    • SIMPLE / CONVERSATIONNEL (question, traduction, réécriture, explication, calcul, brainstorming, résumé d'un texte fourni) → réponds DIRECTEMENT : UNE seule étape llm dont l'outputKey est "reponse". N'ajoute NI email, NI action externe, NI validation. La réponse s'affiche à l'utilisateur.
    • MISSION / AGENT (produire un livrable, écrire dans une app, envoyer, publier, recenser, croiser des pages) → enchaîne les étapes utiles ; termine par le livrable. N'ajoute un gmail.send de restitution QUE si l'ordre demande un envoi/rapport par email OU si le livrable est un lien (Sheets/Doc créé) à te transmettre — sinon la dernière étape llm "reponse" résume ce qui a été fait.
 9. Ne fabrique JAMAIS une étape d'envoi/action externe que l'ordre ne justifie pas (une simple question ne déclenche pas d'email). Une mission d'ANALYSE (« analyse », « compare », « synthétise », « dis-moi », « rédige une synthèse/un rapport ») SANS destinataire ni app de destination explicites se termine par l'étape llm "reponse" — PAS de gmail.send, PAS d'approval : le livrable EST la réponse affichée. 1 étape pour le simple, jusqu'à 12 pour une grosse mission.
-10. Étape "browser" (pilotage) : UNIQUEMENT quand l'ordre exige d'INTERAGIR avec l'interface d'une page OUVERTE — l'onglet actif ou un AUTRE onglet ouvert via "tabHint" (cliquer, remplir un formulaire, dérouler des résultats, révéler des infos masquées type « Afficher le numéro », agir sur un site SANS connecteur ni API). Ordre de préférence STRICT : connecteur > web_fetch/web_search > browser (le pilotage est lent et mobilise l'utilisateur). JAMAIS de browser pour lire la page ({{page_active}} suffit) ni pour un site public statique (web_fetch suffit). JAMAIS pour se connecter ou payer. Le goal doit être autoportant et borné (« remplis le formulaire de contact avec …, ne l'envoie qu'après confirmation »). 1 seule étape browser par mission.
+10. Étape "browser" (pilotage) : UNIQUEMENT quand l'ordre exige d'INTERAGIR avec l'interface d'une page OUVERTE — l'onglet actif ou un AUTRE onglet ouvert via "tabHint" (cliquer, remplir un formulaire, dérouler/scroller des résultats et RECENSER ce qui apparaît, révéler des infos masquées type « Afficher le numéro », agir sur un site SANS connecteur ni API). Ordre de préférence STRICT : connecteur > web_fetch/web_search > browser (le pilotage est lent et mobilise l'utilisateur). JAMAIS de browser pour lire la page ({{page_active}} suffit) ni pour un site public statique (web_fetch suffit). JAMAIS pour se connecter ou payer. Le goal doit être autoportant et borné (« remplis le formulaire de contact avec …, ne l'envoie qu'après confirmation ») ; s'il porte des DONNÉES à saisir, insère-les INTÉGRALEMENT dans le goal (via {{outputKey}}). 1 seule étape browser par mission.
+   ⚠️ ÉDITEURS CANVAS (Google Sheets, Docs, Slides, Excel Online, Figma…) : leur zone d'édition n'expose NI champs NI cellules au pilotage — coller ou saisir des données en masse y est IMPOSSIBLE. Pour écrire des données dans un Sheet/Doc (même ouvert à l'écran), passe TOUJOURS par le connecteur (google_sheets.update_values/append_row, google_docs…) avec l'ID lu dans l'URL de l'onglet (règle 6, exception Google). Le browser sur ces pages ne sert qu'aux boutons de l'interface (partager, renommer, filtrer…).
 11. CONDITIONS (« si …, alors … ») : il n'existe AUCUN type d'étape de branchement. N'invente pas de "condition" — toutes les étapes d'un plan s'exécutent. Deux façons correctes de traiter un « si » :
    • le test porte sur le CONTENU → fais-le faire par l'étape llm elle-même (« Voici {{donnees}}. Si le stock est inférieur à 10, rédige le bon de commande ; sinon réponds exactement RIEN_A_FAIRE ») et fais dépendre l'étape suivante de ce texte ;
    • le test doit décider d'une ACTION EXTERNE (envoyer ou non, écrire ou non) → insère une étape "ask" ou "approval" qui montre le résultat du test à l'utilisateur et le laisse trancher. Ne planifie JAMAIS une écriture externe dont l'exécution est censée dépendre d'un test automatique.`;
@@ -334,17 +364,26 @@ function normalizeRawManifest(
         else if (typeof step.tool === "string") step.type = "tool";
         else if (typeof step.goal === "string") step.type = "browser";
       }
-      // Modèle des étapes llm/browser :
+      // Modèle des étapes llm :
       // - multi-modèle demandé → on GARDE le modèle assigné par le planificateur
       //   s'il est utilisable, sinon repli sur le modèle de la mission ;
       // - sinon → on FORCE le modèle choisi partout (pas de bascule sauvage).
-      if (step.type === "llm" || step.type === "browser") {
+      if (step.type === "llm") {
         if (opts?.perStepModels) {
           const ok = typeof step.model === "string" && opts.usableModels?.includes(step.model as string);
           if (!ok) step.model = fallbackModel;
         } else {
           step.model = fallbackModel;
         }
+      }
+      // Étapes browser : PAS de modèle imposé — le pilote décide action par
+      // action, un micro-choix JSON qu'un modèle rapide rend en 1-2 s. Forcer
+      // le modèle de mission (opus, gpt-5.5) coûtait 30-60 s PAR action et
+      // produisait des sorties vides (raisonnement > budget). On ne conserve
+      // une assignation que si l'utilisateur a explicitement nommé des modèles.
+      if (step.type === "browser") {
+        const ok = opts?.perStepModels && typeof step.model === "string" && opts.usableModels?.includes(step.model as string);
+        if (!ok) delete step.model;
       }
       // aiFills : suivent la même règle.
       if (step.aiFills && typeof step.aiFills === "object") {
@@ -438,12 +477,9 @@ export async function buildInstantAgent(params: {
   // (« les pages ouvertes », « à l'écran », « mes onglets », « ce qui est
   // affiché/ouvert »), on interdit dur toute action de LECTURE/recherche d'app
   // pour ces données — le planificateur DOIT lire {{page_active}}/{{tab_N}}.
-  // ['’] : l'apostrophe typographique (défaut macOS/iOS) doit matcher comme
-  // l'ASCII, sinon « à l’écran » n'active pas la contrainte.
-  const SCREEN_INTENT_RE = /\b(page[s]?\s+ouvert|onglet[s]?\s+ouvert|(sur|dans|depuis)\s+(les?\s+)?(page[s]?|onglet[s]?)\s+ouvert|à\s+l['’]?[ée]cran|ce\s+qui\s+est\s+(ouvert|affich|à\s+l['’]?[ée]cran)|sous\s+(mes|tes)\s+yeux|ce\s+que\s+(je|tu)\s+vois|le[s]?\s+onglet[s]?|mes\s+onglet|utilise\s+les?\s+page)/i;
-  const screenForced = SCREEN_INTENT_RE.test(goal);
+  const screenForced = detectScreenIntent(goal);
   const screenConstraint = screenForced
-    ? `⚠️ CONTRAINTE ABSOLUE — L'utilisateur a EXPLICITEMENT demandé de travailler sur ce qui est OUVERT À L'ÉCRAN. Pour lire/analyser les données, tu DOIS utiliser {{page_active}} et {{tab_N}} (les onglets fournis). INTERDICTION TOTALE de toute action de lecture ou de recherche d'app (gmail.search_messages, google_sheets.get_values, drive.search, hubspot.search…) pour récupérer un contenu déjà à l'écran. Tu peux toujours AGIR/ÉCRIRE dans une app (envoyer, créer) si l'ordre le demande, mais la LECTURE vient de l'écran.`
+    ? `⚠️ CONTRAINTE ABSOLUE — L'utilisateur a EXPLICITEMENT demandé de travailler sur ce qui est OUVERT À L'ÉCRAN. Pour lire/analyser les données, tu DOIS utiliser {{page_active}} et {{tab_N}} (les onglets fournis). INTERDICTION TOTALE de toute action de lecture ou de recherche d'app (gmail.search_messages, google_sheets.get_values, drive.search, hubspot.search…) pour récupérer un contenu déjà à l'écran. Tu peux toujours AGIR/ÉCRIRE dans une app si l'ordre le demande — et pour ÉCRIRE dans un fichier Google OUVERT (Sheets/Docs), c'est le connecteur google_* avec l'ID lu dans l'URL de l'onglet (règle 6, exception Google), JAMAIS un pilotage browser pour y coller des données.`
     : "";
 
   // Directive multi-modèle : la liste des IDs exacts + consigne d'assignation.
@@ -490,6 +526,10 @@ export async function buildInstantAgent(params: {
     buildPageContextBlock(page),
   ].join("\n");
 
+  // Les modèles à raisonnement (max_completion_tokens) dépensent une large
+  // part du budget en réflexion AVANT le JSON : à 6 000, le plan sortait
+  // tronqué (« Plan tronqué par la limite de tokens ») sur gpt-5.5.
+  const planMaxTokens = resolved.tokenParam === "max_completion_tokens" ? 14_000 : 6_000;
   const result = await callModel({
     provider: resolved.provider,
     model: resolved.apiModel,
@@ -498,7 +538,7 @@ export async function buildInstantAgent(params: {
       { role: "user", content: userPrompt },
     ],
     apiKey,
-    maxTokens: 6000,
+    maxTokens: planMaxTokens,
     tokenParam: resolved.tokenParam,
   });
 
@@ -546,7 +586,7 @@ export async function buildInstantAgent(params: {
           },
         ],
         apiKey,
-        maxTokens: 6000,
+        maxTokens: resolved.tokenParam === "max_completion_tokens" ? 14_000 : 6_000,
         tokenParam: resolved.tokenParam,
       });
       const fixedRaw = parseLlmJson<{ manifest?: unknown }>(fix.content);

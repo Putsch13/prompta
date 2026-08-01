@@ -148,7 +148,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 // exécuter par le content script de l'onglet piloté (overlay + confirmation
 // in-page pour les actions risquées), puis poste la réponse.
 const pilotSessions = new Map(); // runId → { tabId, timer, busy, seen:Set }
-const PILOT_POLL_MS = 1500;
+const PILOT_POLL_MS = 1000;
 const PILOT_MAX_MS = 15 * 60 * 1000;
 
 // Le service worker MV3 est recyclé par Chrome sans préavis : la Map en
@@ -228,8 +228,58 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     for (const runId of pilotSessions.keys()) {
       pilotTick(runId).catch(() => { /* tick suivant */ });
     }
+    // Filet de sécurité : tâches de pilotage ORPHELINES (run relancé depuis le
+    // dashboard, réparation automatique, panneau fermé) — personne ne les
+    // exécutait et le serveur échouait après 60 s sur « le navigateur n'a pas
+    // répondu ». On les adopte : résolution d'onglet par hint (sinon onglet
+    // actif), exécution, puis surveillance rapprochée du run.
+    await scanOrphanPilotTasks().catch(() => { /* prochain scan */ });
   })();
 });
+
+async function scanOrphanPilotTasks() {
+  const r = await api("/api/extension/browser-tasks/pending");
+  const tasks = (r.ok && r.body && Array.isArray(r.body.tasks)) ? r.body.tasks : [];
+  for (const task of tasks) {
+    if (!task || !task.id || !task.runId || pilotSessions.has(task.runId)) continue;
+    // Onglet cible : le hint de la tâche d'abord ; sans hint, l'onglet actif
+    // de la dernière fenêtre utilisée (c'est la page que l'utilisateur regarde).
+    let tabId = null;
+    const fake = { tabId: null, hintKey: null, hintTabId: null };
+    try {
+      if ((task.request || {}).tabHint) {
+        tabId = await resolvePilotTab(fake, task.request);
+      } else {
+        const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (active && active.id != null && /^https?:/i.test(active.url || "")) {
+          await ensureContentScript(active.id);
+          tabId = active.id;
+        }
+      }
+    } catch (err) {
+      await api(`/api/extension/browser-tasks/${encodeURIComponent(task.id)}`, {
+        method: "POST",
+        body: JSON.stringify({ ok: false, error: String((err && err.message) || err).slice(0, 300) }),
+      }).catch(() => {});
+      continue;
+    }
+    if (tabId == null) continue; // rien de pilotable au premier plan — l'alarme réessaie
+    watchPilotRun(task.runId, tabId);
+    const s = pilotSessions.get(task.runId);
+    if (!s || s.seen.has(task.id)) continue;
+    s.seen.add(task.id);
+    let response;
+    try {
+      response = await runPilotTask(s, task.request || {});
+    } catch (err) {
+      response = { ok: false, error: String((err && err.message) || err).slice(0, 300) };
+    }
+    await api(`/api/extension/browser-tasks/${encodeURIComponent(task.id)}`, {
+      method: "POST",
+      body: JSON.stringify(response),
+    }).catch(() => {});
+  }
+}
 
 async function pilotTick(runId) {
   const s = pilotSessions.get(runId);
@@ -284,6 +334,18 @@ async function tabSnapshot(tabId) {
   return r.snapshot;
 }
 
+/** Injecte content.js si l'onglet ne répond pas au ping (onglet frais, pré-install). */
+async function ensureContentScript(tabId) {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "prompta:ping" });
+  } catch {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+      await new Promise((r) => setTimeout(r, 400));
+    } catch { /* page protégée (chrome://…) : le snapshot échouera avec un message clair */ }
+  }
+}
+
 /**
  * Résout l'onglet cible d'une tâche de pilotage. Sans tabHint : l'onglet de la
  * mission. Avec tabHint (extrait d'URL/titre) : retrouve l'onglet OUVERT
@@ -318,28 +380,41 @@ async function resolvePilotTab(s, request) {
   try { await chrome.tabs.update(tab.id, { active: true }); } catch { /* fenêtre fermée entre-temps */ }
   try { if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true }); } catch { /* multi-fenêtres */ }
   // Content script absent (onglet ouvert avant l'install) → injection à la volée.
-  try {
-    await chrome.tabs.sendMessage(tab.id, { type: "prompta:ping" });
-  } catch {
-    try {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
-      await new Promise((r) => setTimeout(r, 400));
-    } catch { /* page protégée (chrome://…) : le snapshot échouera avec un message clair */ }
-  }
+  await ensureContentScript(tab.id);
   s.hintKey = hint;
   s.hintTabId = tab.id;
   return tab.id;
 }
 
 async function runPilotTask(s, request) {
+  const action = (request.kind === "act" && request.action) || {};
+  // Nouvel onglet : le pilotage BASCULE dessus (s.tabId) — les tâches
+  // suivantes le ciblent aussi via le hint dérivé de l'URL, côté serveur.
+  if (action.type === "open_tab") {
+    if (!/^https?:\/\//i.test(action.url || "")) return { ok: false, error: "URL d'ouverture d'onglet invalide" };
+    if (s.tabId != null) {
+      chrome.tabs.sendMessage(s.tabId, { type: "prompta:pilot-toast", label: request.label || "", why: request.why || "", notice: request.notice || "" }).catch(() => {});
+    }
+    const tab = await chrome.tabs.create({ url: action.url, active: true });
+    await new Promise((r) => setTimeout(r, 800));
+    await waitForTabComplete(tab.id);
+    await ensureContentScript(tab.id);
+    s.tabId = tab.id;
+    s.hintKey = null;
+    s.hintTabId = null;
+    persistPilotIds();
+    return { ok: true, snapshot: await tabSnapshot(tab.id) };
+  }
   const tabId = await resolvePilotTab(s, request);
+  const hud = { label: request.label || "", why: request.why || "", notice: request.notice || "" };
   if (request.kind === "snapshot") {
+    // HUD visible dès l'observation : l'utilisateur voit que Prompta a pris la main.
+    chrome.tabs.sendMessage(tabId, { type: "prompta:pilot-toast", ...hud }).catch(() => {});
     return { ok: true, snapshot: await tabSnapshot(tabId) };
   }
-  const action = request.action || {};
   if (action.type === "navigate") {
     if (!/^https?:\/\//i.test(action.url || "")) return { ok: false, error: "URL de navigation invalide" };
-    chrome.tabs.sendMessage(tabId, { type: "prompta:pilot-toast", label: request.label || "" }).catch(() => {});
+    chrome.tabs.sendMessage(tabId, { type: "prompta:pilot-toast", ...hud }).catch(() => {});
     await chrome.tabs.update(tabId, { url: action.url });
     await new Promise((r) => setTimeout(r, 800));
     await waitForTabComplete(tabId);
@@ -351,7 +426,7 @@ async function runPilotTask(s, request) {
   }
   // click / type / select / scroll : exécutés PAR le content script.
   try {
-    const r = await chrome.tabs.sendMessage(tabId, { type: "prompta:pilot-act", action, label: request.label || "" });
+    const r = await chrome.tabs.sendMessage(tabId, { type: "prompta:pilot-act", action, ...hud });
     if (!r) throw new Error("action sans réponse");
     return r;
   } catch {

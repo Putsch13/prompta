@@ -81,6 +81,23 @@ export async function isConnectorConnected(userId: string, connectorId: string):
   return (await getUserConnection(userId, connectorId)) !== null;
 }
 
+/**
+ * Email du compte OAuth derrière une connexion (ex. le compte Google de la
+ * connexion Sheets). Sert à rendre les erreurs de partage actionnables :
+ * « la feuille est ouverte sous le compte A, mais la connexion est le compte B ».
+ */
+export async function getConnectionAccountEmail(userId: string, connectorId: string): Promise<string | null> {
+  const { data } = await db()
+    .from("user_connections")
+    .select("connector_id, account_email, status")
+    .eq("owner_id", userId)
+    .in("status", ["connected", "expired"]);
+  const row = ((data ?? []) as { connector_id: string; account_email: string | null }[]).find(
+    (r) => r.account_email && connectionMatchesConnector(r.connector_id, connectorId),
+  );
+  return row?.account_email ?? null;
+}
+
 async function resolveConnectionRow(
   userId: string,
   row: ResolvableRow

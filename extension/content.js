@@ -83,17 +83,63 @@
   const RISKY_RE = /(envoyer|send|publier|publish|payer|payment|pay\b|acheter|buy|checkout|commander|order|supprimer|delete|remove|confirmer|confirm|valider|submit|poster|post\b|tweeter|tweet|répondre|reply|s'abonner|subscribe|transférer|transfer|signer|sign\b|enregistrer|save)/i;
   let pilotEls = new Map(); // id « eN » → élément (du DERNIER snapshot)
 
+  // Texte AUTOUR du viewport (marge large au-dessous : c'est là que le pilote
+  // va). L'ancien extractPageText tronquait depuis le HAUT du document : après
+  // un scroll, le pilote relisait toujours le début de page et ne voyait
+  // jamais le contenu fraîchement chargé (listes infinies impossibles).
+  function extractViewportText(maxChars) {
+    try {
+      const vh = window.innerHeight;
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          const t = node.nodeValue && node.nodeValue.trim();
+          if (!t) return NodeFilter.FILTER_REJECT;
+          const p = node.parentElement;
+          if (!p || p.closest("script,style,noscript,svg,iframe")) return NodeFilter.FILTER_REJECT;
+          const r = p.getBoundingClientRect();
+          if (r.width < 1 || r.height < 1) return NodeFilter.FILTER_REJECT;
+          if (r.bottom < -1200 || r.top > vh + 3200) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      const parts = [];
+      let total = 0;
+      while (total < maxChars) {
+        const node = walker.nextNode();
+        if (!node) break;
+        const t = node.nodeValue.replace(/\s+/g, " ").trim();
+        if (!t) continue;
+        parts.push(t);
+        total += t.length + 1;
+      }
+      const text = parts.join(" ").replace(/[ \t]+/g, " ").trim().slice(0, maxChars);
+      // Page exotique (canvas, shadow fermé…) : repli sur le texte global.
+      return text.length >= 200 ? text : extractPageText(maxChars);
+    } catch { return extractPageText(maxChars); }
+  }
+
   function pilotSnapshot() {
     pilotEls = new Map();
-    const elements = [];
-    let n = 0;
+    const vh = window.innerHeight;
+    const candidates = [];
     const nodes = document.querySelectorAll("a[href],button,input,textarea,select,[role='button'],[contenteditable='true']");
     for (const el of nodes) {
-      if (elements.length >= 80) break;
+      // 3000 : borne anti-pathologie seulement — un cap bas en ordre document
+      // recréerait l'angle mort du bas de page (éléments jamais proposés).
+      if (candidates.length >= 3000) break;
       const rect = el.getBoundingClientRect();
       if (rect.width < 2 || rect.height < 2) continue;
       const cs = getComputedStyle(el);
       if (cs.visibility === "hidden" || cs.display === "none") continue;
+      // Distance au viewport : 0 si visible, sinon écart en px — les éléments
+      // à l'écran (et juste au-dessous) passent en premier dans la limite de 80.
+      const dist = rect.bottom < 0 ? -rect.bottom : rect.top > vh ? rect.top - vh : 0;
+      candidates.push({ el, rect, dist });
+    }
+    candidates.sort((a, b) => a.dist - b.dist);
+    const elements = [];
+    let n = 0;
+    for (const { el } of candidates.slice(0, 80)) {
       const id = "e" + (++n);
       pilotEls.set(id, el);
       const item = { id, tag: el.tagName.toLowerCase() };
@@ -109,7 +155,12 @@
       if (el.tagName === "SELECT") item.value = String(el.value).slice(0, 80);
       elements.push(item);
     }
-    return { url: location.href, title: document.title || "", text: extractPageText(6000), elements };
+    const doc = document.documentElement;
+    const scroll = {
+      y: Math.round(window.scrollY || 0),
+      max: Math.max(0, Math.round((doc.scrollHeight || 0) - vh)),
+    };
+    return { url: location.href, title: document.title || "", text: extractViewportText(6000), elements, scroll };
   }
 
   function isRiskyAction(action, el) {
@@ -136,6 +187,19 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
+  // Saisie PROGRESSIVE : l'utilisateur VOIT le texte s'écrire (~0,7 s), au
+  // lieu d'une valeur qui apparaît d'un bloc. Au-delà de 600 caractères
+  // (collage de données), pose instantanée — l'animation n'apporterait rien.
+  async function animateType(el, value) {
+    const s = String(value ?? "");
+    if (s.length > 600 || el.tagName === "SELECT") { setNativeValue(el, s); return; }
+    const steps = Math.min(24, Math.max(5, Math.round(s.length / 6)));
+    for (let i = 1; i <= steps; i++) {
+      setNativeValue(el, s.slice(0, Math.round((s.length * i) / steps)));
+      await sleep(700 / steps);
+    }
+  }
+
   function submitField(el) {
     if (el.form && typeof el.form.requestSubmit === "function") { el.form.requestSubmit(); return; }
     for (const type of ["keydown", "keypress", "keyup"]) {
@@ -143,7 +207,7 @@
     }
   }
 
-  async function pilotAct(action, label) {
+  async function pilotAct(action, label, why, notice) {
     const needsEl = ["click", "type", "select"].includes(action.type);
     const el = needsEl ? pilotEls.get(action.id) : null;
     if (needsEl && (!el || !document.contains(el))) {
@@ -152,7 +216,7 @@
     if (action.type === "type" && el && (el.type === "password" || /pass|pwd/i.test(el.name || ""))) {
       return { ok: false, error: "champ mot de passe — saisie refusée par sécurité", snapshot: pilotSnapshot() };
     }
-    pilotToast(label || "action en cours…");
+    pilotToast(label, why, notice);
     if (el) {
       try { el.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { /* iframe/pos exotique */ }
       await sleep(350);
@@ -167,15 +231,26 @@
     }
     try {
       if (action.type === "click") el.click();
-      else if (action.type === "type") { setNativeValue(el, String(action.text ?? "")); if (action.submit) submitField(el); }
+      else if (action.type === "type") { await animateType(el, String(action.text ?? "")); pilotFlashOk(el); if (action.submit) submitField(el); }
       else if (action.type === "select") {
         el.value = String(action.value ?? "");
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
+        pilotFlashOk(el);
       }
-      else if (action.type === "scroll") window.scrollBy({ top: action.dir === "up" ? -600 : 600, behavior: "smooth" });
+      else if (action.type === "scroll") {
+        if (action.amount === "end") {
+          // Bas de page : déclenche le chargement des listes infinies.
+          window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+        } else {
+          // Un écran (~85 % du viewport) — l'ancien pas de 600 px rendait les
+          // longues pages interminables à parcourir.
+          const step = Math.max(600, Math.round(window.innerHeight * 0.85));
+          window.scrollBy({ top: action.dir === "up" ? -step : step, behavior: "smooth" });
+        }
+      }
       else { pilotClearHighlight(); return { ok: false, error: `action inconnue « ${action.type} »`, snapshot: pilotSnapshot() }; }
-      await sleep(1000); // laisser la page réagir (requêtes, re-render)
+      await sleep(action.type === "scroll" ? 1200 : 1000); // laisser la page réagir (requêtes, re-render, lazy-load)
       pilotClearHighlight();
       return { ok: true, snapshot: pilotSnapshot() };
     } catch (err) {
@@ -338,12 +413,20 @@
       .snd { width:34px; height:34px; border-radius:11px; background:linear-gradient(135deg,#38BDF8,#1E7FC2); color:#fff; border:none; font-size:15px; cursor:pointer; flex-shrink:0; transition:transform .12s, opacity .15s; box-shadow:0 3px 10px rgba(56,189,248,.35); }
       .snd:hover:not(:disabled) { transform:scale(1.06); }
       .snd:disabled { opacity:.4; cursor:default; box-shadow:none; }
-      .ptoast { position:fixed; top:18px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:9px;
+      .ptoast { position:fixed; top:18px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:10px;
         background:rgba(10,15,27,.96); border:1px solid rgba(56,189,248,.4); color:#E4EDF9; font-size:12.5px;
-        border-radius:999px; padding:8px 16px; box-shadow:0 8px 28px rgba(0,0,0,.55); max-width:70vw; pointer-events:none; }
-      .ptoast span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        border-radius:16px; padding:9px 16px; box-shadow:0 8px 28px rgba(0,0,0,.55); max-width:70vw; pointer-events:none; }
+      .ptxt { display:flex; flex-direction:column; min-width:0; gap:2px; }
+      .ptxt span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .pwhy { font-size:11px; color:#7DD3FC; font-style:italic; }
+      .pwhy:empty { display:none; }
       .porb { width:12px; height:12px; border-radius:50%; flex-shrink:0; background:conic-gradient(from 0deg,#38BDF8,#1E7FC2,#38BDF8); animation:pspin 1.1s linear infinite; }
       .pring { position:fixed; display:none; border:2px solid #38BDF8; border-radius:8px; box-shadow:0 0 0 4px rgba(56,189,248,.35), 0 0 18px rgba(56,189,248,.4); pointer-events:none; transition:all .25s ease; }
+      .pring.ok { border-color:#34D399; box-shadow:0 0 0 4px rgba(52,211,153,.4), 0 0 22px rgba(52,211,153,.5); }
+      .pframe { position:fixed; inset:0; display:none; pointer-events:none;
+        box-shadow: inset 0 0 0 3px rgba(56,189,248,.55), inset 0 0 46px rgba(56,189,248,.16);
+        animation:pframepulse 2.4s ease-in-out infinite; }
+      @keyframes pframepulse { 0%,100% { opacity:.85; } 50% { opacity:.45; } }
       .pconfirm { position:fixed; top:64px; left:50%; transform:translateX(-50%); display:none; background:rgba(10,15,27,.97);
         border:1px solid rgba(56,189,248,.45); border-radius:14px; padding:13px 15px; color:#E4EDF9; font-size:13px;
         max-width:440px; box-shadow:0 16px 48px rgba(0,0,0,.65); line-height:1.5; pointer-events:auto; }
@@ -402,7 +485,8 @@
         </div>
       </div>
     </div>
-    <div class="ptoast" data-r="ptoast"><span class="porb"></span><span data-r="ptoastmsg"></span></div>
+    <div class="pframe" data-r="pframe"></div>
+    <div class="ptoast" data-r="ptoast"><span class="porb"></span><div class="ptxt"><span data-r="ptoastmsg"></span><span class="pwhy" data-r="ptoastwhy"></span></div></div>
     <div class="pring" data-r="pring"></div>
     <div class="pconfirm" data-r="pconfirm">
       <div><b>Prompta veut :</b> <span data-r="pcmsg"></span></div>
@@ -427,24 +511,39 @@
     bar.style.display = "block";
   });
 
-  // ── Overlay copilote (toast d'action, halo, confirmation in-page) ───────
-  const ptoast = $("ptoast"), ptoastmsg = $("ptoastmsg"), pring = $("pring"), pconfirm = $("pconfirm"), pcmsg = $("pcmsg");
+  // ── Overlay copilote (HUD, cadre de pilotage, halo, confirmation) ───────
+  const ptoast = $("ptoast"), ptoastmsg = $("ptoastmsg"), ptoastwhy = $("ptoastwhy"), pframe = $("pframe"), pring = $("pring"), pconfirm = $("pconfirm"), pcmsg = $("pcmsg");
   let toastTimer = null;
-  function pilotToast(label) {
-    ptoastmsg.textContent = "Prompta pilote — " + label;
+  // HUD deux lignes : l'action en cours + la RÉFLEXION du pilote (« pourquoi »)
+  // et les notifications de collecte. Le cadre lumineux signale que Prompta
+  // tient la page tant que le pilotage dure.
+  function pilotToast(label, why, notice) {
+    ptoastmsg.textContent = "Prompta pilote — " + (label || "action en cours…");
+    ptoastwhy.textContent = [notice, why].filter(Boolean).join(" · ");
     ptoast.style.display = "flex";
+    pframe.style.display = "block";
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { ptoast.style.display = "none"; }, 6000);
+    // Long fallback : chaque nouvelle action rafraîchit ; pilot-end coupe tout.
+    toastTimer = setTimeout(() => { ptoast.style.display = "none"; pframe.style.display = "none"; }, 25000);
   }
   function pilotHighlight(el) {
     const r = el.getBoundingClientRect();
+    pring.classList.remove("ok");
     pring.style.display = "block";
     pring.style.top = r.top - 4 + "px";
     pring.style.left = r.left - 4 + "px";
     pring.style.width = r.width + 8 + "px";
     pring.style.height = r.height + 8 + "px";
   }
-  function pilotClearHighlight() { pring.style.display = "none"; }
+  // Flash vert bref : l'action a pris (saisie posée, sélection faite).
+  function pilotFlashOk(el) {
+    try {
+      pilotHighlight(el);
+      pring.classList.add("ok");
+      setTimeout(() => { pring.classList.remove("ok"); pring.style.display = "none"; }, 450);
+    } catch { /* élément disparu */ }
+  }
+  function pilotClearHighlight() { pring.style.display = "none"; pring.classList.remove("ok"); }
   let confirmResolve = null;
   let currentConfirmSig = null;
   const autoApproveSigs = new Set(); // types d'action « ne plus me demander » (cette mission)
@@ -480,6 +579,7 @@
   $("pcno").addEventListener("click", () => settleConfirm(false));
   function pilotEnd() {
     ptoast.style.display = "none";
+    pframe.style.display = "none";
     pilotClearHighlight();
     settleConfirm(false);
   }
@@ -502,17 +602,24 @@
       }).join("")}</div>`;
     }
     else if (isMission && (it.status === "running" || it.status === "pending")) body += `<div class="ptree-head"><span class="orb"></span> Je conçois le plan…</div>${BRAIN_SVG}`;
-    // Rapport LIVE : action de pilotage en cours + journal des dernières étapes.
+    // Rapport LIVE : la RÉFLEXION du moment (sur TOUTES les étapes — le "why"
+    // du pilote navigateur, plus précis, prime pendant un pilotage) + journal
+    // des dernières étapes avec leur pensée.
     if (isMission && live) {
-      if (it.pilotAction) {
-        body += `<div class="pilotlive"><span class="porb"></span> <b>Pilotage :</b> ${esc(it.pilotAction)}</div>`;
+      const running = (it.activity || []).filter((a) => a && a.status === "running").pop();
+      const reflection = it.pilotWhy || it.pilotAction || (running && (running.thought || running.label));
+      if (reflection && (it.status === "running" || it.status === "pending")) {
+        body += `<div class="pilotlive"><span class="porb"></span> <b>${it.pilotAction ? "Pilotage" : "Réflexion"} :</b> <i>${esc(reflection)}</i></div>`;
       }
       const act = (it.activity || []).filter((a) => a && a.label).slice(-6);
       if (act.length && (it.status === "running" || it.status === "pending")) {
         body += `<div class="actlog">${act.map((a) => {
           const ic = a.status === "success" ? "✓" : a.status === "failed" ? "✕" : "▸";
           const cl = a.status === "success" ? "ok" : a.status === "failed" ? "ko" : "run";
-          return `<div class="actrow"><span class="k ${cl}">${ic}</span><span>${esc(a.label)}${a.status === "running" && a.preview ? ` — <span class="pv">${esc(a.preview.slice(0,60))}</span>` : ""}</span></div>`;
+          const detail = a.status === "running"
+            ? (a.thought ? ` — <span class="pv">${esc(a.thought)}</span>` : a.preview ? ` — <span class="pv">${esc(a.preview.slice(0, 60))}</span>` : "")
+            : "";
+          return `<div class="actrow"><span class="k ${cl}">${ic}</span><span>${esc(a.label)}${detail}</span></div>`;
         }).join("")}</div>`;
       }
     }
@@ -610,7 +717,7 @@
     // Signature : on ne reconstruit le DOM que si quelque chose a VRAIMENT changé
     // (sinon un tick de poll identique effacerait la sélection de texte de l'user).
     const actSig = live && live.activity ? live.activity.map((a) => a.status[0]).join("") : "";
-    const sig = items.map((h) => (h.runId || h.goal) + h.status + (h.savedAgent || "")).join("|") + "#" + (live ? `${live.runId}:${live.status}:${live.stepsCompleted}:${(live.answer || "").length}:${(live.planned || []).length}:${live.approval ? live.approval.id : ""}:${live.approvalError || ""}:${live.connectExpired ? "x" : ""}:${(live.missing || []).join(",")}:${live.notice || ""}:${live.pilotAction || ""}:${actSig}` : "") + "?" + (clarifyQ ? clarifyQ.join("|") : "");
+    const sig = items.map((h) => (h.runId || h.goal) + h.status + (h.savedAgent || "")).join("|") + "#" + (live ? `${live.runId}:${live.status}:${live.stepsCompleted}:${(live.answer || "").length}:${(live.planned || []).length}:${live.approval ? live.approval.id : ""}:${live.approvalError || ""}:${live.connectExpired ? "x" : ""}:${(live.missing || []).join(",")}:${live.notice || ""}:${live.pilotAction || ""}:${live.pilotWhy || ""}:${actSig}` : "") + "?" + (clarifyQ ? clarifyQ.join("|") : "");
     if (!force && sig === lastFeedSig) return;
     lastFeedSig = sig;
     // Ne pas ré-ancrer en bas si l'utilisateur a scrollé vers le haut pour lire.
@@ -729,6 +836,9 @@
       // en cours (« ce que l'agent touche live »).
       current.activity = Array.isArray(r.body.activity) ? r.body.activity : current.activity;
       current.pilotAction = r.body.browser_task?.request?.label || null;
+      // La réflexion du pilote (« pourquoi » de l'action) — plus parlante que
+      // le libellé mécanique quand elle existe.
+      current.pilotWhy = r.body.browser_task?.request?.why || null;
       // Tâche de pilotage en attente : (ré)armer le service worker — couvre le
       // redémarrage du worker ET un plan réparé qui introduit du pilotage.
       if (r.body.browser_task) send("prompta:pilot-watch", { runId: current.runId });
@@ -1111,10 +1221,10 @@
     }
     // Pilotage : le service worker fait exécuter les actions de l'agent ICI.
     if (msg?.type === "prompta:pilot-snapshot") { sendResponse({ ok: true, snapshot: pilotSnapshot() }); return; }
-    if (msg?.type === "prompta:pilot-toast") { pilotToast(msg.label || "navigation…"); return; }
+    if (msg?.type === "prompta:pilot-toast") { pilotToast(msg.label || "navigation…", msg.why, msg.notice); return; }
     if (msg?.type === "prompta:pilot-end") { pilotEnd(); return; }
     if (msg?.type === "prompta:pilot-act") {
-      pilotAct(msg.action || {}, msg.label || "").then(sendResponse);
+      pilotAct(msg.action || {}, msg.label || "", msg.why || "", msg.notice || "").then(sendResponse);
       return true; // réponse asynchrone
     }
   });

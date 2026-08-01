@@ -142,7 +142,7 @@ export const BaseAgentStepSchema = z.discriminatedUnion("type", [
      * Sheets : l'extension retrouve l'onglet et le met au premier plan.
      */
     tabHint: z.string().optional(),
-    /** Modèle qui décide les actions (défaut : modèle de la mission). */
+    /** Modèle qui décide les actions (défaut : pilote rapide dédié — voir PILOT_MODEL_FALLBACKS). */
     model: z.string().optional(),
     maxActions: z.number().optional(),
     outputKey: z.string().optional(),

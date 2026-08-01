@@ -379,14 +379,41 @@ async function executeStep(
         }
       }
 
-      const result = await callModel({
+      // Budget de sortie : les modèles à raisonnement (gpt-5.x, o3/o4 —
+      // tokenParam max_completion_tokens) consomment leur budget en réflexion
+      // AVANT d'émettre le moindre texte. Plafonnés à 4 096, ils rendaient une
+      // sortie VIDE marquée « success » (vécu : {{films_tsv}} vide → le pilote
+      // navigateur échouait sur « tableau non fourni »).
+      const perCallCap = tokenParam === "max_completion_tokens" ? 16_000 : 4_096;
+      let result = await callModel({
         provider,
         model: apiModel,
         messages: [{ role: "user", content: prompt + memoryContext }],
         apiKey,
-        maxTokens: Math.min(maxTokens, 4096),
+        maxTokens: Math.min(maxTokens, perCallCap),
         tokenParam,
       });
+      // Sortie vide (budget épuisé en raisonnement, filtre fournisseur…) :
+      // UNE reprise avec un budget doublé, puis échec FRANC — une étape
+      // « réussie » avec un contenu vide corrompt toutes les étapes aval.
+      if (!result.content.trim()) {
+        const retry = await callModel({
+          provider,
+          model: apiModel,
+          messages: [{ role: "user", content: prompt + memoryContext }],
+          apiKey,
+          maxTokens: Math.min(maxTokens * 2, perCallCap * 2),
+          tokenParam,
+        });
+        retry.inputTokens += result.inputTokens;
+        retry.outputTokens += result.outputTokens;
+        result = retry;
+      }
+      if (!result.content.trim()) {
+        throw new Error(
+          `Le modèle ${apiModel} a rendu une sortie vide (budget de tokens épuisé en raisonnement ?) — relance, ou choisis un modèle plus rapide pour cette étape.`,
+        );
+      }
 
       await logRunActivity({
         userId: ctx.userId,
@@ -753,6 +780,17 @@ async function executeStep(
         // P3.2 : mapping unifié vers AgentRuntimeError (codes + hints lisibles)
         const mapped = mapAgentError(err, { connector: step.connector, action: step.action });
         let message = mapped.hint ? `${mapped.message} — ${mapped.hint}` : mapped.message;
+        // Accès Google refusé/introuvable : dire QUEL compte est connecté.
+        // Cause n°1 vécue : la feuille est OUVERTE dans le navigateur sous le
+        // compte A, mais la connexion API est le compte B — sans l'email,
+        // l'utilisateur lit « introuvable » en regardant sa feuille ouverte.
+        if (/^(sheets_forbidden|sheets_not_found)$/.test(mapped.code) || (/forbidden|not_found/.test(mapped.code) && /^google/.test(step.connector))) {
+          const { getConnectionAccountEmail } = await import("@/lib/connections");
+          const email = await getConnectionAccountEmail(ctx.userId, step.connector).catch(() => null);
+          if (email) {
+            message = `${message}\nCompte connecté à Prompta : ${email}. Si le fichier est ouvert dans ton navigateur sous un autre compte Google, partage-le avec ${email} (ou reconnecte ce compte-là).`;
+          }
+        }
         // Rattache l'indice amont si l'échec ressemble à une donnée manquante :
         // c'est souvent la VRAIE cause (connexion sans ressource partagée…).
         if (
@@ -839,7 +877,9 @@ async function executeStep(
     }
 
     if (step.type === "browser") {
-      const pilotGoal = interpolate(step.goal, vars, { maxVarChars: 4_000 });
+      // 12 000 : un objectif de pilotage porte souvent les DONNÉES à saisir
+      // (tableau TSV, liste) — le plafond historique de 4 000 les tronquait.
+      const pilotGoal = interpolate(step.goal, vars, { maxVarChars: 12_000 });
       if (simulated || ctx.demoMode) {
         const preview = `[${ctx.demoMode ? "DÉMO" : "APERÇU"} — pilotage navigateur non exécuté]\n${pilotGoal.slice(0, 300)}`;
         if (runId && stepDbId) {
@@ -877,8 +917,9 @@ async function executeStep(
           outputTokens: pilot.outputTokens,
           model: pilot.model,
           tool: "browser",
-          // Même résolution de clé que runBrowserPilot (défaut gpt-5.4-mini).
-          platformBilled: platformBilledFor(ctx, resolveModelOrDefault(step.model).provider),
+          // Fournisseur RÉEL du pilote (chaîne de repli possible) — pas celui
+          // supposé par le manifeste.
+          platformBilled: platformBilledFor(ctx, pilot.provider),
         },
       };
     }

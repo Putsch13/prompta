@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { plannedStepLabels } from "@/lib/agent/step-label";
+import { plannedStepLabels, stepThought } from "@/lib/agent/step-label";
 import { parseListingEnv } from "@/lib/agent/env";
 import { AgentManifestSchema } from "@/lib/agent/schema";
 import { ensureApprovalGuards, hasApprovalGuardStamp } from "@/lib/agent/approval-guards";
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, props: Params) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const { data: run } = await supabase
     .from("listing_agent_runs")
     .select("id, status, output, error_message, steps_completed, created_at, started_at, heartbeat_at, claimed_by, version_id, inputs")
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest, props: Params) {
   let effectiveStatus = run.status;
   if (["awaiting_approval", "running", "pending"].includes(run.status)) {
     const admin = createAdminClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const { data: pending } = await admin
       .from("agent_approvals")
       .select("id, payload, step_index")
@@ -124,15 +124,16 @@ export async function GET(request: NextRequest, props: Params) {
     }
   }
 
-  // Journal d'activité live : les dernières étapes (label + statut + aperçu)
-  // pour un rapport « au fur et à mesure » dans le panneau (le fil des actions
-  // de l'agent, pas juste « en cours »).
-  let activity: Array<{ label: string; status: string; preview?: string; index: number }> = [];
+  // Journal d'activité live : les dernières étapes (label + statut + aperçu +
+  // RÉFLEXION à la première personne) pour un rapport « au fur et à mesure »
+  // dans le panneau — l'agent pense à voix haute sur TOUTES les étapes, pas
+  // seulement pendant le pilotage navigateur.
+  let activity: Array<{ label: string; status: string; preview?: string; thought?: string; index: number }> = [];
   {
     const activityDb = createAdminClient();
     const { data: steps } = await activityDb
       .from("listing_agent_run_steps")
-      .select("step_index, label, status, output_preview, input_preview")
+      .select("step_index, step_type, label, status, output_preview, input_preview, tool_slug, action_slug, model")
       .eq("run_id", params.runId)
       .order("step_index", { ascending: true })
       .limit(40);
@@ -143,6 +144,7 @@ export async function GET(request: NextRequest, props: Params) {
       label: (s.label as string) || `Étape ${Number(s.step_index ?? 0) + 1}`,
       status: (s.status as string) || "running",
       preview: (asText(s.output_preview) || asText(s.input_preview)).slice(0, 220) || undefined,
+      thought: stepThought(s),
     }));
   }
 

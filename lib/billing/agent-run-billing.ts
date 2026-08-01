@@ -1,5 +1,6 @@
-import type { AgentManifest } from "@/lib/agent/schema";
+import type { AgentManifest, BaseAgentStep } from "@/lib/agent/schema";
 import { resolveModelOrDefault } from "@/lib/llm/resolve-model";
+import { PILOT_MODEL_FALLBACKS } from "@/lib/agent/browser-pilot";
 import { getUserKey, type KeyProvider } from "@/lib/keys";
 import { getCreditBalance, holdCreditsForRun, settleCreditsForRun, releaseCreditHold } from "@/lib/credits";
 import { checkMonthlySpendCap } from "@/lib/billing/spending-limits";
@@ -11,6 +12,63 @@ import { consumeFreeRunQuota } from "@/lib/billing/free-quota";
 import { isUnrestrictedUser } from "@/lib/auth/privileges";
 
 const PROVIDERS: KeyProvider[] = ["openai", "anthropic", "google", "mistral", "serper"];
+
+/** Étapes de premier niveau + branches parallèles aplaties. */
+function flattenSteps(steps: AgentManifest["steps"]): BaseAgentStep[] {
+  const out: BaseAgentStep[] = [];
+  for (const s of steps) {
+    if (s.type === "parallel") {
+      for (const b of s.branches) out.push(...b.steps);
+    } else {
+      out.push(s);
+    }
+  }
+  return out;
+}
+
+/**
+ * Fournisseurs LLM requis par un manifeste. Historiquement seuls les steps
+ * « llm » de premier niveau étaient scannés : un run dont le SEUL appel modèle
+ * vivait dans une étape browser, un aiFill ou une branche parallèle partait
+ * sans clé (« Clé anthropic manquante pour le pilotage du navigateur »).
+ */
+function requiredProviders(manifest: AgentManifest): { providers: string[]; hasBrowserStep: boolean } {
+  const providers = new Set<string>();
+  let hasBrowserStep = false;
+  for (const step of flattenSteps(manifest.steps)) {
+    if (step.type === "llm") providers.add(resolveModelOrDefault(step.model).provider);
+    if (step.type === "browser") {
+      hasBrowserStep = true;
+      if (step.model) providers.add(resolveModelOrDefault(step.model).provider);
+    }
+    if (step.type === "action" && step.aiFills) {
+      for (const fill of Object.values(step.aiFills)) {
+        if (fill?.model) providers.add(resolveModelOrDefault(fill.model).provider);
+      }
+    }
+  }
+  return { providers: [...providers], hasBrowserStep };
+}
+
+/**
+ * Garantit qu'au moins UN fournisseur de la chaîne de repli du pilote a une
+ * clé (le pilote navigateur roule sur un modèle rapide par défaut). N'ajoute
+ * qu'une seule clé plateforme, et seulement si aucun repli n'est déjà couvert
+ * (BYOK ou plateforme) — pour ne pas basculer en mode crédits un run BYOK.
+ * @returns le fournisseur ajouté, ou null si déjà couvert / rien de possible.
+ */
+function ensurePilotFallbackKey(apiKeys: Record<string, string>): string | null {
+  const fallbackProviders = [...new Set(PILOT_MODEL_FALLBACKS.map((id) => resolveModelOrDefault(id).provider))];
+  if (fallbackProviders.some((p) => apiKeys[p])) return null;
+  for (const provider of fallbackProviders) {
+    const platformKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`];
+    if (platformKey) {
+      apiKeys[provider] = platformKey;
+      return provider;
+    }
+  }
+  return null;
+}
 
 export interface ResolvedRunKeys {
   apiKeys: Record<string, string>;
@@ -46,9 +104,8 @@ export async function resolveAgentRunKeys(
       const key = await getUserKey(userId, p);
       if (key) apiKeys[p] = key;
     }
-    for (const step of manifest.steps) {
-      if (step.type !== "llm") continue;
-      const { provider } = resolveModelOrDefault(step.model);
+    const required = requiredProviders(manifest);
+    for (const provider of required.providers) {
       if (!apiKeys[provider]) {
         const platformKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`];
         if (platformKey) {
@@ -56,6 +113,10 @@ export async function resolveAgentRunKeys(
           platformProviders.push(provider);
         }
       }
+    }
+    if (required.hasBrowserStep) {
+      const added = ensurePilotFallbackKey(apiKeys);
+      if (added) platformProviders.push(added);
     }
     if (
       manifest.steps.some((s) => s.type === "tool" && s.tool === "web_search") &&
@@ -80,9 +141,8 @@ export async function resolveAgentRunKeys(
     if (key) apiKeys[p] = key;
   }
 
-  for (const step of manifest.steps) {
-    if (step.type !== "llm") continue;
-    const { provider } = resolveModelOrDefault(step.model);
+  const required = requiredProviders(manifest);
+  for (const provider of required.providers) {
     if (apiKeys[provider]) continue;
 
     const platformKey = process.env[`PLATFORM_${provider.toUpperCase()}_KEY`];
@@ -91,6 +151,13 @@ export async function resolveAgentRunKeys(
     apiKeys[provider] = platformKey;
     platformProviders.push(provider);
     needsPlatformKeys = true;
+  }
+  if (required.hasBrowserStep) {
+    const added = ensurePilotFallbackKey(apiKeys);
+    if (added) {
+      platformProviders.push(added);
+      needsPlatformKeys = true;
+    }
   }
 
   if (
